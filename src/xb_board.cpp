@@ -1228,8 +1228,6 @@ uint32_t TXB_board::GetFreeHeap()
 	uint32_t size = 0; 
 	uint32_t ADR = 0;
 	uint8_t a = 1;
-	
-	
 
 	ADRESS_STACK = (uint32_t)&a;
 	ADRESS_HEAP = (uint32_t)malloc(1);
