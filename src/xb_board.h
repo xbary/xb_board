@@ -81,6 +81,10 @@ public:
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
 
+	void pinMode(uint16_t pin, WiringPinMode mode);
+	void digitalWrite(uint16_t pin, uint8_t value);
+	uint8_t digitalRead(uint16_t pin);
+	
 	void LED_OKSEND_ON(void);
 	void LED_OKSEND_OFF(void);
 	void LED_OKSEND_TOGGLE(void);
@@ -117,13 +121,13 @@ public:
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
 
-
 	uint32_t ADRESS_HEAP;
 	uint32_t ADRESS_STACK;
-
 	uint32_t GetFreeHeap();
-
 	bool CheckCriticalFreeHeap(void);
+
+
+
 };
 
 extern TXB_board board;

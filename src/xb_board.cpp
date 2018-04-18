@@ -839,6 +839,19 @@ TXB_board::~TXB_board()
 }
 
 
+void TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
+{
+}
+
+void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
+{
+}
+
+uint8_t TXB_board::digitalRead(uint16_t pin)
+{
+}
+
+
 int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 {
 	int rez = -1;
