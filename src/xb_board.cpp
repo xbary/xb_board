@@ -839,16 +839,55 @@ TXB_board::~TXB_board()
 }
 
 
-void TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
+bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 {
+	TMessageBoard mb;
+	mb.IDMessage = IM_GPIO;
+	mb.Data.GpioData.GpioAction = gaPinMode;
+	mb.Data.GpioData.NumPin = pin;
+	mb.Data.GpioData.ActionData.Mode = mode;
+
+	
+	if (!SendMessageToAllTask(&mb,doONLYINTERESTED))
+	{
+		Log(FSS("\n[BOARD] GPIO pinMode Error.\n"));
+		return false;
+	}
+
+	return true;
 }
 
 void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 {
+	TMessageBoard mb;
+	mb.IDMessage = IM_GPIO;
+	mb.Data.GpioData.GpioAction = gaPinWrite;
+	mb.Data.GpioData.NumPin = pin;
+	mb.Data.GpioData.ActionData.Value = value;
+
+
+	if (!SendMessageToAllTask(&mb, doONLYINTERESTED))
+	{
+		Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
+	}
 }
 
 uint8_t TXB_board::digitalRead(uint16_t pin)
 {
+	TMessageBoard mb;
+	mb.IDMessage = IM_GPIO;
+	mb.Data.GpioData.GpioAction = gaPinRead;
+	mb.Data.GpioData.NumPin = pin;
+
+	if (!SendMessageToAllTask(&mb, doONLYINTERESTED))
+	{
+		Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
+		return 0;
+	}
+	else
+	{
+		return mb.Data.GpioData.ActionData.Value;
+	}
 }
 
 
@@ -886,8 +925,6 @@ int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 
 void TXB_board::IterateTask(void)
 {
-	
-
 	iteratetask_procedure = true;
 	static uint32_t CurrentIndxRunTask = 0;
 
@@ -1076,15 +1113,15 @@ bool TXB_board::SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool A
 	return res;
 }
 	
-void TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
+bool TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
 {
 	TMessageBoard mb;
 	mb.IDMessage = AidMessage;
 	mb.Data.uData32 = 0;
-	SendMessageToAllTask(&mb, ADoMessageDirection, Aexcludetask);
+	return SendMessageToAllTask(&mb, ADoMessageDirection, Aexcludetask);
 }
 
-void TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
+bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
 {
 	bool res = false;
 	switch (ADoMessageDirection)
@@ -1216,6 +1253,7 @@ void TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 		}
 		default: break;
 	}
+	return res;
 }
 
 

@@ -81,7 +81,7 @@ public:
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
 
-	void pinMode(uint16_t pin, WiringPinMode mode);
+	bool pinMode(uint16_t pin, WiringPinMode mode);
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
 	
@@ -113,8 +113,8 @@ public:
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Ataskdef, bool Aexcludethistask = false);
 	bool SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb, bool Arunagain=false);
 	bool SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool Arunagain = false);
-	void SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
-	void SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
+	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
+	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 
 
 	uint32_t FreeHeapInLoop;

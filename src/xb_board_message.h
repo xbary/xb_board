@@ -80,7 +80,12 @@ typedef enum {
 typedef struct {
 	TGpioAction GpioAction;
 	uint16_t NumPin;
-	uint8_t Value;
+	union {
+		uint8_t Value;
+		uint8_t Mode;
+	}
+	ActionData;
+	
 } TGpioData;
 
 //-----------------------------------------------------------------------
