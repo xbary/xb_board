@@ -146,7 +146,7 @@ typedef struct
 #define DEF_MENUITEMNAME(iditem,nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = (nameitemstr); break;
 
 typedef enum {
-	tmaGET_INIT_MENU, tmaGET_CAPTION_MENU_STRING, tmaGET_ITEM_MENU_STRING, tmaCLICK_ITEM_MENU
+	tmaGET_OPEN_MAINMENU, tmaGET_CLOSE_MAINMENU, tmaGET_INIT_MENU, tmaGET_CAPTION_MENU_STRING, tmaGET_ITEM_MENU_STRING, tmaCLICK_ITEM_MENU
 } TTypeMenuAction;
 
 typedef struct

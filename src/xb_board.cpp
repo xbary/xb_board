@@ -1,3 +1,4 @@
+#include "XB_board.h"
 /*
 Insert Into WiFiClient Class
 
@@ -9,7 +10,6 @@ if (_client)
 _client->abort();
 }
 */
-#include "XB_board.h"
 
 TXB_board board(TASK_COUNT);
 
@@ -21,14 +21,28 @@ extern "C" {
 }
 #endif
 
-//------------------------------------------------------------------------------------------------------------
+#ifdef ARDUINO_ARCH_STM32F1
+extern "C" {
+#include <string.h>
+#include <stdlib.h>
+
+extern void *malloc(size_t size);
+extern void free(void *memblock);
+extern size_t strlen(const char *str);
+extern void *memcpy(void *dest,const void *src,size_t count);
+}
+#endif
+
 #ifdef XB_GUI
 #include <xb_GUI.h>
 TWindowClass *winHandle0;
 #endif
 #ifdef XB_GUIGADGET
+#include <xb_GUI_Gadget.h>
 TGADGETMenu *menuHandle0;
 #endif
+
+//------------------------------------------------------------------------------------------------------------
 
 #ifdef ESP8266
 Ticker SysTickCount_ticker;
@@ -88,6 +102,45 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 	switch (Am->IDMessage)
 	{
+	case IM_GPIO:
+	{
+		switch (Am->Data.GpioData.GpioAction)
+		{
+		case gaPinMode:
+		{
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			{
+				pinMode(Am->Data.GpioData.NumPin,(WiringPinMode)Am->Data.GpioData.ActionData.Mode);
+				res = true;
+			}
+			break;
+		}
+		case gaPinRead:
+		{
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			{
+				Am->Data.GpioData.ActionData.Value = digitalRead(Am->Data.GpioData.NumPin);
+				res = true;
+			}
+			break;
+		}
+		case gaPinWrite:
+		{
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			{
+				digitalWrite(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
+				res = true;
+			}
+			break;
+		}
+		default:
+		{
+			break;
+		}
+		}
+		break;
+	}
+
 #ifdef XB_GUIGADGET
 	case IM_MENU:
 	{
@@ -99,7 +152,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 			case 0:
 			{
-				Am->Data.MenuData.ActionData.MenuInitData.ItemCount = 7;
+				Am->Data.MenuData.ActionData.MenuInitData.ItemCount = 1 + TASK_COUNT;
 				Am->Data.MenuData.ActionData.MenuInitData.Width = 64;
 				Am->Data.MenuData.ActionData.MenuInitData.CurrentSelect = 0;
 				res = true;
@@ -117,25 +170,31 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 				switch (Am->Data.MenuData.ActionData.MenuItemData.ItemIndex)
 				{
-					DEF_MENUITEMNAME(0, FSS("WIFI manual disconnect"));
-					DEF_MENUITEMNAME(1, FSS("INTERNET manual disconnect"));
-				case 2:
+					DEF_MENUITEMNAME(0, FSS("Restart MCU"));
+				default:
 				{
-					if (showasc)
+
+					uint8_t i = Am->Data.MenuData.ActionData.MenuItemData.ItemIndex - 1;
+					String n = "";
+					if (board.TaskDef[i] != NULL)
 					{
-						*(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = FSS(" (*) Show ASC keyboard code.");
+
+						if (board.GetTaskName(board.TaskDef[i], n))
+						{
+							n += FSS(" >>>");
+						}
+						else
+						{
+							n = FSS("task no menu!");
+						}
 					}
 					else
 					{
-						*(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = FSS(" ( ) Show ASC keyboard code.");
+						n = FSS("task null!");
 					}
+					*(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = n.c_str();
 					break;
 				}
-				DEF_MENUITEMNAME(3, FSS("Restart module"));
-				DEF_MENUITEMNAME(4, FSS("Save Configuration"));
-				DEF_MENUITEMNAME(5, FSS("Load Configuration"));
-				DEF_MENUITEMNAME(6, FSS("WIFI Configuration >>>"));
-				default: break;
 				}
 			}
 			}
@@ -152,48 +211,41 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 				case 0:
 				{
-					WIFI_HardDisconnect();
+					nvic_sys_reset();
 					break;
 				}
-				case 1:
+				default:
 				{
-					WIFI_SetDisconnectInternet();
 					break;
 				}
-				case 2:
-				{
-					showasc = !showasc;
-					break;
-				}
-				case 3:
-				{
-					ESP.restart();
-					delay(5000);
-					break;
-				}
-				case 4:
-				{
-					XB_CONFIG_Write();
-					break;
-				}
-				case 5:
-				{
-					XB_CONFIG_Read();
-					break;
-				}
-				case 6:
-				{
-					GUIGADGET_CreateMenu(&WIFI_DefTask, 0);
-				
-
-
-					break;
-				}
-				default:; break;
 				}
 				res = true;
 			}
-			default: res = false; break;
+			default: 
+			{
+				String n = "";
+				uint8_t itask = 0;
+				for (uint8_t i = 0; i < TASK_COUNT; i++)
+				{
+					if (board.TaskDef[i] != NULL)
+					{
+						if (board.GetTaskName(board.TaskDef[i], n))
+						{
+							if (itask == (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex - 1))
+							{
+								GUIGADGET_OpenMainMenu(board.TaskDef[i]);
+								break;
+							}
+							else
+							{
+								itask++;
+							}
+						}
+					}
+				}
+				res = true;
+				break;
+			}
 			}
 			break;
 		}
@@ -726,6 +778,14 @@ void XB_BOARD_Setup(void)
 		delay(1);
 	}
 #endif
+
+#ifdef  BOARD_LED_LIFE_PIN
+	pinMode(BOARD_LED_LIFE_PIN,OUTPUT);
+#endif
+#ifdef  BOARD_LED_OKSEND_PIN
+	pinMode(BOARD_LED_OKSEND_PIN, OUTPUT);
+#endif
+
 	rs.reserve(32);
 
 #ifdef XB_GUI
@@ -815,12 +875,12 @@ TXB_board::TXB_board(uint8_t ATaskDefCount)
 	iteratetask_procedure = false;
 	NoTxCounter = 0;
 	TXCounter = 0;
-	MaximumFreeHeapInLoop = GetFreeHeap();
+	MaximumFreeHeapInLoop = getFreeHeap();
 
 	TaskDefCount = ATaskDefCount;
 	TaskDef = new PTaskDef[ATaskDefCount];
 
-	MinimumFreeHeapInLoop = GetFreeHeap();
+	MinimumFreeHeapInLoop = getFreeHeap();
 
 	for (int i = 0; i < TaskDefCount; i++)
 	{
@@ -929,8 +989,8 @@ void TXB_board::IterateTask(void)
 	static uint32_t CurrentIndxRunTask = 0;
 
 	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
-
-	FreeHeapInLoop = GetFreeHeap();
+	
+	FreeHeapInLoop = getFreeHeap();
 	if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 	{
 		MinimumFreeHeapInLoop = FreeHeapInLoop;
@@ -998,7 +1058,7 @@ bool TXB_board::GetTaskString(TMessageBoard *Amb,TTaskDef *ATaskDef, String &APo
 {
 	Amb->Data.PointerString = &APointerString;
 
-	if (SendMessageToTask(ATaskDef, Amb))
+	if (SendMessageToTask(ATaskDef, Amb,true))
 	{
 		return true;
 	}
@@ -1274,13 +1334,18 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 	dst[size] = 0;
 }
 
-uint32_t TXB_board::GetFreeHeap()
+uint32_t TXB_board::getFreeHeap()
 {
+#ifdef ESP8266
+	return ESP.getFreeHeap();
+#endif
+#ifdef ARDUINO_ARCH_STM32F1
 	uint32_t size = 0; 
 	uint32_t ADR = 0;
 	uint8_t a = 1;
 
 	ADRESS_STACK = (uint32_t)&a;
+	
 	ADRESS_HEAP = (uint32_t)malloc(1);
 	free((void *)ADRESS_HEAP);
 
@@ -1297,26 +1362,25 @@ uint32_t TXB_board::GetFreeHeap()
 		if (size > 32) size -= 32;
 		else size = 0;
 	}
-
 	return  0;
+#endif
+
 
 }
 
 bool TXB_board::CheckCriticalFreeHeap(void)
 {
-#ifdef ESP8266
-	if (ESP.getFreeHeap() < (BOARD_CRITICALFREEHEAP))
+	if (getFreeHeap() < (BOARD_CRITICALFREEHEAP))
 	{
-			PrintTimeFromRun();
-			Serial_println(FSS(" CRITICAL FREE STACK...set disconnect."));
-
+		PrintTimeFromRun();
+		Serial_println(FSS(" CRITICAL FREE STACK...set disconnect."));
 		return true;
 	}
 	else
 	{
 		return false;
 	}
-#endif
+
 	return false;
 }
 
@@ -1337,13 +1401,19 @@ void TXB_board::DateTimeSecond_init(void)
 
 void TXB_board::handle(void)
 {
+#if defined(BOARD_LED_LIFE_PIN) || defined(BOARD_LED_OKSEND_PIN)
 	DEF_WAITMS_VAR(LOOPW);
-	BEGIN_WAITMS(LOOPW, 1000)
+	BEGIN_WAITMS_PREC(LOOPW, 1000)
 	{
-		board.LED_LIFE_TOGGLE();
-		board.LED_OKSEND_OFF();
+#ifdef  BOARD_LED_LIFE_PIN
+		digitalWrite(BOARD_LED_LIFE_PIN, !digitalRead(BOARD_LED_LIFE_PIN));
+#endif
+#ifdef  BOARD_LED_OKSEND_PIN
+		digitalWrite(BOARD_LED_OKSEND_PIN, LOW);
+#endif
 	}
-	END_WAITMS(LOOPW);
+	END_WAITMS_PREC(LOOPW);
+#endif
 
 	if (Serial_available())
 	{
@@ -1591,155 +1661,4 @@ void TXB_board::PrintDiag(void)
 #endif
 }
 
-void TXB_board::PrintHelp(void)
-{
-	
-	cbufSerial tmp(1024);
 
-	tmp.print(FSS("\n\rHelp:\n\r"));
-	tmp.print(FSS("\n\r-----------"));
-	tmp.print(FSS("\n\rhelp (h) - Print this help."));
-	tmp.print(FSS("\n\recho - Print \"ECHO\""));
-	tmp.print(FSS("\n\rprintdiag (pd) - Print diagnostic."));
-	tmp.print(FSS("\n\r-----------\n\r\n\r"));
-	Log(&tmp);
-}
-
-void TXB_board::LED_OKSEND_ON(void)
-{
-#ifdef DEVICE_LED_OKSEND_PIN
-#ifdef XB_IOT1
-	expander_1.digitalWrite(PIN_LED_OKSEND, LOW);
-#elif defined(XB_IOT2)
-	digitalWrite(DEVICE_LED_OKSEND_PIN, HIGH);
-#else
-	digitalWrite(DEVICE_LED_OKSEND_PIN, LOW);
-#endif
-#endif
-
-}
-void TXB_board::LED_OKSEND_OFF(void)
-{
-#ifdef DEVICE_LED_OKSEND_PIN
-#ifdef XB_IOT1
-	expander_1.digitalWrite(PIN_LED_OKSEND, HIGH);
-#elif defined(XB_IOT2)
-	digitalWrite(DEVICE_LED_OKSEND_PIN, LOW);
-#else
-	digitalWrite(DEVICE_LED_OKSEND_PIN, HIGH);
-#endif
-#endif
-}
-void TXB_board::LED_OKSEND_TOGGLE(void)
-{
-#ifdef DEVICE_LED_OKSEND_PIN
-#ifdef XB_IOT1
-	expander_1.toggle(PIN_LED_OKSEND);
-#else
-	digitalWrite(DEVICE_LED_OKSEND_PIN, !digitalRead(DEVICE_LED_OKSEND_PIN));
-#endif
-#endif
-}
-
-void TXB_board::LED_LIFE_ON(void)
-{
-#ifdef DEVICE_LED_LIFE_PIN
-#ifdef XB_IOT1
-	expander_1.digitalWrite(PIN_LED_LIFE, LOW);
-#elif defined(XB_IOT2)
-	digitalWrite(DEVICE_LED_LIFE_PIN, HIGH);
-#else
-	digitalWrite(DEVICE_LED_LIFE_PIN, LOW);
-#endif
-#endif
-}
-void TXB_board::LED_LIFE_OFF(void)
-{
-#ifdef DEVICE_LED_LIFE_PIN
-#ifdef XB_IOT1
-	expander_1.digitalWrite(PIN_LED_LIFE, HIGH);
-#elif defined(XB_IOT2)
-	digitalWrite(DEVICE_LED_LIFE_PIN, LOW);
-#else
-	digitalWrite(DEVICE_LED_LIFE_PIN, HIGH);
-#endif
-#endif
-}
-void TXB_board::LED_LIFE_TOGGLE(void)
-{
-#ifdef DEVICE_LED_LIFE_PIN
-#ifdef XB_IOT1
-	expander_1.toggle(PIN_LED_LIFE);
-#else
-	digitalWrite(DEVICE_LED_LIFE_PIN, !digitalRead(DEVICE_LED_LIFE_PIN));
-#endif
-#endif
-}
-
-void TXB_board::RELAY_SET(uint8_t Aindxrelay, bool Astatus)
-{
-#ifdef XB_IOT1
-	
-	if (RELAY_GET(Aindxrelay) == Astatus) return;
-
-	Log_TimeStamp();
-	Log(FSS("Relay "));
-	Log(String(Aindxrelay).c_str());
-
-	switch (Aindxrelay)
-	{
-	case RELAY_POMPA:
-		expander_1.digitalWrite(PIN_RELAY_POMPA, (Astatus ? LOW : HIGH));
-		if (Astatus)
-		{
-			Log(FSS(" set ON\n\r"));
-		}
-		else
-		{
-			Log(FSS(" set OFF\n\r"));
-		}
-		break;
-	case RELAY_ZAWOR:
-		expander_1.digitalWrite(PIN_RELAY_ZAWOR, (Astatus ? LOW : HIGH));
-		if (Astatus)
-		{
-			Log(FSS(" set ON\n\r"));
-		}
-		else
-		{
-			Log(FSS(" set OFF\n\r"));
-		}
-		break;
-	default:
-	{
-		Log(FSS(" not support.\n\r"));
-		break;
-	}
-	}
-#endif
-}
-
-bool TXB_board::RELAY_GET(uint8_t Aindxrelay)
-{
-	bool rez = false;
-#ifdef XB_IOT1
-	switch (Aindxrelay)
-	{
-	case RELAY_POMPA:
-		rez = (expander_1.digitalRead(PIN_RELAY_POMPA) == HIGH ? false : true);
-		break;
-	case RELAY_ZAWOR:
-		rez = (expander_1.digitalRead(PIN_RELAY_ZAWOR) == HIGH ? false : true);
-		break;
-	default:
-	{
-		Log_TimeStamp();
-		Log(FSS("Relay "));
-		Log(String(Aindxrelay).c_str());
-		Log(FSS(" not support.\n\r"));
-	}
-	}
-
-#endif
-	return rez;
-}

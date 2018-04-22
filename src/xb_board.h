@@ -10,6 +10,7 @@
 #ifdef ARDUINO_ARCH_STM32F1
 #include <stdint.h>
 #include <WString.h>
+
 #define FSS(str) ((const char *)(str))
 #endif
 
@@ -84,20 +85,10 @@ public:
 	bool pinMode(uint16_t pin, WiringPinMode mode);
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
-	
-	void LED_OKSEND_ON(void);
-	void LED_OKSEND_OFF(void);
-	void LED_OKSEND_TOGGLE(void);
-	void LED_LIFE_ON(void);
-	void LED_LIFE_OFF(void);
-	void LED_LIFE_TOGGLE(void);
-	void RELAY_SET(uint8_t Aindxrelay, bool Astatus);
-	bool RELAY_GET(uint8_t Aindxrelay);
 
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
 	void PrintDiag(void);
-	void PrintHelp(void);
 
 	PTaskDef *TaskDef;
 	uint8_t TaskDefCount;
@@ -121,13 +112,13 @@ public:
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
 
+	uint32_t getFreeHeap();
+	bool CheckCriticalFreeHeap(void);
+private:
+#ifdef ARDUINO_ARCH_STM32F1
 	uint32_t ADRESS_HEAP;
 	uint32_t ADRESS_STACK;
-	uint32_t GetFreeHeap();
-	bool CheckCriticalFreeHeap(void);
-
-
-
+#endif
 };
 
 extern TXB_board board;
