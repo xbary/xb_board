@@ -1397,6 +1397,7 @@ void TXB_board::DateTimeSecond_init(void)
 #ifdef ESP8266
 	DateTimeSecond_ticker.attach(1, DateTimeSecond_proc);
 #endif
+	
 }
 
 void TXB_board::handle(void)
@@ -1423,6 +1424,7 @@ void TXB_board::handle(void)
 		}
 		else
 		{
+			
 			SendKeyPress((char)Serial_read(),&XB_BOARD_DefTask);
 		}
 	}
