@@ -30,6 +30,7 @@ extern void *malloc(size_t size);
 extern void free(void *memblock);
 extern size_t strlen(const char *str);
 extern void *memcpy(void *dest,const void *src,size_t count);
+extern int sprintf(char *buffer,const char *format, ...);
 }
 #endif
 
@@ -799,7 +800,7 @@ void XB_BOARD_Setup(void)
 
 void XB_BOARD_DoLoop(void)
 {
-#ifdef _XB_WIFI_H
+#ifdef XB_WIFI
 	// Sprawdzenie czy nie nast¹pi³o roz³¹czenie z punktem WiFi
 	if (WIFI_CheckDisconnectWiFi())
 	{
@@ -839,34 +840,6 @@ void XB_BOARD_DoLoop(void)
 	END_WAITMS(xbl1)
 #endif
 
-}
-
-
-void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
-{
-	uint32_t m = Atimeindx / 60;
-	uint32_t s = Atimeindx - (m * 60);
-	uint32_t g = m / 60;
-	m = m - (g * 60);
-
-	char timeindxstr[20];
-#ifdef ESP8266
-	ets_sprintf(timeindxstr, FSS("%4d:%02d:%02d"), g, m, s);
-#endif
-	String tmp = String(timeindxstr);
-	tmp.replace(' ', '0');
-	Atotxt += tmp;
-}
-
-void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx)
-{
-	uint32_t m = Atimeindx / 60;
-	uint32_t s = Atimeindx - (m * 60);
-	uint32_t g = m / 60;
-	m = m - (g * 60);
-#ifdef ESP8266
-	AcbufSerial->printf(FSS("%4d:%02d:%02d"), g, m, s);
-#endif
 }
 
 //------------------------------------------------------------------------------------------------------------

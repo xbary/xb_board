@@ -10,17 +10,11 @@
 #ifdef ARDUINO_ARCH_STM32F1
 #include <stdint.h>
 #include <WString.h>
-
 #define FSS(str) ((const char *)(str))
 #endif
-
-
 #endif
 
 #include <xb_board_message.h>
-
-#define BOARD_CRITICALFREEHEAP (1024*19)
-
 #include <Arduino.h>
 
 #ifdef ESP8266
@@ -94,8 +88,7 @@ public:
 	uint8_t TaskDefCount;
 	int DefTask(TTaskDef *Ataskdef, uint8_t Aid);
 	void IterateTask(void);
-	bool iteratetask_procedure;
-	bool GetTaskString(TMessageBoard *Amb, TTaskDef *ATaskDef, String &APointerString);
+	
 	bool GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString);
 	bool GetTaskName(TTaskDef *ATaskDef, String &APointerString);
 	void SendKeyPress(char Akey);
@@ -107,7 +100,6 @@ public:
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 
-
 	uint32_t FreeHeapInLoop;
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
@@ -115,6 +107,8 @@ public:
 	uint32_t getFreeHeap();
 	bool CheckCriticalFreeHeap(void);
 private:
+	bool GetTaskString(TMessageBoard *Amb, TTaskDef *ATaskDef, String &APointerString);
+	bool iteratetask_procedure;
 #ifdef ARDUINO_ARCH_STM32F1
 	uint32_t ADRESS_HEAP;
 	uint32_t ADRESS_STACK;
@@ -143,6 +137,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #include "..\xb_board_def.h"
 #else
 #include "xb_board_def.h"
+#endif
+
+#ifndef BOARD_CRITICALFREEHEAP
+#define BOARD_CRITICALFREEHEAP (1024*19)
 #endif
 
 #ifndef SerialBoard

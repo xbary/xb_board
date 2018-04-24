@@ -7,7 +7,8 @@
 #endif
 
 
-#define ADD_TO_LIST(Alist,AClass) {\
+#define ADD_TO_LIST(Alist,AClass) \
+{\
 AClass *lm = Alist;\
 if (lm == NULL)\
 {\
