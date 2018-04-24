@@ -1,6 +1,8 @@
 #ifndef XB_BOARD_H
 #define XB_BOARD_H
 
+#include <Arduino.h>
+
 #ifndef FSS
 #ifdef ESP8266
 #include <WString.h>
@@ -15,10 +17,11 @@
 #endif
 
 #include <xb_board_message.h>
-#include <Arduino.h>
 
 #ifdef ESP8266
 
+typedef uint8_t WiringPinMode;
+#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
 extern "C" {
 #include "user_interface.h"
 }
@@ -136,7 +139,7 @@ void XB_BOARD_Setup(void);
 bool XB_BOARD_DoMessage(TMessageBoard *Am);
 
 #ifdef ESP8266
-#include "..\xb_board_def.h"
+#include "xb_board_def.h"
 #else
 #include "xb_board_def.h"
 #endif

@@ -801,6 +801,7 @@ void XB_BOARD_Setup(void)
 
 void XB_BOARD_DoLoop(void)
 {
+
 #ifdef XB_WIFI
 	// Sprawdzenie czy nie nast¹pi³o roz³¹czenie z punktem WiFi
 	if (WIFI_CheckDisconnectWiFi())
@@ -840,7 +841,6 @@ void XB_BOARD_DoLoop(void)
 	}
 	END_WAITMS(xbl1)
 #endif
-
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -1427,6 +1427,7 @@ void TXB_board::cmdparse(String Ars)
 		PrintTimeFromRun();
 		Log(FSS("ECHO\r\n>"));
 	}
+	/*
 #ifdef ESP8266
 	else if ((Ars == FSS("printdiag")) || (Ars == FSS("pd")))
 	{
@@ -1504,7 +1505,7 @@ void TXB_board::cmdparse(String Ars)
 		Log(FSS(">"));
 	}
 #endif
-
+	*/
 }
 
 void TXB_board::Serial_WriteChar(char Achr)
