@@ -15,6 +15,9 @@ TXB_board board(TASK_COUNT);
 
 TTaskDef XB_BOARD_DefTask = { &XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage,0 };
 
+volatile uint32_t DateTime;
+volatile uint32_t DateTimeStart;
+
 #ifdef ESP8266
 extern "C" {
 #include "user_interface.h"
@@ -51,11 +54,6 @@ Ticker DateTimeSecond_ticker;
 volatile uint32_t SysTickCount;
 #endif
 
-#ifdef ARDUINO_ARCH_STM32F1
-#define SysTickCount systick_uptime_millis
-#endif
-
-
 uint32_t Tick_ESCKey = 0;
 uint8_t TerminalFunction = 0;
 String rs;
@@ -83,6 +81,7 @@ void TCPClientDestroy(WiFiClient **Awificlient)
 #endif
 #endif
 
+#ifdef ESP8266
 void SysTickCount_proc(void)
 {
 	SysTickCount++;
@@ -92,6 +91,7 @@ void DateTimeSecond_proc(void)
 {
 	DateTime++;
 }
+#endif
 
 bool showasc = false;
 
@@ -795,7 +795,8 @@ void XB_BOARD_Setup(void)
 #else
 	Serial_print(FSS("\n\nStart...\n"));
 #endif
-
+	DateTime = 0;
+	DateTimeStart = 0;
 }
 
 void XB_BOARD_DoLoop(void)
@@ -859,9 +860,10 @@ TXB_board::TXB_board(uint8_t ATaskDefCount)
 	{
 		TaskDef[i] = NULL;
 	}
-
+#ifdef ESP8266
 	SysTickCount_init();
 	DateTimeSecond_init();
+#endif
 }
 
 TXB_board::~TXB_board()
@@ -1375,7 +1377,6 @@ void TXB_board::DateTimeSecond_init(void)
 
 void TXB_board::handle(void)
 {
-#if defined(BOARD_LED_LIFE_PIN) || defined(BOARD_LED_OKSEND_PIN)
 	DEF_WAITMS_VAR(LOOPW);
 	BEGIN_WAITMS_PREC(LOOPW, 1000)
 	{
@@ -1385,9 +1386,17 @@ void TXB_board::handle(void)
 #ifdef  BOARD_LED_OKSEND_PIN
 		digitalWrite(BOARD_LED_OKSEND_PIN, LOW);
 #endif
+#ifdef ARDUINO_ARCH_STM32F1
+		DateTime++;
+#endif
+#ifdef XB_GUI
+		if (winHandle0 != NULL)
+		{
+			winHandle0->RepaintDataCounter++;
+		}
+#endif
 	}
 	END_WAITMS_PREC(LOOPW);
-#endif
 
 	if (Serial_available())
 	{

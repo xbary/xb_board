@@ -117,6 +117,8 @@ private:
 
 extern TXB_board board;
 extern TTaskDef XB_BOARD_DefTask;
+extern volatile uint32_t DateTime;
+extern volatile uint32_t DateTimeStart;
 
 #ifdef ARDUINO_ARCH_STM32F1
 #define SysTickCount systick_uptime_millis
