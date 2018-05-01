@@ -134,6 +134,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			}
 			break;
 		}
+		case gaPinToggle:
+		{
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			{
+				Am->Data.GpioData.ActionData.Value = !digitalRead(Am->Data.GpioData.NumPin);
+				digitalWrite(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
+				res = true;
+			}
+			break;
+		}
 		default:
 		{
 			break;
@@ -925,6 +935,24 @@ uint8_t TXB_board::digitalRead(uint16_t pin)
 	}
 }
 
+uint8_t TXB_board::digitalToggle(uint16_t pin)
+{
+	TMessageBoard mb;
+	mb.IDMessage = IM_GPIO;
+	mb.Data.GpioData.GpioAction = gaPinToggle;
+	mb.Data.GpioData.NumPin = pin;
+
+	if (!SendMessageToAllTask(&mb, doONLYINTERESTED))
+	{
+		Log(FSS("\n[BOARD] GPIO digitalToggle Error.\n"));
+		return 0;
+	}
+	else
+	{
+		return mb.Data.GpioData.ActionData.Value;
+	}
+}
+
 
 int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 {
@@ -1381,7 +1409,7 @@ void TXB_board::handle(void)
 	BEGIN_WAITMS_PREC(LOOPW, 1000)
 	{
 #ifdef  BOARD_LED_LIFE_PIN
-		digitalWrite(BOARD_LED_LIFE_PIN, !digitalRead(BOARD_LED_LIFE_PIN));
+		digitalToggle(BOARD_LED_LIFE_PIN);
 #endif
 #ifdef  BOARD_LED_OKSEND_PIN
 		digitalWrite(BOARD_LED_OKSEND_PIN, LOW);

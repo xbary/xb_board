@@ -75,7 +75,7 @@ typedef enum {
 
 //-----------------------------------------------------------------------
 typedef enum {
-	gaPinMode, gaPinWrite, gaPinRead
+	gaPinMode, gaPinWrite, gaPinRead , gaPinToggle
 } TGpioAction;
 
 typedef struct {

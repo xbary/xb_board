@@ -82,6 +82,7 @@ public:
 	bool pinMode(uint16_t pin, WiringPinMode mode);
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
+	uint8_t digitalToggle(uint16_t pin);
 
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
