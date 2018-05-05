@@ -587,10 +587,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		{
 			if (Am->Data.WindowData.ID == 0)
 			{
-				Am->Data.WindowData.ActionData.Create.X = 26;
+				Am->Data.WindowData.ActionData.Create.X = 0;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
 				Am->Data.WindowData.ActionData.Create.Width = 36;
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskDefCount + 9;
+				Am->Data.WindowData.ActionData.Create.Height = board.TaskDefCount + 10;
 
 				res = true;
 			} 
@@ -656,11 +656,23 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->SetTextColor(tfcWhite);
 					winHandle0->PutStr(0, 4, FSS("MEM USE:"));
 
+					winHandle0->PutStr(0, 5, FSS("DEVICE ID "));
+					
+					{
+						TUniqueID ID = board.GetUniqueID();
+						char strid[25];
+						
+						uint8tohexstr(strid,(uint8_t *)&ID, 8,':');
+
+						winHandle0->PutStr(strid);
+					}
+
+
 					//--------------
 					{
 						int y;
 						String name;
-						y = 5;
+						y = 6;
 						winHandle0->PutStr(0, y, FSS("__________________________________"));
 						y++;
 						winHandle0->PutStr(0, y, FSS("TASK NAME"));
@@ -717,7 +729,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 						String name;
 						int y;
 
-						y = 5;
+						y = 6;
 
 						y += 2;
 						for (int i = 0; i < board.TaskDefCount; i++)
@@ -1385,6 +1397,38 @@ bool TXB_board::CheckCriticalFreeHeap(void)
 	}
 
 	return false;
+}
+
+TUniqueID TXB_board::GetUniqueID()
+{
+	TUniqueID V;
+	V.ID.ID64 = 0;
+
+#ifdef ESP8266
+
+#endif
+
+#ifdef ARDUINO_ARCH_STM32F1
+#define STM32_UUID ((uint32_t *) 0x1ffff7e8)
+
+	volatile uint32_t idpart[3];
+	idpart[0] = STM32_UUID[0];
+	idpart[1] = STM32_UUID[1];
+	idpart[2] = STM32_UUID[2];
+	uint8_t *idpart8=(uint8_t *)idpart;
+
+	V.ID.ID[0] = idpart8[0];
+	V.ID.ID[1] = idpart8[1];
+	V.ID.ID[2] = idpart8[2] + idpart8[8];
+	V.ID.ID[3] = idpart8[3] + idpart8[9];
+	V.ID.ID[4] = idpart8[4] + idpart8[10];
+	V.ID.ID[5] = idpart8[5] + idpart8[11];
+	V.ID.ID[6] = idpart8[6];
+	V.ID.ID[7] = idpart8[7];
+	
+#endif
+
+	return V;
 }
 
 void TXB_board::SysTickCount_init(void)

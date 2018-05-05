@@ -56,6 +56,18 @@ typedef struct
 
 typedef TTaskDef * PTaskDef;
 
+typedef union 
+{ 
+	uint64_t ID64;
+	uint8_t ID[8];
+	uint8_t MAC[6];
+} TUniqueInt64;
+
+typedef struct 
+{
+	TUniqueInt64 ID;
+} TUniqueID;
+
 class TXB_board
 {
 public:
@@ -107,9 +119,11 @@ public:
 	uint32_t FreeHeapInLoop;
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
-
 	uint32_t getFreeHeap();
 	bool CheckCriticalFreeHeap(void);
+
+	TUniqueID GetUniqueID();
+
 private:
 	bool GetTaskString(TMessageBoard *Amb, TTaskDef *ATaskDef, String &APointerString);
 	bool iteratetask_procedure;
