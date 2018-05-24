@@ -123,7 +123,7 @@ public:
 	bool CheckCriticalFreeHeap(void);
 
 	TUniqueID GetUniqueID();
-
+	uint8_t crc8(const uint8_t *addr, uint8_t len);
 private:
 	bool GetTaskString(TMessageBoard *Amb, TTaskDef *ATaskDef, String &APointerString);
 	bool iteratetask_procedure;
