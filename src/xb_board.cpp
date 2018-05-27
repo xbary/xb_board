@@ -34,6 +34,7 @@ extern void free(void *memblock);
 extern size_t strlen(const char *str);
 extern void *memcpy(void *dest,const void *src,size_t count);
 extern int sprintf(char *buffer,const char *format, ...);
+extern char *strdup(const char *);
 }
 #endif
 
@@ -100,7 +101,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	
 	bool res = false;
 	static uint8_t LastKeyCode = 0;
-
+	
 	switch (Am->IDMessage)
 	{
 	case IM_GPIO:
@@ -782,6 +783,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	default:;
 	}
+	
 	return res;
 }
 
@@ -823,7 +825,7 @@ void XB_BOARD_Setup(void)
 
 void XB_BOARD_DoLoop(void)
 {
-
+	
 #ifdef XB_WIFI
 	// Sprawdzenie czy nie nast¹pi³o roz³¹czenie z punktem WiFi
 	if (WIFI_CheckDisconnectWiFi())
@@ -848,6 +850,7 @@ void XB_BOARD_DoLoop(void)
 			Tick_ESCKey = 0;
 			TerminalFunction = 0;
 			board.SendKeyFunctionPress(KF_ESC, 0,&XB_BOARD_DefTask,true);
+			
 		}
 	}
 
@@ -863,6 +866,7 @@ void XB_BOARD_DoLoop(void)
 	}
 	END_WAITMS(xbl1)
 #endif
+		
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -1002,15 +1006,14 @@ void TXB_board::IterateTask(void)
 {
 	iteratetask_procedure = true;
 	static uint32_t CurrentIndxRunTask = 0;
-
-	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 	
+	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 	FreeHeapInLoop = getFreeHeap();
 	if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 	{
 		MinimumFreeHeapInLoop = FreeHeapInLoop;
 	}
-
+	
 	// Uruchomienie zadañ w tzw realtime
 	for (int i = 0; i < TaskDefCount; i++)
 	{
@@ -1032,7 +1035,6 @@ void TXB_board::IterateTask(void)
 			}
 		}
 	}
-
 	// Sprawdzenie czy zdefiniowano zadanie
 	if (TaskDef[CurrentIndxRunTask] != NULL)
 	{
@@ -1066,7 +1068,6 @@ void TXB_board::IterateTask(void)
 	{
 		CurrentIndxRunTask = 0;
 	}
-
 }
 
 bool TXB_board::GetTaskString(TMessageBoard *Amb,TTaskDef *ATaskDef, String &APointerString)
@@ -1355,27 +1356,26 @@ uint32_t TXB_board::getFreeHeap()
 	return ESP.getFreeHeap();
 #endif
 #ifdef ARDUINO_ARCH_STM32F1
-	uint32_t size = 0; 
-	uint32_t ADR = 0;
-	uint8_t a = 1;
+	volatile int32_t size = 0; 
+	volatile uint32_t ADR = 0;
+	volatile uint8_t a = 1;
 
 	ADRESS_STACK = (uint32_t)&a;
-	
-	ADRESS_HEAP = (uint32_t)malloc(1);
+	ADRESS_HEAP = (uint32_t)malloc(32);
 	free((void *)ADRESS_HEAP);
 
 	size = ADRESS_STACK - ADRESS_HEAP;
 
-	while (size > 0)
+	return size;
+	while (size > 32)
 	{
-		ADR = (uint32_t)malloc(size - 32);
+		ADR = (uint32_t)malloc(size);
 		if (ADR != 0)
 		{
 			free((void *)ADR);
-			return size - 32;
+			return size;
 		}
-		if (size > 32) size -= 32;
-		else size = 0;
+		size -= 32;
 	}
 	return  0;
 #endif

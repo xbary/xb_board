@@ -10,11 +10,11 @@
 #define ADD_TO_LIST(Alist,AClass) \
 {\
 AClass *lm = Alist;\
+Next = NULL;\
+Prev = NULL;\
 if (lm == NULL)\
 {\
 	Alist = this;\
-	Next = NULL;\
-	Prev = NULL;\
 }\
 else\
 {\
