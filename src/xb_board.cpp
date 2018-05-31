@@ -15,7 +15,7 @@ TXB_board board(TASK_COUNT);
 
 TTaskDef XB_BOARD_DefTask = { &XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage,0 };
 
-volatile uint32_t DateTime;
+volatile uint32_t DateTimeUnix;
 volatile uint32_t DateTimeStart;
 
 #ifdef ESP8266
@@ -819,7 +819,7 @@ void XB_BOARD_Setup(void)
 #else
 	Serial_print(FSS("\n\nStart...\n"));
 #endif
-	DateTime = 0;
+	DateTimeUnix = 0;
 	DateTimeStart = 0;
 }
 
@@ -1495,7 +1495,7 @@ void TXB_board::handle(void)
 		digitalWrite(BOARD_LED_OKSEND_PIN, LOW);
 #endif
 #ifdef ARDUINO_ARCH_STM32F1
-		DateTime++;
+		DateTimeUnix++;
 #endif
 #ifdef XB_GUI
 		if (winHandle0 != NULL)
@@ -1656,7 +1656,7 @@ void TXB_board::Log(const char *Atxt,bool puttime)
 	String txttime = "";
 	if (puttime)
 	{
-		GetTimeIndx(txttime, DateTime - DateTimeStart);
+		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
 		txttime = "[" + txttime + "] ";
 	}
 
@@ -1714,7 +1714,7 @@ void TXB_board::Log_TimeStamp()
 void TXB_board::PrintTimeFromRun(cbufSerial *Astream)
 {
 	Astream->print('[');
-	GetTimeIndx(Astream, DateTime - DateTimeStart);
+	GetTimeIndx(Astream, DateTimeUnix - DateTimeStart);
 	Astream->print(FSS("] "));
 }
 
@@ -1722,7 +1722,7 @@ void TXB_board::PrintTimeFromRun(void)
 {
 	cbufSerial Astream(32);
 	Astream.print(FSS("["));
-	GetTimeIndx(&Astream, DateTime - DateTimeStart);
+	GetTimeIndx(&Astream, DateTimeUnix - DateTimeStart);
 	Astream.print(FSS("] "));
 	Log(&Astream);
 }
