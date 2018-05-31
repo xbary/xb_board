@@ -243,7 +243,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					{
 						if (board.GetTaskName(board.TaskDef[i], n))
 						{
-							if (itask == (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex-2 ))
+							if (itask == (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex-1 ))
 							{
 								GUIGADGET_OpenMainMenu(board.TaskDef[i]);
 								break;
