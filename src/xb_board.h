@@ -8,7 +8,10 @@
 #include <WString.h>
 #define FSS(str) (String(F(str)).c_str())
 #endif
-
+#if defined(ESP32)
+#include <WString.h>
+#define FSS(str) (String(F(str)).c_str())
+#endif
 #ifdef ARDUINO_ARCH_STM32F1
 #include <stdint.h>
 #include <WString.h>
@@ -17,6 +20,19 @@
 #endif
 
 #include <xb_board_message.h>
+
+#if defined(ESP32)
+typedef uint8_t WiringPinMode;
+#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
+//extern "C" {
+//#include "user_interface.h"
+//}
+
+//#include <ESP8266WiFi.h>
+//#include <WiFiUdp.h>
+#include <Ticker.h>
+
+#endif
 
 #ifdef ESP8266
 
@@ -146,6 +162,11 @@ extern volatile uint32_t DateTimeStart;
 extern volatile uint32_t SysTickCount;
 extern void TCPClientDestroy(WiFiClient **Awificlient);
 #endif
+
+#ifdef ESP32
+extern volatile uint32_t SysTickCount;
+#endif
+
 extern bool showasc;
 
 
@@ -153,7 +174,10 @@ void XB_BOARD_DoLoop(void);
 void XB_BOARD_Setup(void);
 bool XB_BOARD_DoMessage(TMessageBoard *Am);
 
+
 #ifdef ESP8266
+#include "xb_board_def.h"
+#elif defined(ESP32)
 #include "xb_board_def.h"
 #else
 #include "xb_board_def.h"
@@ -183,7 +207,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #define Serial_printf SerialBoard.printf
 #endif
 
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 #ifndef Serial_setDebugOutput
 #define Serial_setDebugOutput SerialBoard.setDebugOutput
 #endif

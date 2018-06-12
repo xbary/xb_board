@@ -48,8 +48,7 @@ TGADGETMenu *menuHandle0;
 #endif
 
 //------------------------------------------------------------------------------------------------------------
-
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 Ticker SysTickCount_ticker;
 Ticker DateTimeSecond_ticker;
 volatile uint32_t SysTickCount;
@@ -82,7 +81,7 @@ void TCPClientDestroy(WiFiClient **Awificlient)
 #endif
 #endif
 
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 void SysTickCount_proc(void)
 {
 	SysTickCount++;
@@ -90,7 +89,7 @@ void SysTickCount_proc(void)
 
 void DateTimeSecond_proc(void)
 {
-	DateTime++;
+	DateTimeUnix++;
 }
 #endif
 
@@ -223,7 +222,14 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 				case 0:
 				{
+#if defined(ESP8266) || defined(ESP32)
+					ESP.restart();
+					delay(5000);
+#elif ARDUINO_ARCH_STM32F1
 					nvic_sys_reset();
+#else
+					board.Log(FSS("\nReset no support!\n"));
+#endif
 					break;
 				}
 				default:
@@ -614,6 +620,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #ifdef ESP8266
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP8266, 160Mhz)");
 #endif
+#ifdef ESP32
+				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP32, 240Mhz)");
+#endif
 #ifdef ARDUINO_ARCH_STM32F1
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (STM32F1, 72Mhz)");
 #endif
@@ -766,19 +775,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	case IM_GET_TASKSTATUS_STRING:
 	{
-#ifdef XB_IOT1
-		String tmp = FSS("PCF8574_1(");
-		uint8_t b=expander_1.read();
-		for (uint8_t i = 7; i <= 8; i--)
-		{
-			if (((b >> i) & 1) == 1) tmp = tmp + '0';
-			else tmp = tmp + '1';
-		}
-		tmp = tmp + ')';
-		*(Am->Data.PointerString) = tmp;
-#else
+
 		*(Am->Data.PointerString) = FSS("...");
-#endif
 		res = true;
 	}
 	default:;
@@ -789,11 +787,15 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 void XB_BOARD_Setup(void)
 {
-#ifdef ESP8266
+	board.MaximumFreeHeapInLoop = board.getFreeHeap();
+	board.MinimumFreeHeapInLoop = board.getFreeHeap();
+
+
+#if defined(ESP8266) || defined(ESP32)
 	Serial_setDebugOutput(false);
 #endif
 	Serial_begin(SerialBoard_BAUD);
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 	while (!Serial_availableForWrite())
 	{
 		yield();
@@ -817,6 +819,7 @@ void XB_BOARD_Setup(void)
 	ScreenText.Clear();
 	ScreenText.PutText(FSS("Start...\n"));
 #else
+	delay(500);
 	Serial_print(FSS("\n\nStart...\n"));
 #endif
 	DateTimeUnix = 0;
@@ -875,18 +878,16 @@ TXB_board::TXB_board(uint8_t ATaskDefCount)
 	iteratetask_procedure = false;
 	NoTxCounter = 0;
 	TXCounter = 0;
-	MaximumFreeHeapInLoop = getFreeHeap();
+	
 
 	TaskDefCount = ATaskDefCount;
 	TaskDef = new PTaskDef[ATaskDefCount];
-
-	MinimumFreeHeapInLoop = getFreeHeap();
 
 	for (int i = 0; i < TaskDefCount; i++)
 	{
 		TaskDef[i] = NULL;
 	}
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 	SysTickCount_init();
 	DateTimeSecond_init();
 #endif
@@ -1352,9 +1353,10 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 
 uint32_t TXB_board::getFreeHeap()
 {
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 	return ESP.getFreeHeap();
 #endif
+
 #ifdef ARDUINO_ARCH_STM32F1
 	volatile int32_t size = 0; 
 	volatile uint32_t ADR = 0;
@@ -1404,8 +1406,28 @@ TUniqueID TXB_board::GetUniqueID()
 	TUniqueID V;
 	V.ID.ID64 = 0;
 
-#ifdef ESP8266
-
+#if defined(ESP8266) 
+	uint8 mac[8];
+	if (wifi_get_macaddr(0,mac))
+	{
+		V.ID.ID[0] = mac[0];
+		V.ID.ID[1] = mac[1];
+		V.ID.ID[2] = mac[2];
+		V.ID.ID[3] = mac[3];
+		V.ID.ID[4] = mac[4];
+		V.ID.ID[5] = mac[5];
+		V.ID.ID[6] = mac[6];
+		V.ID.ID[7] = mac[7];
+		V.ID.ID[6] = V.ID.ID[0];
+		V.ID.ID[0] = V.ID.ID[1] + V.ID.ID[2];
+		V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
+	}
+#endif
+#if defined(ESP32)
+	V.ID.ID64=ESP.getEfuseMac();
+	V.ID.ID[6] = V.ID.ID[0];
+	V.ID.ID[0] = V.ID.ID[1] + V.ID.ID[2];
+	V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
 #endif
 
 #ifdef ARDUINO_ARCH_STM32F1
@@ -1469,7 +1491,7 @@ uint8_t TXB_board::crc8(const uint8_t *addr, uint8_t len)
 
 void TXB_board::SysTickCount_init(void)
 {
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 	SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
 #endif
 	LastActiveTelnetClientTick = 0;
@@ -1477,7 +1499,7 @@ void TXB_board::SysTickCount_init(void)
 
 void TXB_board::DateTimeSecond_init(void)
 {
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
 	DateTimeSecond_ticker.attach(1, DateTimeSecond_proc);
 #endif
 	
@@ -1657,7 +1679,7 @@ void TXB_board::Log(const char *Atxt,bool puttime)
 	if (puttime)
 	{
 		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
-		txttime = "[" + txttime + "] ";
+		txttime = "\n[" + txttime + "] ";
 	}
 
 #ifdef TELNET_SUPPORT
@@ -1736,7 +1758,7 @@ void TXB_board::PrintDiag(void)
 	tmp.print(FSS("\n\rPrint Diag:\n\r"));
 	tmp.print(FSS("\n\r-----------"));
 	
-	t = ""; GetTimeIndx(t, DateTime - DateTimeStart);
+	t = ""; GetTimeIndx(t, DateTimeUnix - DateTimeStart);
 	tmp.printf(FSS("\n\rTime running:   (%s)"), t.c_str());
 
 	tmp.printf(FSS("\n\rIP:                %s"), WiFi.localIP().toString().c_str());
