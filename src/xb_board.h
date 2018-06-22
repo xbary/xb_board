@@ -111,7 +111,7 @@ public:
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
 	uint8_t digitalToggle(uint16_t pin);
-
+	void Led_Blink_OKSEND();
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
 	void PrintDiag(void);

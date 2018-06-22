@@ -970,6 +970,12 @@ uint8_t TXB_board::digitalToggle(uint16_t pin)
 	}
 }
 
+void TXB_board::Led_Blink_OKSEND()
+{
+#ifdef BOARD_LED_OKSEND_PIN
+	digitalWrite(BOARD_LED_OKSEND_PIN, HIGH);
+#endif
+}
 
 int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 {
