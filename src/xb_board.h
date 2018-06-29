@@ -59,6 +59,7 @@ typedef struct
 	void(*dosetup)(void);
 	void(*doloop)(void);
 	bool(*domessage)(TMessageBoard *);
+	void(*dointerrupt)(void);
 	uint8_t Priority : 4;
 	uint8_t CounterPriority : 4;
 	uint8_t IDTask;
@@ -67,7 +68,7 @@ typedef struct
 	int8_t dosetupRC;
 	int8_t doloopRC;
 	int8_t domessageRC;
-
+	int32_t dointerruptRC;
 } TTaskDef;
 
 typedef TTaskDef * PTaskDef;
@@ -120,7 +121,8 @@ public:
 	uint8_t TaskDefCount;
 	int DefTask(TTaskDef *Ataskdef, uint8_t Aid);
 	void IterateTask(void);
-	
+	void DoInterrupt(TTaskDef *Ataskdef);
+
 	bool GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString);
 	bool GetTaskName(TTaskDef *ATaskDef, String &APointerString);
 	void SendKeyPress(char Akey);

@@ -13,7 +13,7 @@ _client->abort();
 
 TXB_board board(TASK_COUNT);
 
-TTaskDef XB_BOARD_DefTask = { &XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage,0 };
+TTaskDef XB_BOARD_DefTask = { &XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage,NULL,0 };
 
 volatile uint32_t DateTimeUnix;
 volatile uint32_t DateTimeStart;
@@ -986,6 +986,7 @@ int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 		{
 			TaskDef[i] = Ataskdef;
 			Ataskdef->IDTask = Aid;
+			Ataskdef->dointerruptRC = 0;
 			if (TaskDef[i]->dosetup != NULL)
 			{
 				if (TaskDef[i]->dosetupRC == 0)
@@ -1013,14 +1014,33 @@ void TXB_board::IterateTask(void)
 {
 	iteratetask_procedure = true;
 	static uint32_t CurrentIndxRunTask = 0;
-	
+
+	// Sprawdzenie czy uruchomiæ przerwanie
+	for (int i = 0; i < TaskDefCount; i++)
+	{
+		if (TaskDef[i] != NULL)
+		{
+			if (TaskDef[i]->dointerrupt != NULL)
+			{
+				if (TaskDef[i]->dointerruptRC > 0)
+				{
+					TaskDef[i]->dointerrupt();
+					TaskDef[i]->dointerruptRC--;
+					return;
+				}
+			}
+		}
+	}
+
+
 	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 	FreeHeapInLoop = getFreeHeap();
 	if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 	{
 		MinimumFreeHeapInLoop = FreeHeapInLoop;
 	}
-	
+
+
 	// Uruchomienie zadañ w tzw realtime
 	for (int i = 0; i < TaskDefCount; i++)
 	{
@@ -1075,6 +1095,11 @@ void TXB_board::IterateTask(void)
 	{
 		CurrentIndxRunTask = 0;
 	}
+}
+
+void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
+{
+	Ataskdef->dointerruptRC++;
 }
 
 bool TXB_board::GetTaskString(TMessageBoard *Amb,TTaskDef *ATaskDef, String &APointerString)
