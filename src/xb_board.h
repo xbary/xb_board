@@ -19,6 +19,8 @@
 #endif
 #endif
 
+#define _REG register
+
 #include <xb_board_message.h>
 
 #if defined(ESP32)

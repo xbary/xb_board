@@ -1034,12 +1034,16 @@ void TXB_board::IterateTask(void)
 
 
 	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
-	FreeHeapInLoop = getFreeHeap();
-	if (FreeHeapInLoop < MinimumFreeHeapInLoop)
+	DEF_WAITMS_VAR(GFH);
+	BEGIN_WAITMS(GFH, 500);
 	{
-		MinimumFreeHeapInLoop = FreeHeapInLoop;
+		FreeHeapInLoop = getFreeHeap();
+		if (FreeHeapInLoop < MinimumFreeHeapInLoop)
+		{
+			MinimumFreeHeapInLoop = FreeHeapInLoop;
+		}
 	}
-
+	END_WAITMS(GFH);
 
 	// Uruchomienie zadañ w tzw realtime
 	for (int i = 0; i < TaskDefCount; i++)
@@ -1393,11 +1397,14 @@ uint32_t TXB_board::getFreeHeap()
 	volatile uint32_t ADR = 0;
 	volatile uint8_t a = 1;
 
+	noInterrupts();
+
 	ADRESS_STACK = (uint32_t)&a;
 	ADRESS_HEAP = (uint32_t)malloc(32);
 	free((void *)ADRESS_HEAP);
 
 	size = ADRESS_STACK - ADRESS_HEAP;
+	interrupts();
 
 	return size;
 	while (size > 32)
