@@ -127,6 +127,7 @@ public:
 
 	bool GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString);
 	bool GetTaskName(TTaskDef *ATaskDef, String &APointerString);
+	void SendMessageOTAUpdateStarted();
 	void SendKeyPress(char Akey);
 	void SendKeyPress(char Akey, TTaskDef *Ataskdef);
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey);

@@ -63,6 +63,7 @@ typedef enum {
 	IM_WIFI_CONNECT,
 	IM_INTERNET_DISCONNECT,
 	IM_INTERNET_CONNECT,
+	IM_OTA_UPDATE_STARTED,
 	IM_GET_TASKNAME_STRING,
 	IM_GET_TASKSTATUS_STRING,
 	IM_KEYBOARD,
@@ -90,8 +91,8 @@ typedef struct {
 } TGpioData;
 
 //-----------------------------------------------------------------------
-typedef uint8_t Tx;
-typedef uint8_t Ty;
+typedef int16_t Tx;
+typedef int16_t Ty;
 
 typedef enum {
 	waRepaint,waRepaintData,waCreate,waDestroy,waShow,waHide,waGetCaptionWindow

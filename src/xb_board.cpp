@@ -1135,6 +1135,15 @@ bool TXB_board::GetTaskName(TTaskDef *ATaskDef,String &APointerString)
 	return GetTaskString(&mb, ATaskDef, APointerString);
 }
 
+void TXB_board::SendMessageOTAUpdateStarted()
+{
+	TMessageBoard mb;
+	mb.IDMessage = IM_OTA_UPDATE_STARTED;
+	mb.Data.uData64 = 0;
+	SendMessageToAllTask(&mb, doBACKWARD);
+}
+
+
 void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction,char Akey)
 {
 	TMessageBoard mb;
