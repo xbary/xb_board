@@ -28,13 +28,13 @@ extern "C" {
 extern "C" {
 #include <string.h>
 #include <stdlib.h>
-
+	/*
 extern void *malloc(size_t size);
 extern void free(void *memblock);
 extern size_t strlen(const char *str);
 extern void *memcpy(void *dest,const void *src,size_t count);
 extern int sprintf(char *buffer,const char *format, ...);
-extern char *strdup(const char *);
+extern char *strdup(const char *);*/
 }
 #endif
 
@@ -56,7 +56,6 @@ volatile uint32_t SysTickCount;
 
 uint32_t Tick_ESCKey = 0;
 uint8_t TerminalFunction = 0;
-String rs;
 
 #ifdef ESP8266
 #ifdef wificlient_h
@@ -225,7 +224,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #if defined(ESP8266) || defined(ESP32)
 					ESP.restart();
 					delay(5000);
-#elif ARDUINO_ARCH_STM32F1
+#elif defined(ARDUINO_ARCH_STM32F1)
 					nvic_sys_reset();
 #else
 					board.Log(FSS("\nReset no support!\n"));
@@ -308,7 +307,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					case 127:
 					{
 						Tick_ESCKey = 0;
-						rs = "";
 						board.SendKeyFunctionPress(KF_BACKSPACE, 0, &XB_BOARD_DefTask);
 						TerminalFunction = 0;
 						break;
@@ -317,17 +315,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					{
 						if (LastKeyCode != 13)
 						{
-							rs.toLowerCase();
-							rs.trim();
-							board.cmdparse(rs);
-							rs = "";
 							board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
 							TerminalFunction = 0;
-							
 						}
 						else
 						{
-							
 							Am->Data.KeyboardData.KeyCode = 0;
 						}
 						res = true;
@@ -337,13 +329,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					{
 						if (LastKeyCode != 10)
 						{
-							rs.toLowerCase();
-							rs.trim();
-							board.cmdparse(rs);
-							rs = "";
 							board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
 							TerminalFunction = 0;
-							
 						}
 						else
 						{
@@ -354,7 +341,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					}
 					case 27:
 					{
-						rs = "";
 						TerminalFunction = 1;
 						Tick_ESCKey = SysTickCount;
 						break;
@@ -362,7 +348,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					case 7:
 					{
 						Tick_ESCKey = 0;
-						rs = "";
 						board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
 						TerminalFunction = 0;
 						break;
@@ -370,7 +355,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					case 9:
 					{
 						Tick_ESCKey = 0;
-						rs = "";
 						board.SendKeyFunctionPress(KF_TABNEXT, 0, &XB_BOARD_DefTask);
 						TerminalFunction = 0;
 						break;
@@ -379,7 +363,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					case 0:
 					{
 						Tick_ESCKey = 0;
-						rs = "";
 						TerminalFunction = 0;
 						break;
 					}
@@ -388,13 +371,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					default:
 					{
 						Tick_ESCKey = 0;
-						rs += (char)Am->Data.KeyboardData.KeyCode;
-						if (rs.length() > 16)
-						{
-							rs = "";
-							board.Log(FSS("KEYBORARD: Cmdparse buffer is full.\n"));
-						}
-
 						break;
 					}
 					}
@@ -413,7 +389,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					}
 					else
 					{
-						rs = "";
 						Tick_ESCKey = 0;
 						board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
 						TerminalFunction = 0;
@@ -796,7 +771,7 @@ void XB_BOARD_Setup(void)
 #endif
 	Serial_begin(SerialBoard_BAUD);
 #if defined(ESP8266) || defined(ESP32)
-	while (!Serial_availableForWrite())
+	while (!Serial_availableForWrite)
 	{
 		yield();
 	}
@@ -812,8 +787,6 @@ void XB_BOARD_Setup(void)
 #ifdef  BOARD_LED_OKSEND_PIN
 	pinMode(BOARD_LED_OKSEND_PIN, OUTPUT);
 #endif
-
-	rs.reserve(32);
 
 #ifdef XB_GUI
 	ScreenText.Clear();
@@ -1026,12 +999,12 @@ void TXB_board::IterateTask(void)
 				{
 					TaskDef[i]->dointerrupt();
 					TaskDef[i]->dointerruptRC--;
+					iteratetask_procedure = false;
 					return;
 				}
 			}
 		}
 	}
-
 
 	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 	DEF_WAITMS_VAR(GFH);
@@ -1386,12 +1359,13 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 		return;
 	}
 
-	int size = strlen(src);
+	
+	int size = StringLength((char *)src, 0);
 
 	if (size + 1 > max_size)
 		size = max_size - 1;
-
-	memcpy(dst, src, size);
+	xb_memorycopy((void *)src, dst, size);
+	
 	dst[size] = 0;
 }
 
@@ -1402,6 +1376,7 @@ uint32_t TXB_board::getFreeHeap()
 #endif
 
 #ifdef ARDUINO_ARCH_STM32F1
+/*
 	volatile int32_t size = 0; 
 	volatile uint32_t ADR = 0;
 	volatile uint8_t a = 1;
@@ -1416,17 +1391,8 @@ uint32_t TXB_board::getFreeHeap()
 	interrupts();
 
 	return size;
-	while (size > 32)
-	{
-		ADR = (uint32_t)malloc(size);
-		if (ADR != 0)
-		{
-			free((void *)ADR);
-			return size;
-		}
-		size -= 32;
-	}
-	return  0;
+	*/
+	return 20 * 1024;
 #endif
 
 
@@ -1589,107 +1555,11 @@ void TXB_board::handle(void)
 	}
 }
 
-void TXB_board::cmdparse(String Ars)
-{
-	if (Ars == FSS("asc"))
-	{
-		//GUI_ClearScreen();
-		for (int i = 32; i < 256; i++)
-		{
-			Log((char)i);
-		}
-	}
-	else if (Ars == FSS("echo"))
-	{
-		PrintTimeFromRun();
-		Log(FSS("ECHO\r\n>"));
-	}
-	/*
-#ifdef ESP8266
-	else if ((Ars == FSS("printdiag")) || (Ars == FSS("pd")))
-	{
-		PrintDiag();
-		Log(FSS(">"));
-
-	}
-	else if ((Ars == FSS("help")) || (Ars == FSS("h")))
-	{
-		PrintHelp();
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("restart")))
-	{
-		ESP.restart();
-		delay(5000);
-	}
-	else if ((Ars == FSS("r0_on")))
-	{
-		RELAY_SET(1, true);
-#if defined(SUPLADEVICE_SUPPORT)
-		SUPLA_UpdateValue();
-#endif
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("r0_off")))
-	{
-		RELAY_SET(1, false);
-#if defined(SUPLADEVICE_SUPPORT)
-		SUPLA_UpdateValue();
-#endif
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("r1_on")))
-	{
-		RELAY_SET(2, true);
-#if defined(SUPLADEVICE_SUPPORT)
-		SUPLA_UpdateValue();
-#endif
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("r1_off")))
-	{
-		RELAY_SET(2, false);
-#if defined(SUPLADEVICE_SUPPORT)
-		SUPLA_UpdateValue();
-#endif
-		Log(FSS(">"));
-	}
-#if defined(GUI_SUPPORT)
-	else if ((Ars == FSS("showpanel")) || (Ars == FSS("sp")))
-	{
-		GUI_Show();
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("hidepanel")) || (Ars == FSS("hp")))
-	{
-		GUI_Hide();
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("clearscreen")) || (Ars == FSS("cs")))
-	{
-		//GUI_ClearScreen();
-		Log(FSS(">"));
-	}
-#endif
-	else if ((Ars == FSS("disconnectinternet")) || (Ars == FSS("di")))
-	{
-		WIFI_SetDisconnectInternet();
-		Log(FSS(">"));
-	}
-	else if ((Ars == FSS("disconnectwifi")) || (Ars == FSS("dw")))
-	{
-		WIFI_HardDisconnect();
-		Log(FSS(">"));
-	}
-#endif
-	*/
-}
-
 void TXB_board::Serial_WriteChar(char Achr)
 {
 	while(1)
 	{
-		if (Serial_availableForWrite()>=1)
+		if (Serial_availableForWrite>=1)
 		{
 			Serial_print(Achr);
 			break;
@@ -1718,7 +1588,7 @@ void TXB_board::Log(char Achr)
 
 void TXB_board::Log(const char *Atxt,bool puttime)
 {
-	int len = strlen(Atxt);
+	int len = StringLength((char *)Atxt,0);
 	if (NoTxCounter==0) TXCounter += len;
 	if (len == 0) return;
 

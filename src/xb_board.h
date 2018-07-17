@@ -9,6 +9,10 @@
 #define FSS(str) (String(F(str)).c_str())
 #endif
 #if defined(ESP32)
+#if defined(CONFIG_BT_ENABLED)
+#include <BluetoothSerial.h>
+#endif
+
 #include <WString.h>
 #define FSS(str) (String(F(str)).c_str())
 #endif
@@ -92,9 +96,6 @@ class TXB_board
 public:
 	TXB_board(uint8_t ATaskDefCount);
 	~TXB_board();
-
-
-	void cmdparse(String Ars);
 
 	uint32_t LastActiveTelnetClientTick;
 
@@ -223,7 +224,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #endif
 
 #ifndef Serial_availableForWrite
-#define Serial_availableForWrite SerialBoard.availableForWrite
+#define Serial_availableForWrite SerialBoard.availableForWrite()
 #endif
 
 #ifndef Serial_available
