@@ -91,6 +91,14 @@ typedef struct
 	TUniqueInt64 ID;
 } TUniqueID;
 
+#ifdef ESP8266
+#include "xb_board_def.h"
+#elif defined(ESP32)
+#include "xb_board_def.h"
+#else
+#include "xb_board_def.h"
+#endif
+
 class TXB_board
 {
 public:
@@ -115,13 +123,26 @@ public:
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
 	uint8_t digitalToggle(uint16_t pin);
-	void Led_Blink_OKSEND();
+	void Blink_RX(int8_t Auserid = -1);
+	void Blink_TX(int8_t Auserid = -1);
+#ifdef BOARD_LED_TX_PIN
+	uint32_t Tick_TX_BLINK;
+#endif
+#ifdef BOARD_LED_RX_PIN
+	uint32_t Tick_RX_BLINK;
+#endif
+#if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
+	uint32_t TickEnableBlink;
+#endif
+
+
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
 	void PrintDiag(void);
 
 	PTaskDef *TaskDef;
 	uint8_t TaskDefCount;
+	TTaskDef *CurrentTaskDef;
 	int DefTask(TTaskDef *Ataskdef, uint8_t Aid);
 	void IterateTask(void);
 	void DoInterrupt(TTaskDef *Ataskdef);
@@ -179,15 +200,6 @@ extern bool showasc;
 void XB_BOARD_DoLoop(void);
 void XB_BOARD_Setup(void);
 bool XB_BOARD_DoMessage(TMessageBoard *Am);
-
-
-#ifdef ESP8266
-#include "xb_board_def.h"
-#elif defined(ESP32)
-#include "xb_board_def.h"
-#else
-#include "xb_board_def.h"
-#endif
 
 #ifndef BOARD_CRITICALFREEHEAP
 #define BOARD_CRITICALFREEHEAP (1024*19)

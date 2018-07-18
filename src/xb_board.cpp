@@ -28,13 +28,6 @@ extern "C" {
 extern "C" {
 #include <string.h>
 #include <stdlib.h>
-	/*
-extern void *malloc(size_t size);
-extern void free(void *memblock);
-extern size_t strlen(const char *str);
-extern void *memcpy(void *dest,const void *src,size_t count);
-extern int sprintf(char *buffer,const char *format, ...);
-extern char *strdup(const char *);*/
 }
 #endif
 
@@ -765,12 +758,9 @@ void XB_BOARD_Setup(void)
 	board.MaximumFreeHeapInLoop = board.getFreeHeap();
 	board.MinimumFreeHeapInLoop = board.getFreeHeap();
 
-
 #if defined(ESP8266) || defined(ESP32)
 	Serial_setDebugOutput(false);
-#endif
 	Serial_begin(SerialBoard_BAUD);
-#if defined(ESP8266) || defined(ESP32)
 	while (!Serial_availableForWrite)
 	{
 		yield();
@@ -779,20 +769,47 @@ void XB_BOARD_Setup(void)
 		Serial_write(0);
 		delay(1);
 	}
+#else
+	Serial_begin(SerialBoard_BAUD);
 #endif
 
-#ifdef  BOARD_LED_LIFE_PIN
+#ifdef BOARD_LED_LIFE_PIN
 	pinMode(BOARD_LED_LIFE_PIN,OUTPUT);
 #endif
-#ifdef  BOARD_LED_OKSEND_PIN
-	pinMode(BOARD_LED_OKSEND_PIN, OUTPUT);
+
+#ifdef BOARD_LED_TX_PIN
+	board.Tick_TX_BLINK = 0;
+	pinMode(BOARD_LED_TX_PIN, OUTPUT);
+#if defined(BOARD_LED_TX_STATUS_OFF)
+	digitalWrite(BOARD_LED_TX_PIN, (BOARD_LED_TX_STATUS_OFF));
+#else
+	digitalWrite(BOARD_LED_TX_PIN, LOW);
+#endif
 #endif
 
+#ifdef BOARD_LED_RX_PIN
+	board.Tick_RX_BLINK = 0;
+	pinMode(BOARD_LED_RX_PIN, OUTPUT);
+#if defined(BOARD_LED_RX_STATUS_OFF)
+	digitalWrite(BOARD_LED_RX_PIN, (BOARD_LED_RX_STATUS_OFF));
+#else
+	digitalWrite(BOARD_LED_RX_PIN, LOW);
+#endif
+#endif
+
+#if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
+	#ifdef TICK_LED_BLINK
+	board.TickEnableBlink= TICK_LED_BLINK;
+#else
+	board.TickEnableBlink = 250;
+#endif
+#endif
+
+	delay(500);
 #ifdef XB_GUI
 	ScreenText.Clear();
 	ScreenText.PutText(FSS("Start...\n"));
 #else
-	delay(500);
 	Serial_print(FSS("\n\nStart...\n"));
 #endif
 	DateTimeUnix = 0;
@@ -851,10 +868,10 @@ TXB_board::TXB_board(uint8_t ATaskDefCount)
 	iteratetask_procedure = false;
 	NoTxCounter = 0;
 	TXCounter = 0;
-	
 
 	TaskDefCount = ATaskDefCount;
 	TaskDef = new PTaskDef[ATaskDefCount];
+	CurrentTaskDef = NULL;
 
 	for (int i = 0; i < TaskDefCount; i++)
 	{
@@ -943,12 +960,39 @@ uint8_t TXB_board::digitalToggle(uint16_t pin)
 	}
 }
 
-void TXB_board::Led_Blink_OKSEND()
+void TXB_board::Blink_RX(int8_t Auserid)
 {
-#ifdef BOARD_LED_OKSEND_PIN
-	digitalWrite(BOARD_LED_OKSEND_PIN, HIGH);
+#ifdef BOARD_LED_RX_PIN
+#if defined(BOARD_LED_RX_STATUS_OFF)
+	digitalWrite(BOARD_LED_RX_PIN, !(BOARD_LED_RX_STATUS_OFF));
+#else
+	digitalWrite(BOARD_LED_RX_PIN, HIGH);
 #endif
+	Tick_RX_BLINK = SysTickCount;
+#endif
+	TMessageBoard mb;
+	mb.IDMessage = IM_RX_BLINK;
+	mb.Data.BlinkData.UserID = Auserid;
+	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
 }
+
+void TXB_board::Blink_TX(int8_t Auserid)
+{
+#ifdef BOARD_LED_TX_PIN
+#if defined(BOARD_LED_TX_STATUS_OFF)
+	digitalWrite(BOARD_LED_TX_PIN, !(BOARD_LED_TX_STATUS_OFF));
+#else
+	digitalWrite(BOARD_LED_TX_PIN, HIGH);
+#endif
+	Tick_TX_BLINK = SysTickCount;
+#endif
+	TMessageBoard mb;
+	mb.IDMessage = IM_TX_BLINK;
+	mb.Data.BlinkData.UserID = Auserid;
+	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
+	
+}
+
 
 int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 {
@@ -1526,9 +1570,6 @@ void TXB_board::handle(void)
 #ifdef  BOARD_LED_LIFE_PIN
 		digitalToggle(BOARD_LED_LIFE_PIN);
 #endif
-#ifdef  BOARD_LED_OKSEND_PIN
-		digitalWrite(BOARD_LED_OKSEND_PIN, LOW);
-#endif
 #ifdef ARDUINO_ARCH_STM32F1
 		DateTimeUnix++;
 #endif
@@ -1541,6 +1582,38 @@ void TXB_board::handle(void)
 	}
 	END_WAITMS_PREC(LOOPW);
 
+#ifdef BOARD_LED_TX_PIN
+	if (Tick_TX_BLINK != 0)
+	{
+		if (SysTickCount - Tick_TX_BLINK > TickEnableBlink)
+		{
+			Tick_TX_BLINK = 0;
+#if defined(BOARD_LED_TX_STATUS_OFF)
+			digitalWrite(BOARD_LED_TX_PIN, BOARD_LED_TX_STATUS_OFF);
+#else
+			digitalWrite(BOARD_LED_TX_PIN, LOW);
+#endif
+		}
+	}
+#endif
+
+#ifdef BOARD_LED_RX_PIN
+	if (Tick_RX_BLINK != 0)
+	{
+		if (SysTickCount - Tick_RX_BLINK > TickEnableBlink)
+		{
+			Tick_RX_BLINK = 0;
+#if defined(BOARD_LED_RX_STATUS_OFF)
+			digitalWrite(BOARD_LED_RX_PIN, BOARD_LED_RX_STATUS_OFF);
+#else
+			digitalWrite(BOARD_LED_RX_PIN, LOW);
+#endif
+		}
+	}
+#endif
+
+
+	
 	if (Serial_available())
 	{
 		if (TerminalFunction == 0)
@@ -1549,7 +1622,6 @@ void TXB_board::handle(void)
 		}
 		else
 		{
-			
 			SendKeyPress((char)Serial_read(),&XB_BOARD_DefTask);
 		}
 	}

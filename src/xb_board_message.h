@@ -59,6 +59,8 @@ typedef enum { doFORWARD, doBACKWARD, doONLYINTERESTED } TDoMessageDirection;
 typedef enum {
 	IM_IDLE = 0,
 	IM_GPIO,
+	IM_RX_BLINK,
+	IM_TX_BLINK,
 	IM_WIFI_DISCONNECT,
 	IM_WIFI_CONNECT,
 	IM_INTERNET_DISCONNECT,
@@ -87,8 +89,13 @@ typedef struct {
 		uint8_t Mode;
 	}
 	ActionData;
-	
+
 } TGpioData;
+
+//-----------------------------------------------------------------------
+typedef struct {
+	int8_t UserID;
+} TBlinkData;
 
 //-----------------------------------------------------------------------
 typedef int16_t Tx;
@@ -291,6 +298,7 @@ typedef struct
 		TInputDialogData InputDialogData;
 		TWindowData WindowData;
 		TGpioData GpioData;
+		TBlinkData BlinkData;
 		void *PointerData;
 		String *PointerString;
 		uint64_t uData64;
