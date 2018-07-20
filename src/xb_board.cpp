@@ -816,7 +816,7 @@ void XB_BOARD_Setup(void)
 	DateTimeStart = 0;
 }
 
-void XB_BOARD_DoLoop(void)
+uint32_t XB_BOARD_DoLoop(void)
 {
 	
 #ifdef XB_WIFI
@@ -859,7 +859,7 @@ void XB_BOARD_DoLoop(void)
 	}
 	END_WAITMS(xbl1)
 #endif
-		
+	return 0;
 }
 
 //------------------------------------------------------------------------------------------------------------
@@ -1050,6 +1050,34 @@ void TXB_board::IterateTask(void)
 		}
 	}
 
+	for (int i = 0; i < TaskDefCount; i++)
+	{
+		if (TaskDef[i] != NULL)
+		{
+			if (TaskDef[i]->TickWaitLoop != 0)
+			{
+				if (TaskDef[i]->TickReturn != 0)
+				{
+					if (SysTickCount - TaskDef[i]->TickReturn >= TaskDef[i]->TickWaitLoop)
+					{
+						if (TaskDef[i]->doloop!=NULL)
+						{
+							CurrentTaskDef = TaskDef[i];
+							TaskDef[i]->doloopRC--;
+							TaskDef[i]->TickWaitLoop = TaskDef[i]->doloop();
+							TaskDef[i]->TickReturn = SysTickCount;
+							CurrentTaskDef = NULL;
+							TaskDef[i]->doloopRC++;
+						}
+					}
+				}
+			}
+		}
+	}
+
+
+
+
 	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 	DEF_WAITMS_VAR(GFH);
 	BEGIN_WAITMS(GFH, 500);
@@ -1073,11 +1101,16 @@ void TXB_board::IterateTask(void)
 				{
 					if (TaskDef[i]->doloopRC == 0)
 					{
-						TaskDef[i]->doloopRC++;
+						if (TaskDef[i]->TickWaitLoop == 0)
 						{
-							TaskDef[i]->doloop();
+
+							CurrentTaskDef = TaskDef[i];
+							TaskDef[i]->doloopRC--;
+							TaskDef[i]->TickWaitLoop = TaskDef[i]->doloop();
+							TaskDef[i]->TickReturn = SysTickCount;
+							CurrentTaskDef = NULL;
+							TaskDef[i]->doloopRC++;
 						}
-						TaskDef[i]->doloopRC--;
 					}
 				}
 			}
@@ -1096,11 +1129,15 @@ void TXB_board::IterateTask(void)
 					if (TaskDef[CurrentIndxRunTask]->CounterPriority >= TaskDef[CurrentIndxRunTask]->Priority)
 					{
 						TaskDef[CurrentIndxRunTask]->CounterPriority = 0;
-						TaskDef[CurrentIndxRunTask]->doloopRC++;
+						if (TaskDef[CurrentIndxRunTask]->TickWaitLoop == 0)
 						{
-							TaskDef[CurrentIndxRunTask]->doloop();
+							CurrentTaskDef = TaskDef[CurrentIndxRunTask];
+							TaskDef[CurrentIndxRunTask]->doloopRC--;
+							TaskDef[CurrentIndxRunTask]->TickWaitLoop = TaskDef[CurrentIndxRunTask]->doloop();
+							TaskDef[CurrentIndxRunTask]->TickReturn = SysTickCount;
+							CurrentTaskDef = NULL;
+							TaskDef[CurrentIndxRunTask]->doloopRC++;
 						}
-						TaskDef[CurrentIndxRunTask]->doloopRC--;
 					}
 				}
 			}

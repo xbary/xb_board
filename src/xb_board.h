@@ -63,7 +63,7 @@ extern "C" {
 typedef struct
 {
 	void(*dosetup)(void);
-	void(*doloop)(void);
+	uint32_t(*doloop)(void);
 	bool(*domessage)(TMessageBoard *);
 	void(*dointerrupt)(void);
 	uint8_t Priority : 4;
@@ -75,6 +75,8 @@ typedef struct
 	int8_t doloopRC;
 	int8_t domessageRC;
 	int32_t dointerruptRC;
+	uint32_t TickReturn;
+	uint32_t TickWaitLoop;
 } TTaskDef;
 
 typedef TTaskDef * PTaskDef;
@@ -197,7 +199,7 @@ extern volatile uint32_t SysTickCount;
 extern bool showasc;
 
 
-void XB_BOARD_DoLoop(void);
+uint32_t XB_BOARD_DoLoop(void);
 void XB_BOARD_Setup(void);
 bool XB_BOARD_DoMessage(TMessageBoard *Am);
 
