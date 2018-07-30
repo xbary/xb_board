@@ -115,7 +115,7 @@ public:
 	void handle(void);
 	void Serial_WriteChar(char Achr);
 	void Log(char Achr);
-	void Log(const char *Atxt, bool puttime = false);
+	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTaskDef *Ataskdef=NULL);
 	void Log(cbufSerial *Acbufserial);
 	void Log_TimeStamp();
 	uint32_t TXCounter;

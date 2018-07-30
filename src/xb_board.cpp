@@ -1695,11 +1695,12 @@ void TXB_board::Log(char Achr)
 	Serial_WriteChar(Achr);
 }
 
-void TXB_board::Log(const char *Atxt,bool puttime)
+void TXB_board::Log(const char *Atxt,bool puttime,bool showtaskname,TTaskDef *Ataskdef)
 {
 	int len = StringLength((char *)Atxt,0);
-	if (NoTxCounter==0) TXCounter += len;
 	if (len == 0) return;
+	if (NoTxCounter==0) TXCounter += len;
+	
 
 	String txttime = "";
 	if (puttime)
@@ -1708,8 +1709,27 @@ void TXB_board::Log(const char *Atxt,bool puttime)
 		txttime = "\n[" + txttime + "] ";
 	}
 
+	String taskname = "";
+	if (showtaskname)
+	{
+		if (Ataskdef == NULL)
+		{
+			Ataskdef = CurrentTaskDef;
+		}
+		if (Ataskdef != NULL)
+		{
+			GetTaskName(Ataskdef, taskname);
+		}
+		if (taskname.length() > 0)
+		{
+			taskname.trim();
+			taskname = '[' + taskname + "] ";
+		}
+	}
+
 #ifdef TELNET_SUPPORT
 	if (puttime) TELNET_writestr((const uint8_t *)txttime.c_str());
+	if (showtaskname) TELNET_writestr((const uint8_t *)taskname.c_str());
 	
 
 	TELNET_writestr((const uint8_t *)Atxt);
@@ -1725,6 +1745,17 @@ void TXB_board::Log(const char *Atxt,bool puttime)
 			p++;
 		}
 	}
+
+	if (showtaskname)
+	{
+		p = taskname.c_str();
+		while (*p)
+		{
+			Serial_WriteChar(*p);
+			p++;
+		}
+	}
+
 
 	p = Atxt;
 	while (*p) 
