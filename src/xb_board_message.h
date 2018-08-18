@@ -8,7 +8,7 @@
 
 
 #define ADD_TO_LIST(Alist,AClass) \
-{\
+{ \
 AClass *lm = Alist;\
 Next = NULL;\
 Prev = NULL;\
@@ -24,6 +24,33 @@ else\
 			lm->Next = this; \
 			Prev = lm; \
 			Next = NULL; \
+			break; \
+		} \
+		else \
+		{ \
+			lm = lm->Next; \
+		} \
+	} \
+} \
+}
+
+#define ADD_TO_LIST_STR(Alist,AClass,_this_) \
+{ \
+AClass *lm = Alist;\
+_this_->Next = NULL;\
+_this_->Prev = NULL;\
+if (lm == NULL)\
+{\
+	Alist = _this_;\
+}\
+else\
+{\
+	while (lm != NULL) { \
+		if (lm->Next == NULL) \
+		{ \
+			lm->Next = _this_; \
+			_this_->Prev = lm; \
+			_this_->Next = NULL; \
 			break; \
 		} \
 		else \
@@ -54,11 +81,33 @@ else \
 } \
 }
 
+#define DELETE_FROM_LIST_STR(Alist,_this_) \
+{ \
+if (_this_->Prev == NULL) \
+{ \
+	Alist = _this_->Next; \
+	if (_this_->Next != NULL) \
+	{ \
+		_this_->Next->Prev = NULL; \
+	} \
+} \
+else \
+{ \
+	_this_->Prev->Next = _this_->Next; \
+	if (_this_->Next != NULL) \
+	{ \
+		_this_->Next->Prev = _this_->Prev; \
+	} \
+} \
+}
+
+
 typedef enum { doFORWARD, doBACKWARD, doONLYINTERESTED } TDoMessageDirection;
 
 typedef enum {
 	IM_IDLE = 0,
 	IM_GPIO,
+	IM_FREEPTR,
 	IM_RX_BLINK,
 	IM_TX_BLINK,
 	IM_WIFI_DISCONNECT,
@@ -72,7 +121,10 @@ typedef enum {
 	IM_MENU,
 	IM_INPUTDIALOG,
 	IM_CONFIG,
-	IM_WINDOW
+	IM_WINDOW,
+	IM_SD_INIT,
+	IM_SD_DEINIT,
+	IM_SD_EJECT,
 
 } TIDMessage;
 
@@ -300,6 +352,7 @@ typedef struct
 		TGpioData GpioData;
 		TBlinkData BlinkData;
 		void *PointerData;
+		void *FreePTR;
 		String *PointerString;
 		uint64_t uData64;
 		uint32_t uData32;

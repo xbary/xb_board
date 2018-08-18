@@ -44,8 +44,9 @@ TGADGETMenu *menuHandle0;
 #if defined(ESP8266) || defined(ESP32)
 Ticker SysTickCount_ticker;
 Ticker DateTimeSecond_ticker;
-volatile uint32_t SysTickCount;
+//volatile uint32_t SysTickCount;
 #endif
+
 
 uint32_t Tick_ESCKey = 0;
 uint8_t TerminalFunction = 0;
@@ -74,10 +75,11 @@ void TCPClientDestroy(WiFiClient **Awificlient)
 #endif
 
 #if defined(ESP8266) || defined(ESP32)
+/*
 void SysTickCount_proc(void)
 {
 	SysTickCount++;
-}
+}*/
 
 void DateTimeSecond_proc(void)
 {
@@ -562,10 +564,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		{
 			if (Am->Data.WindowData.ID == 0)
 			{
-				Am->Data.WindowData.ActionData.Create.X = 0;
+				Am->Data.WindowData.ActionData.Create.X = -1;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
 				Am->Data.WindowData.ActionData.Create.Width = 36;
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskDefCount + 10;
+				Am->Data.WindowData.ActionData.Create.Height = board.TaskDefCount + 12;
 
 				res = true;
 			} 
@@ -645,12 +647,22 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 						winHandle0->PutStr(strid);
 					}
 
-
+					winHandle0->SetNormalChar();
+					winHandle0->SetTextColor(tfcWhite);
+					winHandle0->PutStr(0, 6, FSS("FREEpsram:"));
+					winHandle0->PutStr(18, 6, FSS("MINpsram:"));
+					winHandle0->PutStr(18, 7, FSS("MAXpsram:"));
+					winHandle0->SetBoldChar();
+					winHandle0->SetTextColor(tfcYellow);
+					winHandle0->PutStr(String(board.MaximumFreePSRAMInLoop).c_str());
+					winHandle0->SetNormalChar();
+					winHandle0->SetTextColor(tfcWhite);
+					winHandle0->PutStr(0, 7, FSS("MEM USE:"));
 					//--------------
 					{
 						int y;
 						String name;
-						y = 6;
+						y = 8;
 						winHandle0->PutStr(0, y, FSS("__________________________________"));
 						y++;
 						winHandle0->PutStr(0, y, FSS("TASK NAME"));
@@ -699,7 +711,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->PutChar(' ');
 
 
+
 					winHandle0->PutStr(9, 4, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
+					winHandle0->PutStr(FSS("% "));
+
+					winHandle0->PutStr(10, 6, String(board.FreePSRAMInLoop).c_str());
+					winHandle0->PutChar(' ');
+					winHandle0->PutStr(27, 6, String(board.MinimumFreePSRAMInLoop).c_str());
+					winHandle0->PutChar(' ');
+
+					winHandle0->PutStr(9, 7, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
 					winHandle0->PutStr(FSS("% "));
 
 					//---------------
@@ -707,7 +728,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 						String name;
 						int y;
 
-						y = 6;
+						y = 8;
 
 						y += 2;
 						for (int i = 0; i < board.TaskDefCount; i++)
@@ -755,16 +776,31 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 void XB_BOARD_Setup(void)
 {
+#ifdef ESP32
+	board.FreePSRAMInLoop = board.getFreePSRAM();
+	board.MinimumFreePSRAMInLoop = board.FreePSRAMInLoop;
+	board.MaximumFreePSRAMInLoop = board.FreePSRAMInLoop;
+	
+	board.FreeHeapInLoop = board.getFreeHeap()- board.FreePSRAMInLoop;
+	board.MaximumFreeHeapInLoop = board.FreeHeapInLoop;
+	board.MinimumFreeHeapInLoop = board.FreeHeapInLoop;
+#else
+
 	board.MaximumFreeHeapInLoop = board.getFreeHeap();
 	board.MinimumFreeHeapInLoop = board.getFreeHeap();
 
+#endif
 #if defined(ESP8266) || defined(ESP32)
-	Serial_setDebugOutput(false);
+#ifdef Serial_setDebugOutput
+	Serial_setDebugOutput;
+#endif
 	Serial_begin(SerialBoard_BAUD);
-	while (!Serial_availableForWrite)
+#ifdef Serial_availableForWrite 
+	while (!Serial_availableForWrite())
 	{
 		yield();
 	}
+#endif
 	for (int i = 0; i < 32; i++) {
 		Serial_write(0);
 		delay(1);
@@ -1009,9 +1045,12 @@ int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 				if (TaskDef[i]->dosetupRC == 0)
 				{
 					TaskDef[i]->dosetupRC++;
+					CurrentTaskDef = TaskDef[i];
+
 					{
 						TaskDef[i]->dosetup();
 					}
+					CurrentTaskDef = NULL;
 					TaskDef[i]->dosetupRC--;
 				}
 			}
@@ -1078,17 +1117,39 @@ void TXB_board::IterateTask(void)
 
 
 
+
 	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 	DEF_WAITMS_VAR(GFH);
 	BEGIN_WAITMS(GFH, 500);
 	{
+#ifdef ESP32
+
+		FreePSRAMInLoop = getFreePSRAM();
+		if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
+		{
+			MinimumFreePSRAMInLoop = FreePSRAMInLoop;
+		}
+
+
+		FreeHeapInLoop = getFreeHeap() -FreePSRAMInLoop;
+		if (FreeHeapInLoop < MinimumFreeHeapInLoop)
+		{
+			MinimumFreeHeapInLoop = FreeHeapInLoop;
+		}
+
+#else
 		FreeHeapInLoop = getFreeHeap();
 		if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 		{
 			MinimumFreeHeapInLoop = FreeHeapInLoop;
 		}
+#endif
+
 	}
 	END_WAITMS(GFH);
+
+
+	if (Serial_availableForWrite() < Serial_EmptyTXBufferSize) return;
 
 	// Uruchomienie zadañ w tzw realtime
 	for (int i = 0; i < TaskDefCount; i++)
@@ -1110,6 +1171,7 @@ void TXB_board::IterateTask(void)
 							TaskDef[i]->TickReturn = SysTickCount;
 							CurrentTaskDef = NULL;
 							TaskDef[i]->doloopRC++;
+						
 						}
 					}
 				}
@@ -1137,6 +1199,7 @@ void TXB_board::IterateTask(void)
 							TaskDef[CurrentIndxRunTask]->TickReturn = SysTickCount;
 							CurrentTaskDef = NULL;
 							TaskDef[CurrentIndxRunTask]->doloopRC++;
+							
 						}
 					}
 				}
@@ -1450,6 +1513,34 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 	dst[size] = 0;
 }
 
+#if defined(ESP32)
+
+uint32_t TXB_board::getFreePSRAM()
+{
+		return heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+}
+
+void *TXB_board::malloc_psram(size_t size)
+{
+	return heap_caps_malloc(size,MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+}
+
+#endif
+
+void ___free(void *Aptr)
+{
+	free(Aptr);
+}
+
+void TXB_board::free(void *Aptr)
+{
+	TMessageBoard mb;
+	mb.IDMessage = IM_FREEPTR;
+	mb.Data.FreePTR = Aptr;
+	SendMessageToAllTask(&mb, doBACKWARD);
+	___free(Aptr);
+}
+
 uint32_t TXB_board::getFreeHeap()
 {
 #if defined(ESP8266) || defined(ESP32)
@@ -1586,7 +1677,7 @@ uint8_t TXB_board::crc8(const uint8_t *addr, uint8_t len)
 void TXB_board::SysTickCount_init(void)
 {
 #if defined(ESP8266) || defined(ESP32)
-	SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
+	//SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
 #endif
 	LastActiveTelnetClientTick = 0;
 }
@@ -1668,21 +1759,12 @@ void TXB_board::Serial_WriteChar(char Achr)
 {
 	while(1)
 	{
-		if (Serial_availableForWrite>=1)
+		if (Serial_availableForWrite()>=1)
 		{
 			Serial_print(Achr);
 			break;
 		}
-		
-		if (!iteratetask_procedure)
-		{
-			break;
-		}
-		else
-		{
-			delay(10);
-		}
-
+		delay(0);
 	}
 }
 
@@ -1695,11 +1777,19 @@ void TXB_board::Log(char Achr)
 	Serial_WriteChar(Achr);
 }
 
-void TXB_board::Log(const char *Atxt,bool puttime,bool showtaskname,TTaskDef *Ataskdef)
+void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef *Ataskdef)
 {
-	int len = StringLength((char *)Atxt,0);
+	int len = StringLength((char *)Atxt, 0);
 	if (len == 0) return;
-	if (NoTxCounter==0) TXCounter += len;
+	int alllen = len;
+
+	if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
+	while (len > Serial_availableForWrite())
+	{
+		delay(0);
+	}
+	
+	if (NoTxCounter==0) TXCounter += alllen;
 	
 
 	String txttime = "";
@@ -1756,12 +1846,32 @@ void TXB_board::Log(const char *Atxt,bool puttime,bool showtaskname,TTaskDef *At
 		}
 	}
 
-
 	p = Atxt;
 	while (*p) 
 	{
 		Serial_WriteChar(*p);
 		p++;
+
+		alllen--;
+		len--;
+		if (len == 0)
+		{
+			if (alllen == 0)
+			{
+				break;
+			}
+			else
+			{
+				len = alllen;
+				if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
+
+				while (Serial_availableForWrite()<Serial_EmptyTXBufferSize)
+				{
+					delay(0);
+				}
+
+			}
+		}
 	}
 }
 

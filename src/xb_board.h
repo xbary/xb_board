@@ -10,7 +10,7 @@
 #endif
 #if defined(ESP32)
 #if defined(CONFIG_BT_ENABLED)
-#include <BluetoothSerial.h>
+//#include <BluetoothSerial.h>
 #endif
 
 #include <WString.h>
@@ -28,6 +28,7 @@
 #include <xb_board_message.h>
 
 #if defined(ESP32)
+
 typedef uint8_t WiringPinMode;
 #define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
 //extern "C" {
@@ -161,9 +162,21 @@ public:
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 
+
+#if defined(ESP32)
+	uint32_t FreePSRAMInLoop;
+	uint32_t MinimumFreePSRAMInLoop;
+	uint32_t MaximumFreePSRAMInLoop;
+
+	uint32_t getFreePSRAM();
+
+	void *malloc_psram(size_t size);
+#endif
+	void free(void *Aptr);
 	uint32_t FreeHeapInLoop;
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
+
 	uint32_t getFreeHeap();
 	bool CheckCriticalFreeHeap(void);
 
@@ -193,7 +206,8 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #endif
 
 #ifdef ESP32
-extern volatile uint32_t SysTickCount;
+//extern volatile uint32_t SysTickCount;
+#define SysTickCount ((uint32_t)millis())
 #endif
 
 extern bool showasc;
@@ -238,7 +252,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #endif
 
 #ifndef Serial_availableForWrite
-#define Serial_availableForWrite SerialBoard.availableForWrite()
+#define Serial_availableForWrite SerialBoard.availableForWrite
 #endif
 
 #ifndef Serial_available
@@ -251,6 +265,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 
 #ifndef Serial_read
 #define Serial_read SerialBoard.read
+#endif
+
+#ifndef Serial_flush
+#define Serial_flush SerialBoard.flush
+#endif
+
+#ifndef Serial_EmptyTXBufferSize
+#ifdef ESP32
+#define Serial_EmptyTXBufferSize 127
+#endif
 #endif
 
 #endif /* XB_BOARD */
