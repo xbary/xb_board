@@ -1,4 +1,4 @@
-#include "XB_board.h"
+#include <xb_board.h>
 /*
 Insert Into WiFiClient Class
 
@@ -41,12 +41,17 @@ TGADGETMenu *menuHandle0;
 #endif
 
 //------------------------------------------------------------------------------------------------------------
-#if defined(ESP8266) || defined(ESP32)
+#if defined(ESP8266) 
 Ticker SysTickCount_ticker;
 Ticker DateTimeSecond_ticker;
 //volatile uint32_t SysTickCount;
 #endif
 
+#if defined(ESP32)
+//Ticker SysTickCount_ticker;
+//Ticker DateTimeSecond_ticker;
+//volatile uint32_t SysTickCount;
+#endif
 
 uint32_t Tick_ESCKey = 0;
 uint8_t TerminalFunction = 0;
@@ -79,12 +84,12 @@ void TCPClientDestroy(WiFiClient **Awificlient)
 void SysTickCount_proc(void)
 {
 	SysTickCount++;
-}*/
+}
 
 void DateTimeSecond_proc(void)
 {
 	DateTimeUnix++;
-}
+}*/
 #endif
 
 bool showasc = false;
@@ -158,7 +163,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			case 0:
 			{
 				Am->Data.MenuData.ActionData.MenuInitData.ItemCount = 1 + TASK_COUNT;
-				Am->Data.MenuData.ActionData.MenuInitData.Width = 64;
+				Am->Data.MenuData.ActionData.MenuInitData.Width = 20;
 				Am->Data.MenuData.ActionData.MenuInitData.CurrentSelect = 0;
 				res = true;
 			}
@@ -781,7 +786,7 @@ void XB_BOARD_Setup(void)
 	board.MinimumFreePSRAMInLoop = board.FreePSRAMInLoop;
 	board.MaximumFreePSRAMInLoop = board.FreePSRAMInLoop;
 	
-	board.FreeHeapInLoop = board.getFreeHeap()- board.FreePSRAMInLoop;
+	board.FreeHeapInLoop = board.getFreeHeap();
 	board.MaximumFreeHeapInLoop = board.FreeHeapInLoop;
 	board.MinimumFreeHeapInLoop = board.FreeHeapInLoop;
 #else
@@ -794,7 +799,13 @@ void XB_BOARD_Setup(void)
 #ifdef Serial_setDebugOutput
 	Serial_setDebugOutput;
 #endif
+
+#if defined(SerialBoard_RX_PIN) && defined(SerialBoard_TX_PIN)
+	Serial_begin(SerialBoard_BAUD, SERIAL_8N1, SerialBoard_RX_PIN, SerialBoard_TX_PIN);
+#else
 	Serial_begin(SerialBoard_BAUD);
+#endif
+
 #ifdef Serial_availableForWrite 
 	while (!Serial_availableForWrite())
 	{
@@ -805,6 +816,30 @@ void XB_BOARD_Setup(void)
 		Serial_write(0);
 		delay(1);
 	}
+
+#ifdef Serial1Board
+
+#ifdef Serial1_setDebugOutput
+	Serial1_setDebugOutput;
+#endif
+#if defined(Serial1Board_RX_PIN) && defined(Serial1Board_TX_PIN)
+	Serial1_begin(Serial1Board_BAUD,SERIAL_8N1, Serial1Board_RX_PIN, Serial1Board_TX_PIN);
+#else
+	Serial1_begin(Serial1Board_BAUD);
+#endif
+#ifdef Serial1_availableForWrite 
+	while (!Serial1_availableForWrite())
+	{
+		yield();
+	}
+#endif
+	for (int i = 0; i < 32; i++) {
+		Serial1_write(0);
+		delay(1);
+	}
+
+#endif
+
 #else
 	Serial_begin(SerialBoard_BAUD);
 #endif
@@ -841,15 +876,12 @@ void XB_BOARD_Setup(void)
 #endif
 #endif
 
-	delay(500);
-#ifdef XB_GUI
-	ScreenText.Clear();
-	ScreenText.PutText(FSS("Start...\n"));
-#else
-	Serial_print(FSS("\n\nStart...\n"));
-#endif
 	DateTimeUnix = 0;
 	DateTimeStart = 0;
+#ifdef XB_GUI
+	ScreenText.Clear();
+#endif
+	board.Log(FSS("Start..."),true,true,&XB_BOARD_DefTask);
 }
 
 uint32_t XB_BOARD_DoLoop(void)
@@ -938,8 +970,8 @@ bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 	
 	if (!SendMessageToAllTask(&mb,doONLYINTERESTED))
 	{
-		Log(FSS("\n[BOARD] GPIO pinMode Error.\n"));
-		return false;
+//		Log(FSS("\n[BOARD] GPIO pinMode Error.\n"));
+//		return false;
 	}
 
 	return true;
@@ -956,7 +988,7 @@ void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 
 	if (!SendMessageToAllTask(&mb, doONLYINTERESTED))
 	{
-		Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
+	//	Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
 	}
 }
 
@@ -969,11 +1001,11 @@ uint8_t TXB_board::digitalRead(uint16_t pin)
 
 	if (!SendMessageToAllTask(&mb, doONLYINTERESTED))
 	{
-		Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
-		return 0;
-	}
-	else
-	{
+//		Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
+//		return 0;
+//	}
+//	else
+//	{
 		return mb.Data.GpioData.ActionData.Value;
 	}
 }
@@ -987,11 +1019,11 @@ uint8_t TXB_board::digitalToggle(uint16_t pin)
 
 	if (!SendMessageToAllTask(&mb, doONLYINTERESTED))
 	{
-		Log(FSS("\n[BOARD] GPIO digitalToggle Error.\n"));
-		return 0;
-	}
-	else
-	{
+//		Log(FSS("\n[BOARD] GPIO digitalToggle Error.\n"));
+//		return 0;
+//	}
+//	else
+//	{
 		return mb.Data.GpioData.ActionData.Value;
 	}
 }
@@ -1131,7 +1163,7 @@ void TXB_board::IterateTask(void)
 		}
 
 
-		FreeHeapInLoop = getFreeHeap() -FreePSRAMInLoop;
+		FreeHeapInLoop = getFreeHeap();
 		if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 		{
 			MinimumFreeHeapInLoop = FreeHeapInLoop;
@@ -1247,6 +1279,7 @@ bool TXB_board::GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString)
 
 bool TXB_board::GetTaskName(TTaskDef *ATaskDef,String &APointerString)
 {
+	if (ATaskDef == NULL) return false;
 	TMessageBoard mb;
 	mb.IDMessage = IM_GET_TASKNAME_STRING;
 	return GetTaskString(&mb, ATaskDef, APointerString);
@@ -1350,7 +1383,32 @@ bool TXB_board::SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool A
 	}
 	return res;
 }
-	
+
+bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain)
+{
+	bool res = false;
+	String tn;
+	for (int i = 0; i < TaskDefCount; i++)
+	{
+		if (TaskDef[i] != NULL)
+		{
+			if (TaskDef[i]->domessage != NULL)
+			{
+				tn = "";
+				if (GetTaskName(TaskDef[i], tn))
+				{
+					if (Ataskname == tn)
+					{
+						return SendMessageToTask(TaskDef[i], mb, Arunagain);
+					}
+				}
+			}
+		}
+	}
+	return res;
+}
+
+
 bool TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
 {
 	TMessageBoard mb;
@@ -1423,8 +1481,8 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 
 										if (res)
 										{
-											TaskDef[i]->LastIDMessage = mb->IDMessage;
-											break;
+											//TaskDef[i]->LastIDMessage = mb->IDMessage;
+											//break;
 										}
 
 									}
@@ -1444,7 +1502,6 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 				{
 					if (Aexcludetask != TaskDef[i])
 					{
-
 						if (TaskDef[i]->domessage != NULL)
 						{
 							if (TaskDef[i]->domessageRC == 0)
@@ -1454,7 +1511,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 									res = TaskDef[i]->domessage(mb);
 								}
 								TaskDef[i]->domessageRC--;
-								if (res) break;
+								//if (res) break;
 							}
 						}
 					}
@@ -1481,7 +1538,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 									res = TaskDef[i]->domessage(mb);
 								}
 								TaskDef[i]->domessageRC--;
-								if (res) break;
+								//if (res) break;
 							}
 						}
 					}
@@ -1492,6 +1549,146 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 		default: break;
 	}
 	return res;
+}
+
+uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, TSendFrameProt ASendFrameProt,void *ADataFrame, uint32_t Alength)
+{
+	
+	TFrameTransport ft;
+	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
+	if (Alength > sizeof(ft.Frame))
+	{
+		board.Log("Error: send frame too long...", true, true);
+		return 0;
+	}
+
+	if (Ataskname.length() > 15)
+	{
+		board.Log("Error: Destination task name too long (15 char max)...", true, true);
+		return 0;
+	}
+	
+	TFrameTransportACK ftack;
+	ftack.a = FRAME_ACK_A;
+	ftack.b = FRAME_ACK_B;
+	ftack.c = FRAME_ACK_C;
+	ftack.d = FRAME_ACK_D;
+
+	switch (ASendFrameProt)
+	{
+	case sfpSerial:
+	{
+		Serial_write((uint8_t *)&ftack,sizeof(ftack));
+		break;
+	}
+#ifdef Serial1Board
+	case sfpSerial1:
+	{
+		Serial1_write((uint8_t *)&ftack, sizeof(ftack));
+		break;
+	}
+#endif
+	default:
+	{
+		board.Log("Error: Frame transport not support...", true, true);
+		return 0;
+	}
+	}
+
+	uint32_t FrameID = SysTickCount;
+
+	xb_memorycopy(ADataFrame, &ft.Frame, Alength);
+	ft.LengthFrame = Alength;
+
+	ft.FrameID = FrameID;
+	ft.DeviceID = board.GetUniqueID();
+	ft.FrameType = ftData;
+	xb_memorycopy((void *)(Ataskname.c_str()), &ft.TaskName, Ataskname.length());
+	
+	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
+	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
+	
+	switch (ASendFrameProt)
+	{
+	case sfpSerial:
+	{
+		Serial_write((uint8_t *)&ft, ft.size);
+		break;
+	}
+#ifdef Serial1Board
+	case sfpSerial1:
+	{
+		Serial1_write((uint8_t *)&ft, ft.size);
+		break;
+	}
+#endif
+	default: break;
+	}
+
+	return FrameID;
+}
+
+void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TSendFrameProt ASendFrameProt, TFrameType AframeType,TUniqueID ADeviceID)
+{
+
+	TFrameTransport ft;
+	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
+
+	TFrameTransportACK ftack;
+	ftack.a = FRAME_ACK_A;
+	ftack.b = FRAME_ACK_B;
+	ftack.c = FRAME_ACK_C;
+	ftack.d = FRAME_ACK_D;
+
+	switch (ASendFrameProt)
+	{
+	case sfpSerial:
+	{
+		Serial_write((uint8_t *)&ftack, sizeof(ftack));
+		break;
+	}
+#ifdef Serial1Board
+	case sfpSerial1:
+	{
+		Serial1_write((uint8_t *)&ftack, sizeof(ftack));
+		break;
+	}
+#endif
+	default:
+	{
+		board.Log("Error: Frame transport not support...", true, true);
+		return;
+	}
+	}
+
+
+	ft.LengthFrame = 0;
+
+	ft.FrameID = AFrameID;
+	ft.DeviceID = ADeviceID;
+	ft.FrameType = AframeType;
+
+	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
+	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
+
+	switch (ASendFrameProt)
+	{
+	case sfpSerial:
+	{
+		Serial_write((uint8_t *)&ft, ft.size);
+		break;
+	}
+#ifdef Serial1Board
+	case sfpSerial1:
+	{
+		Serial1_write((uint8_t *)&ft, ft.size);
+		break;
+	}
+#endif
+	default: break;
+	}
+
+	return;
 }
 
 
@@ -1517,12 +1714,20 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 
 uint32_t TXB_board::getFreePSRAM()
 {
-		return heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#ifdef BOARD_HAS_PSRAM
+	return ESP.getFreePsram();
+#else
+	return ESP.getFreeHeap();
+#endif
 }
 
 void *TXB_board::malloc_psram(size_t size)
 {
+#ifdef BOARD_HAS_PSRAM
 	return heap_caps_malloc(size,MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#else
+	return malloc(size);
+#endif
 }
 
 #endif
@@ -1684,10 +1889,446 @@ void TXB_board::SysTickCount_init(void)
 
 void TXB_board::DateTimeSecond_init(void)
 {
-#if defined(ESP8266) || defined(ESP32)
+#if defined(ESP8266)
 	DateTimeSecond_ticker.attach(1, DateTimeSecond_proc);
 #endif
+#if defined(ESP32)
 	
+#endif
+
+}
+
+void TXB_board::HandleKeyPress(char ch)
+{
+	if (TerminalFunction == 0)
+	{
+		SendKeyPress(ch);
+	}
+	else
+	{
+		SendKeyPress(ch, &XB_BOARD_DefTask);
+	}
+}
+
+void TXB_board::HandleFrame(TFrameTransport *Aft, TSendFrameProt Asfp)
+{
+	uint8_t crc = Aft->crc8;
+	Aft->crc8 = 0;
+
+	if (crc == crc8((uint8_t *)Aft, Aft->size))
+	{
+		if (Aft->FrameType == ftData)
+		{
+			TMessageBoard mb;
+			mb.IDMessage = IM_FRAME_RECEIVE;
+			mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
+			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
+			mb.Data.FrameReceiveData.FrameProt = Asfp;
+
+			bool res = SendMessageToTaskByName(String(Aft->TaskName), &mb);
+
+			if (res)
+			{
+				SendResponseFrameOnProt(Aft->FrameID, Asfp, ftResponseOK, Aft->DeviceID);
+			}
+			else
+			{
+				SendResponseFrameOnProt(Aft->FrameID, Asfp, ftResponseError, Aft->DeviceID);
+			}
+		}
+		else
+		{
+			if (GetUniqueID().ID.ID64 == Aft->DeviceID.ID.ID64)
+			{
+
+				TMessageBoard mb;
+				mb.IDMessage = IM_FRAME_RESPONSE;
+				mb.Data.FrameResponseData.FrameID = Aft->FrameID;
+				mb.Data.FrameResponseData.FrameType = Aft->FrameType;
+				SendMessageToAllTask(&mb, doFORWARD);
+			}
+		}
+	}
+	else
+	{
+		SendResponseFrameOnProt(Aft->FrameID, Asfp, ftResponseCRCError, Aft->DeviceID);
+	}
+}
+
+void TXB_board::HandleSerial(bool ADoKeyPress)
+{
+#ifdef SerialBoard
+	if (Serial_available())
+	{
+		static TFrameTransport *ft = NULL;
+		static uint32_t indxframe = 0;
+		static uint32_t indxackframe = 0;
+
+		uint8_t ch = (uint8_t)Serial_read();
+
+		switch (indxackframe)
+		{
+		case 0:
+		{
+			if (ch == FRAME_ACK_A)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				if (ADoKeyPress) HandleKeyPress(ch);
+			}
+			break;
+		}
+		case 1:
+		{
+			if (ch == FRAME_ACK_B)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				indxackframe = 0;
+				if (ADoKeyPress)
+				{
+					HandleKeyPress(FRAME_ACK_A);
+					HandleKeyPress(ch);
+				}
+			}
+		}
+		case 3:
+		{
+			if (ch == FRAME_ACK_C)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				indxackframe = 0;
+				if (ADoKeyPress)
+				{
+					HandleKeyPress(FRAME_ACK_A);
+					HandleKeyPress(FRAME_ACK_B);
+					HandleKeyPress(ch);
+				}
+			}
+		}
+		case 4:
+		{
+			if (ch == FRAME_ACK_D)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				indxackframe = 0;
+				if (ADoKeyPress)
+				{
+					HandleKeyPress(FRAME_ACK_A);
+					HandleKeyPress(FRAME_ACK_B);
+					HandleKeyPress(FRAME_ACK_C);
+					HandleKeyPress(ch);
+				}
+			}
+		}
+		default:
+		{
+			if (indxackframe == 5)
+			{
+				if (ft == NULL)
+				{
+					ft = (TFrameTransport *)malloc(sizeof(TFrameTransport));
+				}
+				indxframe = 0;
+				xb_memoryfill(ft, sizeof(TFrameTransport), 0);
+			}
+			if (ft != NULL)
+			{
+				((uint8_t *)ft)[indxframe] = ch;
+				indxframe++;
+				indxackframe++;
+				if (indxframe >= ft->size)
+				{
+					HandleFrame(ft,sfpSerial);
+					free(ft); ft = NULL;
+					indxackframe = 0;
+					indxframe = 0;
+				}
+				break;
+			}
+			indxackframe = 0;
+			if (ADoKeyPress)
+			{
+				HandleKeyPress(FRAME_ACK_A);
+				HandleKeyPress(FRAME_ACK_B);
+				HandleKeyPress(FRAME_ACK_C);
+				HandleKeyPress(FRAME_ACK_D);
+				HandleKeyPress(ch);
+			}
+			break;
+		}
+		}
+
+
+
+
+	}
+#endif
+}
+
+void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint16_t Ach)
+{
+#ifdef SerialBoard
+	static TFrameTransport *ftSerial = NULL;
+	static uint32_t indxframe_Serial = 0;
+	static uint32_t indxackframe_Serial = 0;
+	static uint32_t tickstart_Serial = 0;
+#endif
+#ifdef Serial1Board
+	static TFrameTransport *ftSerial1 = NULL;
+	static uint32_t indxframe_Serial1 = 0;
+	static uint32_t indxackframe_Serial1 = 0;
+	static uint32_t tickstart_Serial1 = 0;
+#endif
+	bool available_ch = false;
+	TFrameTransport *ft = NULL;
+	uint32_t indxframe = 0;
+	uint32_t indxackframe = 0;
+	uint32_t tickstart = 0;
+
+	if (Ach == 0xffff)
+	{
+		switch (Asfp)
+		{
+#ifdef SerialBoard
+		case sfpSerial: available_ch = Serial_available(); break;
+#endif
+#ifdef Serial1Board
+		case sfpSerial1: available_ch = Serial1_available(); break;
+#endif
+		default:
+		{
+			return;
+		}
+		}
+	}
+	else
+	{
+		available_ch = true;
+	}
+
+
+	// Czy dostêpny bajt do parsowania
+	if (available_ch)
+	{
+		// Pobranie bajty z wskazanego protoko³u
+		uint8_t ch;
+		if (Ach == 0xffff)
+		{
+			switch (Asfp)
+			{
+#ifdef SerialBoard
+			case sfpSerial: ch = (uint8_t)Serial_read(); break;
+#endif
+#ifdef Serial1Board
+			case sfpSerial1: ch = (uint8_t)Serial1_read(); break;
+#endif
+			default:
+			{
+				return;
+			}
+			}
+		}
+		else
+		{
+			ch = Ach;
+		}
+
+		// Skopiowanie lokalnie zmiennych odnoœnie wybranego protoko³u
+		switch (Asfp)
+		{
+#ifdef SerialBoard
+		case sfpSerial:
+		{
+			ft = ftSerial;
+			indxframe = indxframe_Serial;
+			indxackframe = indxackframe_Serial;
+			tickstart = tickstart_Serial;
+			break;
+		}
+#endif
+#ifdef Serial1Board
+		case sfpSerial1:
+		{
+			ft = ftSerial1;
+			indxframe = indxframe_Serial1;
+			indxackframe = indxackframe_Serial1;
+			tickstart = tickstart_Serial1;
+			break;
+		}
+#endif
+		default:
+		{
+			return;
+		}
+		}
+
+		// Sprawdzenie czy pomiêdzy kolejnymi bajtami nie minê³a sekunda
+		if (tickstart != 0)
+		{
+			if (SysTickCount - tickstart > 1000)
+			{
+				tickstart = 0;
+				indxackframe = 0;
+				indxframe = 0;
+				if (ft != NULL)
+				{
+					board.free(ft);
+					ft = NULL;
+				}
+			}
+		}
+
+		// Mechanizm parsowania
+		switch (indxackframe)
+		{
+		case 0:
+		{
+			if (ch == FRAME_ACK_A)
+			{
+				tickstart = SysTickCount;
+				indxackframe++;
+			}
+			else
+			{
+				if (ADoKeyPress) HandleKeyPress(ch);
+			}
+			break;
+		}
+		case 1:
+		{
+			if (ch == FRAME_ACK_B)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				indxackframe = 0;
+				if (ADoKeyPress)
+				{
+					HandleKeyPress(FRAME_ACK_A);
+					HandleKeyPress(ch);
+				}
+			}
+			break;
+		}
+		case 2:
+		{
+			if (ch == FRAME_ACK_C)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				indxackframe = 0;
+				if (ADoKeyPress)
+				{
+					HandleKeyPress(FRAME_ACK_A);
+					HandleKeyPress(FRAME_ACK_B);
+					HandleKeyPress(ch);
+				}
+			}
+			break;
+		}
+		case 3:
+		{
+			if (ch == FRAME_ACK_D)
+			{
+				indxackframe++;
+			}
+			else
+			{
+				indxackframe = 0;
+				if (ADoKeyPress)
+				{
+					HandleKeyPress(FRAME_ACK_A);
+					HandleKeyPress(FRAME_ACK_B);
+					HandleKeyPress(FRAME_ACK_C);
+					HandleKeyPress(ch);
+				}
+			}
+			break;
+		}
+		default:
+		{
+		
+			if (indxackframe == 4)
+			{
+				if (ft == NULL)
+				{
+					ft = (TFrameTransport *)malloc(sizeof(TFrameTransport));
+				}
+				indxframe = 0;
+				xb_memoryfill(ft, sizeof(TFrameTransport), 0);
+			}
+			if (ft != NULL)
+			{
+				((uint8_t *)ft)[indxframe] = ch;
+				indxframe++;
+				indxackframe++;
+				
+				if (indxframe >= ft->size)
+				{
+					HandleFrame(ft, Asfp);
+					board.free(ft);
+					ft = NULL;
+					indxackframe = 0;
+					indxframe = 0;
+				}
+				break;
+			}
+			indxackframe = 0;
+			if (ADoKeyPress)
+			{
+				HandleKeyPress(FRAME_ACK_A);
+				HandleKeyPress(FRAME_ACK_B);
+				HandleKeyPress(FRAME_ACK_C);
+				HandleKeyPress(FRAME_ACK_D);
+				HandleKeyPress(ch);
+			}
+			break;
+		}
+		}
+
+		// Zapamiêtanie stanu zmiennych lokalnych do wskazanego protoko³u przesy³u
+		switch (Asfp)
+		{
+#ifdef SerialBoard
+		case sfpSerial:
+		{
+			ftSerial = ft;
+			indxframe_Serial=indxframe;
+			indxackframe_Serial=indxackframe;
+			tickstart_Serial = tickstart;
+			break;
+		}
+#endif
+#ifdef Serial1Board
+		case sfpSerial1:
+		{
+			ftSerial1 = ft;
+			indxframe_Serial1 = indxframe;
+			indxackframe_Serial1 = indxackframe;
+			tickstart_Serial1 = tickstart;
+			break;
+		}
+#endif
+		default:
+		{
+			return;
+		}
+		}
+	}
 }
 
 void TXB_board::handle(void)
@@ -1699,6 +2340,9 @@ void TXB_board::handle(void)
 		digitalToggle(BOARD_LED_LIFE_PIN);
 #endif
 #ifdef ARDUINO_ARCH_STM32F1
+		DateTimeUnix++;
+#endif
+#ifdef ESP32
 		DateTimeUnix++;
 #endif
 #ifdef XB_GUI
@@ -1739,20 +2383,12 @@ void TXB_board::handle(void)
 		}
 	}
 #endif
-
-
-	
-	if (Serial_available())
-	{
-		if (TerminalFunction == 0)
-		{
-			SendKeyPress((char)Serial_read());
-		}
-		else
-		{
-			SendKeyPress((char)Serial_read(),&XB_BOARD_DefTask);
-		}
-	}
+#ifdef SerialBoard
+	HandleTransportFrame(true, sfpSerial);
+#endif
+#ifdef Serial1Board
+	HandleTransportFrame(false,sfpSerial1);
+#endif
 }
 
 void TXB_board::Serial_WriteChar(char Achr)
@@ -1851,7 +2487,7 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 	{
 		Serial_WriteChar(*p);
 		p++;
-
+		
 		alllen--;
 		len--;
 		if (len == 0)

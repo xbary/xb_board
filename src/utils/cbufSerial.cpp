@@ -3,7 +3,7 @@
 #include <string.h>
 #include <inttypes.h>
 #include <Arduino.h>
-#include "cbufSerial.h"
+#include <utils/cbufSerial.h>
 
 void clearbuf(cbufSerial *Abuf)
 {

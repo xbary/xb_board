@@ -8,12 +8,11 @@
 #include <WString.h>
 #define FSS(str) (String(F(str)).c_str())
 #endif
+
 #if defined(ESP32)
-#if defined(CONFIG_BT_ENABLED)
-//#include <BluetoothSerial.h>
-#endif
 
 #include <WString.h>
+
 #define FSS(str) (String(F(str)).c_str())
 #endif
 #ifdef ARDUINO_ARCH_STM32F1
@@ -25,19 +24,13 @@
 
 #define _REG register
 
-#include <xb_board_message.h>
-
 #if defined(ESP32)
 
 typedef uint8_t WiringPinMode;
 #define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
-//extern "C" {
-//#include "user_interface.h"
-//}
 
-//#include <ESP8266WiFi.h>
-//#include <WiFiUdp.h>
-#include <Ticker.h>
+#include <utils/xb_util.h>
+#include <utils/cbufSerial.h>
 
 #endif
 
@@ -56,10 +49,10 @@ extern "C" {
 #endif
 
 
-#include <xb_util.h>
-#include "cbufSerial.h"
+typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError } TFrameType;
+typedef enum { sfpLocal, sfpSerial, sfpSerialBT, sfpSerial1, sfpSerial2 } TSendFrameProt;
 
-
+#include <utils\xb_board_message.h>
 
 typedef struct
 {
@@ -67,8 +60,8 @@ typedef struct
 	uint32_t(*doloop)(void);
 	bool(*domessage)(TMessageBoard *);
 	void(*dointerrupt)(void);
-	uint8_t Priority : 4;
-	uint8_t CounterPriority : 4;
+	uint8_t Priority;
+	uint8_t CounterPriority;
 	uint8_t IDTask;
 	TIDMessage LastIDMessage;
 
@@ -102,6 +95,37 @@ typedef struct
 #include "xb_board_def.h"
 #endif
 
+
+#pragma pack(push, 1)
+typedef struct
+{
+	uint8_t size;
+	uint8_t crc8;
+	uint32_t FrameID;
+	TUniqueID DeviceID;
+	char TaskName[16];
+	TFrameType FrameType;
+	uint8_t LengthFrame;
+	uint8_t Frame[255 - (1 + 16 + 8 + 4 + 1 + 1+1)];
+} TFrameTransport;
+#pragma pack(pop)
+
+#define FRAME_ACK_A 0xf1
+#define FRAME_ACK_B 0x2f
+#define FRAME_ACK_C 0xf3
+#define FRAME_ACK_D 0x4f
+
+#pragma pack(push, 1)
+typedef struct
+{
+	uint8_t a;
+	uint8_t b;
+	uint8_t c;
+	uint8_t d;
+} TFrameTransportACK;
+#pragma pack(pop)
+
+
 class TXB_board
 {
 public:
@@ -113,6 +137,10 @@ public:
 	void setString(char *dst, const char *src, int max_size);
 	void SysTickCount_init(void);
 	void DateTimeSecond_init(void);
+	void HandleKeyPress(char ch);
+	void HandleFrame(TFrameTransport *Aft, TSendFrameProt Asfp);
+	void HandleSerial(bool ADoKeyPress);
+	void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
 	void handle(void);
 	void Serial_WriteChar(char Achr);
 	void Log(char Achr);
@@ -159,9 +187,11 @@ public:
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Ataskdef, bool Aexcludethistask = false);
 	bool SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb, bool Arunagain=false);
 	bool SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool Arunagain = false);
+	bool SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain = false);
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
-
+	void SendResponseFrameOnProt(uint32_t AFrameID, TSendFrameProt ASendFrameProt, TFrameType AframeType, TUniqueID ADeviceID);
+	uint32_t SendFrameToDeviceTask(String Ataskname, TSendFrameProt ASendFrameProt, void *ADataFrame, uint32_t Alength);
 
 #if defined(ESP32)
 	uint32_t FreePSRAMInLoop;
@@ -206,16 +236,17 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #endif
 
 #ifdef ESP32
-//extern volatile uint32_t SysTickCount;
 #define SysTickCount ((uint32_t)millis())
 #endif
 
 extern bool showasc;
 
-
 uint32_t XB_BOARD_DoLoop(void);
 void XB_BOARD_Setup(void);
 bool XB_BOARD_DoMessage(TMessageBoard *Am);
+
+#define XB_BOARD_SETUP(Aid) board.DefTask(&XB_BOARD_DefTask, Aid)
+#define XB_BOARD_LOOP() board.IterateTask()
 
 #ifndef BOARD_CRITICALFREEHEAP
 #define BOARD_CRITICALFREEHEAP (1024*19)
@@ -275,6 +306,66 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #ifdef ESP32
 #define Serial_EmptyTXBufferSize 127
 #endif
+#endif
+
+#ifdef Serial1Board
+
+#ifndef Serial1Board
+#define Serial1Board Serial1
+#endif
+
+#ifndef Serial1Board_BAUD
+#define Serial1Board_BAUD 230400
+#endif
+
+#ifndef Serial1_print
+#define  Serial1_print Serial1Board.print
+#endif
+
+#ifndef Serial1_println
+#define Serial1_println Serial1Board.println
+#endif
+
+#ifndef Serial1_printf
+#define Serial1_printf Serial1Board.printf
+#endif
+
+#if defined(ESP8266) || defined(ESP32)
+#ifndef Serial1_setDebugOutput
+#define Serial1_setDebugOutput Serial1Board.setDebugOutput
+#endif
+#endif
+
+#ifndef Serial1_begin
+#define Serial1_begin Serial1Board.begin
+#endif
+
+#ifndef Serial1_availableForWrite
+#define Serial1_availableForWrite Serial1Board.availableForWrite
+#endif
+
+#ifndef Serial1_available
+#define Serial1_available Serial1Board.available
+#endif
+
+#ifndef Serial1_write
+#define Serial1_write Serial1Board.write
+#endif
+
+#ifndef Serial1_read
+#define Serial1_read Serial1Board.read
+#endif
+
+#ifndef Serial1_flush
+#define Serial1_flush Serial1Board.flush
+#endif
+
+#ifndef Serial1_EmptyTXBufferSize
+#ifdef ESP32
+#define Serial1_EmptyTXBufferSize 127
+#endif
+#endif
+
 #endif
 
 #endif /* XB_BOARD */

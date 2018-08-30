@@ -117,6 +117,8 @@ typedef enum {
 	IM_OTA_UPDATE_STARTED,
 	IM_GET_TASKNAME_STRING,
 	IM_GET_TASKSTATUS_STRING,
+	IM_FRAME_RECEIVE,
+	IM_FRAME_RESPONSE,
 	IM_KEYBOARD,
 	IM_MENU,
 	IM_INPUTDIALOG,
@@ -148,7 +150,17 @@ typedef struct {
 typedef struct {
 	int8_t UserID;
 } TBlinkData;
-
+//-----------------------------------------------------------------------
+typedef struct {
+	void *DataFrame;
+	uint32_t SizeFrame;
+	TSendFrameProt FrameProt;
+} TFrameReceiveData;
+//-----------------------------------------------------------------------
+typedef struct {
+	uint32_t FrameID;
+	TFrameType FrameType;
+} TFrameResponseData;
 //-----------------------------------------------------------------------
 typedef int16_t Tx;
 typedef int16_t Ty;
@@ -204,7 +216,7 @@ typedef struct
 } TConfigData;
 //-----------------------------------------------------------------------
 
-#define DEF_MENUITEMNAME(iditem,nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = (nameitemstr); break;
+#define DEF_MENUITEMNAME(iditem,nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); break;
 
 typedef enum {
 	tmaOPEN_MAINMENU, tmaCLOSE_MAINMENU, tmaGET_INIT_MENU, tmaGET_CAPTION_MENU_STRING, tmaGET_ITEM_MENU_STRING, tmaCLICK_ITEM_MENU
@@ -351,6 +363,8 @@ typedef struct
 		TWindowData WindowData;
 		TGpioData GpioData;
 		TBlinkData BlinkData;
+		TFrameReceiveData FrameReceiveData;
+		TFrameResponseData FrameResponseData;
 		void *PointerData;
 		void *FreePTR;
 		String *PointerString;
