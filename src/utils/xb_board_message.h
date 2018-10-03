@@ -217,6 +217,7 @@ typedef struct
 //-----------------------------------------------------------------------
 
 #define DEF_MENUITEMNAME(iditem,nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); break;
+#define DEF_MENUITEMNAME_CHECKED(iditem,nameitemstr,boolvalue) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = "[" + String(boolvalue == true ? "*" : " ") + "] "+ String(nameitemstr); break;
 
 typedef enum {
 	tmaOPEN_MAINMENU, tmaCLOSE_MAINMENU, tmaGET_INIT_MENU, tmaGET_CAPTION_MENU_STRING, tmaGET_ITEM_MENU_STRING, tmaCLICK_ITEM_MENU

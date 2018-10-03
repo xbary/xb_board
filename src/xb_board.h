@@ -50,7 +50,7 @@ extern "C" {
 
 
 typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError } TFrameType;
-typedef enum { sfpLocal, sfpSerial, sfpSerialBT, sfpSerial1, sfpSerial2 } TSendFrameProt;
+typedef enum { sfpLocal, sfpSerial, sfpSerialBT, sfpSerial1, sfpSerial2, sfpSerialTelnet} TSendFrameProt;
 
 #include <utils\xb_board_message.h>
 
@@ -139,7 +139,6 @@ public:
 	void DateTimeSecond_init(void);
 	void HandleKeyPress(char ch);
 	void HandleFrame(TFrameTransport *Aft, TSendFrameProt Asfp);
-	void HandleSerial(bool ADoKeyPress);
 	void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
 	void handle(void);
 	void Serial_WriteChar(char Achr);
@@ -365,6 +364,48 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #define Serial1_EmptyTXBufferSize 127
 #endif
 #endif
+
+#endif
+
+#ifdef SerialTBoard
+#include "xb_TELNET_MOD.h"
+
+#ifndef SerialTBoard
+#define SerialTBoard SerialT
+#endif
+
+#ifndef SerialT_print
+#define  SerialT_print SerialTBoard.print
+#endif
+
+#ifndef SerialT_println
+#define SerialT_println SerialTBoard.println
+#endif
+
+#ifndef SerialT_printf
+#define SerialT_printf SerialTBoard.printf
+#endif
+
+#ifndef SerialT_availableForWrite
+#define SerialT_availableForWrite SerialTBoard.availableForWrite
+#endif
+
+#ifndef SerialT_available
+#define SerialT_available SerialTBoard.available
+#endif
+
+#ifndef SerialT_write
+#define SerialT_write SerialTBoard.write
+#endif
+
+#ifndef SerialT_read
+#define SerialT_read SerialTBoard.read
+#endif
+
+#ifndef SerialT_flush
+#define SerialT_flush SerialTBoard.flush
+#endif
+
 
 #endif
 

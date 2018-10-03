@@ -1955,127 +1955,6 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TSendFrameProt Asfp)
 	}
 }
 
-void TXB_board::HandleSerial(bool ADoKeyPress)
-{
-#ifdef SerialBoard
-	if (Serial_available())
-	{
-		static TFrameTransport *ft = NULL;
-		static uint32_t indxframe = 0;
-		static uint32_t indxackframe = 0;
-
-		uint8_t ch = (uint8_t)Serial_read();
-
-		switch (indxackframe)
-		{
-		case 0:
-		{
-			if (ch == FRAME_ACK_A)
-			{
-				indxackframe++;
-			}
-			else
-			{
-				if (ADoKeyPress) HandleKeyPress(ch);
-			}
-			break;
-		}
-		case 1:
-		{
-			if (ch == FRAME_ACK_B)
-			{
-				indxackframe++;
-			}
-			else
-			{
-				indxackframe = 0;
-				if (ADoKeyPress)
-				{
-					HandleKeyPress(FRAME_ACK_A);
-					HandleKeyPress(ch);
-				}
-			}
-		}
-		case 3:
-		{
-			if (ch == FRAME_ACK_C)
-			{
-				indxackframe++;
-			}
-			else
-			{
-				indxackframe = 0;
-				if (ADoKeyPress)
-				{
-					HandleKeyPress(FRAME_ACK_A);
-					HandleKeyPress(FRAME_ACK_B);
-					HandleKeyPress(ch);
-				}
-			}
-		}
-		case 4:
-		{
-			if (ch == FRAME_ACK_D)
-			{
-				indxackframe++;
-			}
-			else
-			{
-				indxackframe = 0;
-				if (ADoKeyPress)
-				{
-					HandleKeyPress(FRAME_ACK_A);
-					HandleKeyPress(FRAME_ACK_B);
-					HandleKeyPress(FRAME_ACK_C);
-					HandleKeyPress(ch);
-				}
-			}
-		}
-		default:
-		{
-			if (indxackframe == 5)
-			{
-				if (ft == NULL)
-				{
-					ft = (TFrameTransport *)malloc(sizeof(TFrameTransport));
-				}
-				indxframe = 0;
-				xb_memoryfill(ft, sizeof(TFrameTransport), 0);
-			}
-			if (ft != NULL)
-			{
-				((uint8_t *)ft)[indxframe] = ch;
-				indxframe++;
-				indxackframe++;
-				if (indxframe >= ft->size)
-				{
-					HandleFrame(ft,sfpSerial);
-					free(ft); ft = NULL;
-					indxackframe = 0;
-					indxframe = 0;
-				}
-				break;
-			}
-			indxackframe = 0;
-			if (ADoKeyPress)
-			{
-				HandleKeyPress(FRAME_ACK_A);
-				HandleKeyPress(FRAME_ACK_B);
-				HandleKeyPress(FRAME_ACK_C);
-				HandleKeyPress(FRAME_ACK_D);
-				HandleKeyPress(ch);
-			}
-			break;
-		}
-		}
-
-
-
-
-	}
-#endif
-}
-
 void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint16_t Ach)
 {
 #ifdef SerialBoard
@@ -2090,6 +1969,14 @@ void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint
 	static uint32_t indxackframe_Serial1 = 0;
 	static uint32_t tickstart_Serial1 = 0;
 #endif
+#ifdef SerialTBoard
+	static TFrameTransport *ftSerialT = NULL;
+	static uint32_t indxframe_SerialT = 0;
+	static uint32_t indxackframe_SerialT = 0;
+	static uint32_t tickstart_SerialT = 0;
+#endif
+
+
 	bool available_ch = false;
 	TFrameTransport *ft = NULL;
 	uint32_t indxframe = 0;
@@ -2105,6 +1992,9 @@ void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint
 #endif
 #ifdef Serial1Board
 		case sfpSerial1: available_ch = Serial1_available(); break;
+#endif
+#ifdef SerialTBoard
+		case sfpSerialTelnet: available_ch = SerialT_available(); break;
 #endif
 		default:
 		{
@@ -2132,6 +2022,9 @@ void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint
 #endif
 #ifdef Serial1Board
 			case sfpSerial1: ch = (uint8_t)Serial1_read(); break;
+#endif
+#ifdef SerialTBoard
+			case sfpSerialTelnet: ch = (uint8_t)SerialT_read(); break;
 #endif
 			default:
 			{
@@ -2164,6 +2057,16 @@ void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint
 			indxframe = indxframe_Serial1;
 			indxackframe = indxackframe_Serial1;
 			tickstart = tickstart_Serial1;
+			break;
+		}
+#endif
+#ifdef SerialTBoard
+		case sfpSerialTelnet:
+		{
+			ft = ftSerialT;
+			indxframe = indxframe_SerialT;
+			indxackframe = indxackframe_SerialT;
+			tickstart = tickstart_SerialT;
 			break;
 		}
 #endif
@@ -2323,6 +2226,16 @@ void TXB_board::HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp ,uint
 			break;
 		}
 #endif
+#ifdef SerialTBoard
+		case sfpSerialTelnet:
+		{
+			ftSerialT = ft;
+			indxframe_SerialT = indxframe;
+			indxackframe_SerialT = indxackframe;
+			tickstart_SerialT = tickstart;
+			break;
+		}
+#endif
 		default:
 		{
 			return;
@@ -2389,27 +2302,25 @@ void TXB_board::handle(void)
 #ifdef Serial1Board
 	HandleTransportFrame(false,sfpSerial1);
 #endif
+#ifdef SerialTBoard
+	HandleTransportFrame(true, sfpSerialTelnet);
+#endif
+
 }
 
 void TXB_board::Serial_WriteChar(char Achr)
 {
-	while(1)
-	{
-		if (Serial_availableForWrite()>=1)
-		{
-			Serial_print(Achr);
-			break;
-		}
-		delay(0);
-	}
+#ifdef SerialBoard
+	Serial_print(Achr);
+#endif
+#ifdef SerialTBoard
+	SerialT_print(Achr);
+#endif
 }
 
 void TXB_board::Log(char Achr)
 {
 	if (NoTxCounter==0) TXCounter++;
-#ifdef TELNET_SUPPORT
-	TELNET_writechar(Achr);
-#endif
 	Serial_WriteChar(Achr);
 }
 
@@ -2419,11 +2330,11 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 	if (len == 0) return;
 	int alllen = len;
 
-	if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
+	/*if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
 	while (len > Serial_availableForWrite())
 	{
 		delay(0);
-	}
+	}*/
 	
 	if (NoTxCounter==0) TXCounter += alllen;
 	
@@ -2453,13 +2364,6 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 		}
 	}
 
-#ifdef TELNET_SUPPORT
-	if (puttime) TELNET_writestr((const uint8_t *)txttime.c_str());
-	if (showtaskname) TELNET_writestr((const uint8_t *)taskname.c_str());
-	
-
-	TELNET_writestr((const uint8_t *)Atxt);
-#endif
 	const char *p;
 	
 	if (puttime)
@@ -2499,13 +2403,13 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 			else
 			{
 				len = alllen;
-				if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
+/*				if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
 
 				while (Serial_availableForWrite()<Serial_EmptyTXBufferSize)
 				{
 					delay(0);
 				}
-
+				*/
 			}
 		}
 	}
@@ -2513,22 +2417,11 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 
 void TXB_board::Log(cbufSerial *Acbufserial)
 {
-#ifdef TELNET_SUPPORT
-	uint8_t tmpch;
-	while (Acbufserial->available()>0)
-	{
-		tmpch = Acbufserial->read();
-		TELNET_writechar(tmpch);
-		Serial_WriteChar(tmpch);
-		if (NoTxCounter==0) TXCounter++;
-	}
-#else
 	while (Acbufserial->available()>0)
 	{
 		Serial_WriteChar(Acbufserial->read());
 		if (NoTxCounter==0) TXCounter++;
 	}
-#endif
 }
 
 void TXB_board::Log_TimeStamp()
