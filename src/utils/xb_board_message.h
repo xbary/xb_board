@@ -215,9 +215,49 @@ typedef struct
 	TTypeConfigAction TypeConfigAction;
 } TConfigData;
 //-----------------------------------------------------------------------
+#define BEGIN_MENUITEMNAME(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
+{ \
+switch (Am->Data.MenuData.ActionData.MenuItemData.ItemIndex) \
+{ 
 
-#define DEF_MENUITEMNAME(iditem,nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); break;
+
+#define DEF_MENUITEMNAME(iditem, nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); break;
 #define DEF_MENUITEMNAME_CHECKED(iditem,nameitemstr,boolvalue) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = "[" + String(boolvalue == true ? "*" : " ") + "] "+ String(nameitemstr); break;
+
+#define END_MENUITEMNAME() \
+default: break; \
+} \
+}
+
+
+#define DEF_MENUCAPTION(idmenu,caption) {if (Am->Data.MenuData.IDMenu==idmenu) {*(Am->Data.MenuData.ActionData.MenuCaptionData.PointerString) = caption;}}
+
+
+
+
+
+#define BEGIN_MENUINIT(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
+{ 
+
+#define DEF_MENUINIT(itemcount,currentselect,width) \
+{ \
+Am->Data.MenuData.ActionData.MenuInitData.ItemCount = itemcount;  \
+Am->Data.MenuData.ActionData.MenuInitData.CurrentSelect = currentselect; \
+Am->Data.MenuData.ActionData.MenuInitData.Width = width; \
+}
+
+
+#define END_MENUINIT() \
+}
+
+#define BEGIN_MENUCLICK(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
+{ 
+
+#define EVENT_MENUCLICK(itemindex) if (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex == itemindex) 
+
+#define END_MENUCLICK() \
+}
+
 
 typedef enum {
 	tmaOPEN_MAINMENU, tmaCLOSE_MAINMENU, tmaGET_INIT_MENU, tmaGET_CAPTION_MENU_STRING, tmaGET_ITEM_MENU_STRING, tmaCLICK_ITEM_MENU
