@@ -122,7 +122,7 @@ typedef enum {
 	IM_KEYBOARD,
 	IM_MENU,
 	IM_INPUTDIALOG,
-	IM_CONFIG,
+	IM_CONFIG_SAVE,
 	IM_WINDOW,
 	IM_SD_INIT,
 	IM_SD_DEINIT,
@@ -194,7 +194,7 @@ typedef struct {
 } TWindowData;
 
 //-----------------------------------------------------------------------
-typedef enum {
+/*typedef enum {
 	tcaWRITE_VAR, tcaREAD_VAR, tcaREADED_VAR
 } TTypeConfigAction;
 
@@ -213,7 +213,8 @@ typedef struct
 	uint8_t Size;
 	TIDConfig ID;
 	TTypeConfigAction TypeConfigAction;
-} TConfigData;
+} TConfigData; 
+*/
 //-----------------------------------------------------------------------
 #define BEGIN_MENUITEMNAME(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
 { \
@@ -397,7 +398,7 @@ typedef struct
 	TIDMessage IDMessage;
 	union
 	{
-		TConfigData ConfigData;
+		//TConfigData ConfigData;
 		TKeyboardData KeyboardData;
 		TMenuData MenuData;
 		TInputDialogData InputDialogData;

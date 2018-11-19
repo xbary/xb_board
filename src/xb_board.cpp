@@ -11,9 +11,9 @@ _client->abort();
 }
 */
 
-TXB_board board(TASK_COUNT);
+TXB_board board;
 
-TTaskDef XB_BOARD_DefTask = { &XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage,NULL,0 };
+TTaskDef XB_BOARD_DefTask = {0,&XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage};
 
 volatile uint32_t DateTimeUnix;
 volatile uint32_t DateTimeStart;
@@ -44,13 +44,6 @@ TGADGETMenu *menuHandle0;
 #if defined(ESP8266) 
 Ticker SysTickCount_ticker;
 Ticker DateTimeSecond_ticker;
-//volatile uint32_t SysTickCount;
-#endif
-
-#if defined(ESP32)
-//Ticker SysTickCount_ticker;
-//Ticker DateTimeSecond_ticker;
-//volatile uint32_t SysTickCount;
 #endif
 
 uint32_t Tick_ESCKey = 0;
@@ -162,7 +155,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 			case 0:
 			{
-				Am->Data.MenuData.ActionData.MenuInitData.ItemCount = 1 + TASK_COUNT;
+				Am->Data.MenuData.ActionData.MenuInitData.ItemCount = 1 + board.TaskCount;
 				Am->Data.MenuData.ActionData.MenuInitData.Width = 20;
 				Am->Data.MenuData.ActionData.MenuInitData.CurrentSelect = 0;
 				res = true;
@@ -186,10 +179,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 					uint8_t i = Am->Data.MenuData.ActionData.MenuItemData.ItemIndex - 1;
 					String n = "";
-					if (board.TaskDef[i] != NULL)
+					TTask *t = board.GetTaskByIndex(i);
+					if (t != NULL)
 					{
 
-						if (board.GetTaskName(board.TaskDef[i], n))
+						if (board.GetTaskName(t->TaskDef, n))
 						{
 							n += FSS(" >>>");
 						}
@@ -242,15 +236,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 				String n = "";
 				uint8_t itask = 0;
-				for (uint8_t i = 0; i < TASK_COUNT; i++)
+				for (uint8_t i = 0; i < board.TaskCount; i++)
 				{
-					if (board.TaskDef[i] != NULL)
+					TTask *t = board.GetTaskByIndex(i);
+					if (t != NULL)
 					{
-						if (board.GetTaskName(board.TaskDef[i], n))
+						if (board.GetTaskName(t->TaskDef, n))
 						{
 							if (itask == (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex-1 ))
 							{
-								GUIGADGET_OpenMainMenu(board.TaskDef[i]);
+								GUIGADGET_OpenMainMenu(t->TaskDef);
 								break;
 							}
 							else
@@ -572,7 +567,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				Am->Data.WindowData.ActionData.Create.X = -1;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
 				Am->Data.WindowData.ActionData.Create.Width = 36;
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskDefCount + 12;
+				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 12;
 
 				res = true;
 			} 
@@ -674,12 +669,13 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 						winHandle0->PutStr(15, y, FSS("STATUS"));
 						winHandle0->SetTextColor(tfcGreen);
 						y++;
-						for (int i = 0; i < board.TaskDefCount; i++)
+						for (int i = 0; i < board.TaskCount; i++)
 						{
-							if (board.TaskDef[i] != NULL)
+							TTask *t = board.GetTaskByIndex(i);
+							if (t != NULL)
 							{
 
-								if (board.GetTaskName(board.TaskDef[i], name))
+								if (board.GetTaskName(t->TaskDef, name))
 								{
 									winHandle0->PutStr(0, y + i, name.c_str());
 									name = "";
@@ -736,12 +732,13 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 						y = 8;
 
 						y += 2;
-						for (int i = 0; i < board.TaskDefCount; i++)
+						for (int i = 0; i < board.TaskCount; i++)
 						{
-							if (board.TaskDef[i] != NULL)
+							TTask *t = board.GetTaskByIndex(i);
+							if (t != NULL)
 							{
 
-								if (board.GetTaskStatusString(board.TaskDef[i], name))
+								if (board.GetTaskStatusString(t->TaskDef, name))
 								{
 									winHandle0->PutStr(15, y + i, name.c_str());
 									name = "";
@@ -881,7 +878,7 @@ void XB_BOARD_Setup(void)
 #ifdef XB_GUI
 	ScreenText.Clear();
 #endif
-	board.Log(FSS("Start..."),true,true,&XB_BOARD_DefTask);
+	board.Log(FSS("Start..."),true,true);
 }
 
 uint32_t XB_BOARD_DoLoop(void)
@@ -931,13 +928,17 @@ uint32_t XB_BOARD_DoLoop(void)
 }
 
 //------------------------------------------------------------------------------------------------------------
-TXB_board::TXB_board(uint8_t ATaskDefCount)
+TXB_board::TXB_board()
 {
+	TaskList = NULL;
+	TaskCount = 0;
 	iteratetask_procedure = false;
+	CurrentIterateTask = NULL;
+	CurrentTask = NULL;
 	NoTxCounter = 0;
 	TXCounter = 0;
 
-	TaskDefCount = ATaskDefCount;
+/*	TaskDefCount = ATaskDefCount;
 	TaskDef = new PTaskDef[ATaskDefCount];
 	CurrentTaskDef = NULL;
 
@@ -945,6 +946,7 @@ TXB_board::TXB_board(uint8_t ATaskDefCount)
 	{
 		TaskDef[i] = NULL;
 	}
+*/
 #if defined(ESP8266) || defined(ESP32)
 	SysTickCount_init();
 	DateTimeSecond_init();
@@ -953,9 +955,12 @@ TXB_board::TXB_board(uint8_t ATaskDefCount)
 
 TXB_board::~TXB_board()
 {
-	delete(TaskDef);
-	TaskDef = NULL;
-
+	TTask *t = TaskList;
+	while (t != NULL)
+	{
+		board.DelTask(t->TaskDef);
+		t = TaskList;
+	}
 }
 
 
@@ -1058,11 +1063,69 @@ void TXB_board::Blink_TX(int8_t Auserid)
 	mb.IDMessage = IM_TX_BLINK;
 	mb.Data.BlinkData.UserID = Auserid;
 	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
-	
 }
 
 
-int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
+
+TTask *TXB_board::AddTask(TTaskDef *Ataskdef)
+{
+
+	TTask *t = (TTask *)board._malloc(sizeof(TTask));
+	if (t != NULL)
+	{
+		ADD_TO_LIST_STR(TaskList, TTask, t);
+
+		t->TaskDef = Ataskdef;
+		t->TaskDef->Task = t;
+
+		if (Ataskdef->dosetup != NULL)
+		{
+			if (t->dosetupRC == 0)
+			{
+				t->dosetupRC++;
+				CurrentTask = t;
+				Ataskdef->dosetup();
+				CurrentTask = NULL;
+				t->dosetupRC--;
+			}
+		}
+		TaskCount++;
+		return t;
+	}
+	return NULL;
+}
+
+bool TXB_board::DelTask(TTaskDef *Ataskdef)
+{
+	if (Ataskdef != NULL)
+	{
+		if (Ataskdef->Task != NULL)
+		{
+			DELETE_FROM_LIST_STR(TaskList, Ataskdef->Task);
+
+			board.free(Ataskdef->Task);
+			Ataskdef->Task = NULL;
+			TaskCount--;
+			return true;
+		}
+	}
+	return false;
+}
+
+TTask *TXB_board::GetTaskByIndex(uint8_t Aindex)
+{
+	TTask *t = TaskList;
+	uint8_t i = 0;
+	while (t != NULL)
+	{
+		if (i == Aindex) return t;
+		i++;
+		t = t->Next;
+	}
+	return NULL;
+}
+
+/*int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 {
 	int rez = -1;
 	for (int i = 0; i < TaskDefCount; i++)
@@ -1097,162 +1160,170 @@ int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
 	}
 	return rez;
 }
-
+*/
 void TXB_board::IterateTask(void)
 {
+	TTask *t = TaskList;
 	iteratetask_procedure = true;
-	static uint32_t CurrentIndxRunTask = 0;
-
-	// Sprawdzenie czy uruchomiæ przerwanie
-	for (int i = 0; i < TaskDefCount; i++)
 	{
-		if (TaskDef[i] != NULL)
+		// Sprawdzenie czy uruchomiæ przerwanie
 		{
-			if (TaskDef[i]->dointerrupt != NULL)
+			bool isint = false;
+			while (t != NULL)
 			{
-				if (TaskDef[i]->dointerruptRC > 0)
+				if (t->TaskDef->dointerrupt != NULL)
 				{
-					TaskDef[i]->dointerrupt();
-					TaskDef[i]->dointerruptRC--;
-					iteratetask_procedure = false;
-					return;
-				}
-			}
-		}
-	}
-
-	for (int i = 0; i < TaskDefCount; i++)
-	{
-		if (TaskDef[i] != NULL)
-		{
-			if (TaskDef[i]->TickWaitLoop != 0)
-			{
-				if (TaskDef[i]->TickReturn != 0)
-				{
-					if (SysTickCount - TaskDef[i]->TickReturn >= TaskDef[i]->TickWaitLoop)
+					if (t->dointerruptRC > 0)
 					{
-						if (TaskDef[i]->doloop!=NULL)
+						iteratetask_procedure = false;
+						CurrentTask = t;
+						t->TaskDef->dointerrupt();
+						CurrentTask = NULL;
+						isint = true;
+						t->dointerruptRC--;
+						iteratetask_procedure = true;
+					}
+				}
+				t = t->Next;
+			}
+			if (isint) return;
+		}
+		//--------------------------------------
+		t = TaskList;
+		// Sprawdzenie czy w którymœ zadaniu min¹³ czas na uruchomienie Loop()
+		{
+			while (t != NULL)
+			{
+				if (t->TaskDef->doloop != NULL)
+				{
+					if (t->TickWaitLoop != 0)
+					{
+						if (SysTickCount - t->TickReturn >= t->TickWaitLoop)
 						{
-							CurrentTaskDef = TaskDef[i];
-							TaskDef[i]->doloopRC--;
-							TaskDef[i]->TickWaitLoop = TaskDef[i]->doloop();
-							TaskDef[i]->TickReturn = SysTickCount;
-							CurrentTaskDef = NULL;
-							TaskDef[i]->doloopRC++;
+							CurrentTask = t;
+							t->doloopRC++;
+							t->TickWaitLoop = t->TaskDef->doloop();
+							t->TickReturn = SysTickCount;
+							CurrentTask  = NULL;
+							t->doloopRC--;
+							return;
 						}
 					}
 				}
+				t = t->Next;
 			}
+
 		}
-	}
+		//--------------------------------------
 
-
-
-
-
-	// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
-	DEF_WAITMS_VAR(GFH);
-	BEGIN_WAITMS(GFH, 500);
-	{
+		// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
+		DEF_WAITMS_VAR(GFH);
+		BEGIN_WAITMS(GFH, 500);
+		{
 #ifdef ESP32
 
-		FreePSRAMInLoop = getFreePSRAM();
-		if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
-		{
-			MinimumFreePSRAMInLoop = FreePSRAMInLoop;
-		}
+			FreePSRAMInLoop = getFreePSRAM();
+			if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
+			{
+				MinimumFreePSRAMInLoop = FreePSRAMInLoop;
+			}
 
 
-		FreeHeapInLoop = getFreeHeap();
-		if (FreeHeapInLoop < MinimumFreeHeapInLoop)
-		{
-			MinimumFreeHeapInLoop = FreeHeapInLoop;
-		}
+			FreeHeapInLoop = getFreeHeap();
+			if (FreeHeapInLoop < MinimumFreeHeapInLoop)
+			{
+				MinimumFreeHeapInLoop = FreeHeapInLoop;
+			}
 
 #else
-		FreeHeapInLoop = getFreeHeap();
-		if (FreeHeapInLoop < MinimumFreeHeapInLoop)
-		{
-			MinimumFreeHeapInLoop = FreeHeapInLoop;
-		}
+			FreeHeapInLoop = getFreeHeap();
+			if (FreeHeapInLoop < MinimumFreeHeapInLoop)
+			{
+				MinimumFreeHeapInLoop = FreeHeapInLoop;
+			}
 #endif
 
-	}
-	END_WAITMS(GFH);
+		}
+		END_WAITMS(GFH);
+		// ----------------------------------------------------------
 
+		// jeœli bufor nadawczy jest zape³niony to nie uruchamiaj zadañ
+		if (Serial_availableForWrite() < Serial_EmptyTXBufferSize) return;
+		// ------------------------------------------------------------
 
-	if (Serial_availableForWrite() < Serial_EmptyTXBufferSize) return;
-
-	// Uruchomienie zadañ w tzw realtime
-	for (int i = 0; i < TaskDefCount; i++)
-	{
-		if (TaskDef[i] != NULL)
+		t = TaskList;
+		// Uruchomienie zadañ tzw realtime
 		{
-			if (TaskDef[i]->doloop != NULL)
+			while (t != NULL)
 			{
-				if (TaskDef[i]->Priority == 0)
+				if (t->TaskDef->doloop != NULL)
 				{
-					if (TaskDef[i]->doloopRC == 0)
+					if (t->TaskDef->Priority == 0)
 					{
-						if (TaskDef[i]->TickWaitLoop == 0)
+						if (t->TickWaitLoop == 0)
 						{
-
-							CurrentTaskDef = TaskDef[i];
-							TaskDef[i]->doloopRC--;
-							TaskDef[i]->TickWaitLoop = TaskDef[i]->doloop();
-							TaskDef[i]->TickReturn = SysTickCount;
-							CurrentTaskDef = NULL;
-							TaskDef[i]->doloopRC++;
-						
+							CurrentTask = t;
+							t->doloopRC++;
+							t->TickWaitLoop = t->TaskDef->doloop();
+							t->TickReturn = SysTickCount;
+							CurrentTask = NULL;
+							t->doloopRC--;
 						}
 					}
 				}
+				t = t->Next;
 			}
+
 		}
-	}
-	// Sprawdzenie czy zdefiniowano zadanie
-	if (TaskDef[CurrentIndxRunTask] != NULL)
-	{
-		if (TaskDef[CurrentIndxRunTask]->doloop != NULL)
+		//--------------------------------------
+
+		t = CurrentIterateTask;
+		if (t == NULL) t = TaskList;
+		
+		// Uruchomienie zadañ z podzia³em na priorytety
 		{
-			if (TaskDef[CurrentIndxRunTask]->doloopRC == 0)
+			while (t != NULL)
 			{
-				if (TaskDef[CurrentIndxRunTask]->Priority > 0)
+				if (t->TaskDef->doloop != NULL)
 				{
-					TaskDef[CurrentIndxRunTask]->CounterPriority++;
-					if (TaskDef[CurrentIndxRunTask]->CounterPriority >= TaskDef[CurrentIndxRunTask]->Priority)
+					if (t->TaskDef->Priority > 0)
 					{
-						TaskDef[CurrentIndxRunTask]->CounterPriority = 0;
-						if (TaskDef[CurrentIndxRunTask]->TickWaitLoop == 0)
+						if (t->TickWaitLoop == 0)
 						{
-							CurrentTaskDef = TaskDef[CurrentIndxRunTask];
-							TaskDef[CurrentIndxRunTask]->doloopRC--;
-							TaskDef[CurrentIndxRunTask]->TickWaitLoop = TaskDef[CurrentIndxRunTask]->doloop();
-							TaskDef[CurrentIndxRunTask]->TickReturn = SysTickCount;
-							CurrentTaskDef = NULL;
-							TaskDef[CurrentIndxRunTask]->doloopRC++;
-							
+							t->CounterPriority++;
+							if (t->CounterPriority >= t->TaskDef->Priority)
+							{
+								t->CounterPriority = 0;
+								CurrentTask = t;
+								t->doloopRC++;
+								t->TickWaitLoop = t->TaskDef->doloop();
+								t->TickReturn = SysTickCount;
+								CurrentTask = NULL;
+								t->doloopRC--;
+								CurrentIterateTask = t->Next;
+								return;
+							}
 						}
 					}
 				}
+				t = t->Next;
 			}
 		}
-
-		CurrentIndxRunTask++;
-		if (CurrentIndxRunTask >= TaskDefCount)
-		{
-			CurrentIndxRunTask = 0;
-		}
+		//--------------------------------------
 	}
-	else
-	{
-		CurrentIndxRunTask = 0;
-	}
+	iteratetask_procedure = false;
 }
+
 
 void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 {
-	Ataskdef->dointerruptRC++;
+	if (Ataskdef != NULL)
+	{
+		if (Ataskdef->Task != NULL)
+		{
+			Ataskdef->Task->dointerruptRC++;
+		}
+	}
 }
 
 bool TXB_board::GetTaskString(TMessageBoard *Amb,TTaskDef *ATaskDef, String &APointerString)
@@ -1318,9 +1389,12 @@ void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey,T
 	else
 	{
 		SendMessageToAllTask(&mb, doONLYINTERESTED);
-		if (Ataskdef->domessageRC > 0)
+		if (Ataskdef->Task != NULL)
 		{
-			SendMessageToTask(Ataskdef, &mb, true);
+			if (Ataskdef->Task->domessageRC > 0)
+			{
+				SendMessageToTask(Ataskdef, &mb, true);
+			}
 		}
 	}
 }
@@ -1350,23 +1424,26 @@ bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb,bool Aru
 	bool res = false;
 	if (ATaskDef != NULL)
 	{
-		if (ATaskDef->domessage != NULL)
+		if (ATaskDef->Task != NULL)
 		{
-			
-			if ((ATaskDef->domessageRC == 0) || (Arunagain==true))
+			if (ATaskDef->domessage != NULL)
 			{
-				ATaskDef->domessageRC++;
+
+				if ((ATaskDef->Task->domessageRC == 0) || (Arunagain == true))
 				{
-					res = ATaskDef->domessage(mb);
+					ATaskDef->Task->domessageRC++;
+					{
+						res = ATaskDef->domessage(mb);
+					}
+					ATaskDef->Task->domessageRC--;
 				}
-				ATaskDef->domessageRC--;
 			}
 		}
 	}
 	return res;
 }
 
-bool TXB_board::SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool Arunagain)
+/*bool TXB_board::SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool Arunagain)
 {
 	bool res = false;
 
@@ -1382,30 +1459,33 @@ bool TXB_board::SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool A
 		}
 	}
 	return res;
-}
+}*/
 
 bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain)
 {
+	TTask *t = TaskList;
 	bool res = false;
 	String tn;
-	for (int i = 0; i < TaskDefCount; i++)
+
+	while (t != NULL)
 	{
-		if (TaskDef[i] != NULL)
+		if (t->TaskDef != NULL)
 		{
-			if (TaskDef[i]->domessage != NULL)
+			if (t->TaskDef->domessage)
 			{
 				tn = "";
-				if (GetTaskName(TaskDef[i], tn))
+				if (GetTaskName(t->TaskDef, tn))
 				{
 					if (Ataskname == tn)
 					{
-						return SendMessageToTask(TaskDef[i], mb, Arunagain);
+						return SendMessageToTask(t->TaskDef, mb, Arunagain);
 					}
 				}
 			}
 		}
+		t = t->Next;
 	}
-	return res;
+	return false;
 }
 
 
@@ -1425,29 +1505,30 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 		case doONLYINTERESTED:
 		{
 			uint8_t isinterested = 0;
-			for (int i = 0; i < TaskDefCount; i++)
+			TTask *t = TaskList;
+			while(t!=NULL)
 			{
-				if (TaskDef[i] != NULL)
+				if (t->TaskDef != NULL)
 				{
-					if (Aexcludetask != TaskDef[i])
+					if (Aexcludetask != t->TaskDef)
 					{
-						if (TaskDef[i]->domessage != NULL)
+						if (t->TaskDef->domessage != NULL)
 						{
-							if (TaskDef[i]->domessageRC == 0)
+							if (t->domessageRC == 0)
 							{
-								if (TaskDef[i]->LastIDMessage == mb->IDMessage)
+								if (t->LastIDMessage == mb->IDMessage)
 								{
 									isinterested++;
 
-									TaskDef[i]->domessageRC++;
+									t->domessageRC++;
 									{
-										res = TaskDef[i]->domessage(mb);
+										res = t->TaskDef->domessage(mb);
 									}
-									TaskDef[i]->domessageRC--;
+									t->domessageRC--;
 
 									if (!res)
 									{
-										TaskDef[i]->LastIDMessage = IM_IDLE;
+										t->LastIDMessage = IM_IDLE;
 										isinterested--;
 									}
 
@@ -1456,28 +1537,30 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 						}
 					}
 				}
+				t = t->Next;
 			}
 			if (isinterested == 0)
 			{
-				for (int i = 0; i < TaskDefCount; i++)
+				t = TaskList;
+				while(t!=NULL)
 				{
-					if (TaskDef[i] != NULL)
+					if (t->TaskDef != NULL)
 					{
-						if (Aexcludetask != TaskDef[i])
+						if (Aexcludetask != t->TaskDef)
 						{
-							if (TaskDef[i]->domessage != NULL)
+							if (t->TaskDef->domessage != NULL)
 							{
-								if (TaskDef[i]->domessageRC == 0)
+								if (t->domessageRC == 0)
 								{
 
 									//if (TaskDef[i]->LastIDMessage == mb->IDMessage)
 									{
 
-										TaskDef[i]->domessageRC++;
+										t->domessageRC++;
 										{
-											res = TaskDef[i]->domessage(mb);
+											res = t->TaskDef->domessage(mb);
 										}
-										TaskDef[i]->domessageRC--;
+										t->domessageRC--;
 
 										if (res)
 										{
@@ -1490,59 +1573,72 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 							}
 						}
 					}
+					t = t->Next;
 				}
 			}
 			break;
 		}
 		case doFORWARD:
 		{
-			for (int i = 0; i < TaskDefCount; i++)
+			TTask *t = TaskList;
+			while (t!=NULL)
 			{
-				if (TaskDef[i] != NULL)
+				if (t->TaskDef != NULL)
 				{
-					if (Aexcludetask != TaskDef[i])
+					if (Aexcludetask != t->TaskDef)
 					{
-						if (TaskDef[i]->domessage != NULL)
+						if (t->TaskDef->domessage != NULL)
 						{
-							if (TaskDef[i]->domessageRC == 0)
+							if (t->domessageRC == 0)
 							{
-								TaskDef[i]->domessageRC++;
+								t->domessageRC++;
 								{
-									res = TaskDef[i]->domessage(mb);
+									res = t->TaskDef->domessage(mb);
 								}
-								TaskDef[i]->domessageRC--;
+								t->domessageRC--;
 								//if (res) break;
 							}
 						}
 					}
 				}
+				t = t->Next;
 			}
 			break;
 		}
 
 		case doBACKWARD:
 		{
-			for (int i = TaskDefCount - 1; i > -1; i--)
+			TTask *t = TaskList;
+			while (t != NULL) 
+			{ 
+				if (t->Next == NULL) break;
+				t = t->Next; 
+			}
+
+			
+
+			while (t != NULL)
 			{
-				if (TaskDef[i] != NULL)
+				if (t->TaskDef != NULL)
 				{
-					if (Aexcludetask != TaskDef[i])
+					if (Aexcludetask != t->TaskDef)
 					{
 
-						if (TaskDef[i]->domessage != NULL)
+						if (t->TaskDef->domessage != NULL)
 						{
-							if (TaskDef[i]->domessageRC == 0)
+							if (t->domessageRC == 0)
 							{
-								TaskDef[i]->domessageRC++;
+								t->domessageRC++;
 								{
-									res = TaskDef[i]->domessage(mb);
+									res = t->TaskDef->domessage(mb);
 								}
-								TaskDef[i]->domessageRC--;
+								t->domessageRC--;
 								//if (res) break;
 							}
 						}
 					}
 				}
+				t = t->Prev;
 			}
 			break;
 		}
@@ -1720,15 +1816,35 @@ uint32_t TXB_board::getFreePSRAM()
 	return ESP.getFreeHeap();
 #endif
 }
-
-void *TXB_board::malloc_psram(size_t size)
+#if !defined(_VMICRO_INTELLISENSE)
+void *TXB_board::_malloc_psram(size_t size)
 {
 #ifdef BOARD_HAS_PSRAM
-	return heap_caps_malloc(size,MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+	void *ptr= heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
 #else
-	return malloc(size);
+	void *ptr = malloc(size);
 #endif
+	if (ptr != NULL)
+	{
+		xb_memoryfill(ptr, size, 0);
+	}
+	return ptr;
+
 }
+#endif
+
+#if !defined(_VMICRO_INTELLISENSE)
+void *TXB_board::_malloc(size_t size)
+{
+	void *ptr = malloc(size);
+	if (ptr != NULL)
+	{
+		xb_memoryfill(ptr, size, 0);
+	}
+	return ptr;
+
+}
+#endif
 
 #endif
 
@@ -1744,6 +1860,12 @@ void TXB_board::free(void *Aptr)
 	mb.Data.FreePTR = Aptr;
 	SendMessageToAllTask(&mb, doBACKWARD);
 	___free(Aptr);
+}
+
+void TXB_board::freeandnull(void **Aptr)
+{
+	free(*Aptr);
+	*Aptr = NULL;
 }
 
 uint32_t TXB_board::getFreeHeap()
@@ -2318,13 +2440,13 @@ void TXB_board::Serial_WriteChar(char Achr)
 #endif
 }
 
-void TXB_board::Log(char Achr)
+void TXB_board::Log(char Achr, TTypeLog Atl)
 {
 	if (NoTxCounter==0) TXCounter++;
 	Serial_WriteChar(Achr);
 }
 
-void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef *Ataskdef)
+void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog Atl, TTaskDef *Ataskdef)
 {
 	int len = StringLength((char *)Atxt, 0);
 	if (len == 0) return;
@@ -2351,7 +2473,10 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 	{
 		if (Ataskdef == NULL)
 		{
-			Ataskdef = CurrentTaskDef;
+			if (CurrentTask != NULL)
+			{
+				Ataskdef = CurrentTask->TaskDef;
+			}
 		}
 		if (Ataskdef != NULL)
 		{
@@ -2415,7 +2540,7 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTaskDef 
 	}
 }
 
-void TXB_board::Log(cbufSerial *Acbufserial)
+void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
 {
 	while (Acbufserial->available()>0)
 	{

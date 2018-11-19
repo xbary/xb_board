@@ -53,16 +53,25 @@ typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError } TFram
 typedef enum { sfpLocal, sfpSerial, sfpSerialBT, sfpSerial1, sfpSerial2, sfpSerialTelnet} TSendFrameProt;
 
 #include <utils\xb_board_message.h>
+struct TTask;
 
 typedef struct
 {
+	uint8_t Priority;
 	void(*dosetup)(void);
 	uint32_t(*doloop)(void);
 	bool(*domessage)(TMessageBoard *);
 	void(*dointerrupt)(void);
-	uint8_t Priority;
+	TTask *Task;
+} TTaskDef;
+
+struct TTask
+{
+	TTask *Next;
+	TTask *Prev;
+	TTaskDef *TaskDef;
 	uint8_t CounterPriority;
-	uint8_t IDTask;
+//	uint8_t IDTask;
 	TIDMessage LastIDMessage;
 
 	int8_t dosetupRC;
@@ -71,7 +80,7 @@ typedef struct
 	int32_t dointerruptRC;
 	uint32_t TickReturn;
 	uint32_t TickWaitLoop;
-} TTaskDef;
+};
 
 typedef TTaskDef * PTaskDef;
 
@@ -125,11 +134,12 @@ typedef struct
 } TFrameTransportACK;
 #pragma pack(pop)
 
+typedef enum { tlInfo = 0, tlWarn, tlError } TTypeLog;
 
 class TXB_board
 {
 public:
-	TXB_board(uint8_t ATaskDefCount);
+	TXB_board();
 	~TXB_board();
 
 	uint32_t LastActiveTelnetClientTick;
@@ -142,9 +152,10 @@ public:
 	void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
 	void handle(void);
 	void Serial_WriteChar(char Achr);
-	void Log(char Achr);
-	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTaskDef *Ataskdef=NULL);
-	void Log(cbufSerial *Acbufserial);
+
+	void Log(char Achr, TTypeLog Atl=tlInfo);
+	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTypeLog Atl = tlInfo, TTaskDef *Ataskdef=NULL);
+	void Log(cbufSerial *Acbufserial, TTypeLog Atl = tlInfo);
 	void Log_TimeStamp();
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
@@ -170,10 +181,15 @@ public:
 	void PrintTimeFromRun(void);
 	void PrintDiag(void);
 
-	PTaskDef *TaskDef;
-	uint8_t TaskDefCount;
-	TTaskDef *CurrentTaskDef;
-	int DefTask(TTaskDef *Ataskdef, uint8_t Aid);
+	TTask *TaskList;
+	uint8_t TaskCount;
+
+	TTask *CurrentTask;
+	TTask *CurrentIterateTask;
+
+	TTask *AddTask(TTaskDef *Ataskdef);
+	bool DelTask(TTaskDef *Ataskdef);
+	TTask *GetTaskByIndex(uint8_t Aindex);
 	void IterateTask(void);
 	void DoInterrupt(TTaskDef *Ataskdef);
 
@@ -185,7 +201,6 @@ public:
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey);
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Ataskdef, bool Aexcludethistask = false);
 	bool SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb, bool Arunagain=false);
-	bool SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool Arunagain = false);
 	bool SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain = false);
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
@@ -199,9 +214,11 @@ public:
 
 	uint32_t getFreePSRAM();
 
-	void *malloc_psram(size_t size);
+	void *_malloc_psram(size_t size);
+	void *_malloc(size_t size);
 #endif
 	void free(void *Aptr);
+	void freeandnull(void **Aptr);
 	uint32_t FreeHeapInLoop;
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
@@ -244,7 +261,7 @@ uint32_t XB_BOARD_DoLoop(void);
 void XB_BOARD_Setup(void);
 bool XB_BOARD_DoMessage(TMessageBoard *Am);
 
-#define XB_BOARD_SETUP(Aid) board.DefTask(&XB_BOARD_DefTask, Aid)
+#define XB_BOARD_SETUP() board.AddTask(&XB_BOARD_DefTask)
 #define XB_BOARD_LOOP() board.IterateTask()
 
 #ifndef BOARD_CRITICALFREEHEAP
