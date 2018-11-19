@@ -38,6 +38,7 @@ TWindowClass *winHandle0;
 #ifdef XB_GUIGADGET
 #include <xb_GUI_Gadget.h>
 TGADGETMenu *menuHandle0;
+TGADGETMenu *menuHandle1;
 #endif
 
 //------------------------------------------------------------------------------------------------------------
@@ -149,71 +150,79 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	{
 		switch (Am->Data.MenuData.TypeMenuAction)
 		{
+		case tmaOPEN_MAINMENU:
+		{
+			menuHandle1 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 1);
+			res = true;
+			break;
+		}
 		case tmaGET_INIT_MENU:
 		{
-			switch (Am->Data.MenuData.IDMenu)
+			BEGIN_MENUINIT(0);
 			{
-			case 0:
-			{
-				Am->Data.MenuData.ActionData.MenuInitData.ItemCount = 1 + board.TaskCount;
-				Am->Data.MenuData.ActionData.MenuInitData.Width = 20;
-				Am->Data.MenuData.ActionData.MenuInitData.CurrentSelect = 0;
+				DEF_MENUINIT(board.TaskCount, 0, 20);
 				res = true;
 			}
-			default: break;
+			END_MENUINIT();
+			BEGIN_MENUINIT(1);
+			{
+				DEF_MENUINIT(1, 0, 15);
+				res = true;
 			}
+			END_MENUINIT();
 			break;
 		}
 		case tmaGET_ITEM_MENU_STRING:
 		{
-			switch (Am->Data.MenuData.IDMenu)
+			BEGIN_MENUITEMNAME(0);
 			{
-			case 0:
-			{
-
-				switch (Am->Data.MenuData.ActionData.MenuItemData.ItemIndex)
-				{
-					DEF_MENUITEMNAME(0, FSS("Restart MCU"));
-				default:
+				String n = "";
+				TTask *t = board.GetTaskByIndex(MenuItemIndex);
+				if (t != NULL)
 				{
 
-					uint8_t i = Am->Data.MenuData.ActionData.MenuItemData.ItemIndex - 1;
-					String n = "";
-					TTask *t = board.GetTaskByIndex(i);
-					if (t != NULL)
+					if (board.GetTaskName(t->TaskDef, n))
 					{
-
-						if (board.GetTaskName(t->TaskDef, n))
-						{
-							n += FSS(" >>>");
-						}
-						else
-						{
-							n = FSS("task no menu!");
-						}
+						n += FSS(" >>>");
 					}
 					else
 					{
-						n = FSS("task null!");
+						n = FSS("task no menu!");
 					}
-					*(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = n.c_str();
-					break;
 				}
+				else
+				{
+					n = FSS("task null!");
 				}
+				*(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = n.c_str();
+
+				res = true;
 			}
+			END_MENUITEMNAME();
+			BEGIN_MENUITEMNAME(1);
+			{
+				DEF_MENUITEMNAME(0, FSS("Restart MCU"));
+				res = true;
 			}
-			res = true;
+			END_MENUITEMNAME();
 			break;
 		}
 		case tmaCLICK_ITEM_MENU:
 		{
-			switch (Am->Data.MenuData.IDMenu)
+			BEGIN_MENUCLICK(0)
 			{
-			case 0:
-			{
-				switch (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex)
+				TTask *t = board.GetTaskByIndex(MenuItemIndex);
+				if (t != NULL)
 				{
-				case 0:
+					bool r = GUIGADGET_OpenMainMenu(t->TaskDef);
+				}
+				res = true;
+				break;
+			}
+			END_MENUCLICK()
+			BEGIN_MENUCLICK(1)
+			{
+				EVENT_MENUCLICK(0)
 				{
 #if defined(ESP8266) || defined(ESP32)
 					ESP.restart();
@@ -223,56 +232,18 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #else
 					board.Log(FSS("\nReset no support!\n"));
 #endif
+					res = true;
 					break;
 				}
-				default:
-				{
-					break;
-				}
-				}
-				res = true;
 			}
-			default: 
-			{
-				String n = "";
-				uint8_t itask = 0;
-				for (uint8_t i = 0; i < board.TaskCount; i++)
-				{
-					TTask *t = board.GetTaskByIndex(i);
-					if (t != NULL)
-					{
-						if (board.GetTaskName(t->TaskDef, n))
-						{
-							if (itask == (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex-1 ))
-							{
-								GUIGADGET_OpenMainMenu(t->TaskDef);
-								break;
-							}
-							else
-							{
-								itask++;
-							}
-						}
-					}
-				}
-				res = true;
-				break;
-			}
-			}
+			END_MENUCLICK()
 			break;
 		}
 		case tmaGET_CAPTION_MENU_STRING:
 		{
-			switch (Am->Data.MenuData.IDMenu)
-			{
-			case 0:
-			{
-
-				*(Am->Data.MenuData.ActionData.MenuCaptionData.PointerString) = FSS("BOARD MAIN MENU");
-				res = true;
-				break;
-			}
-			}
+			DEF_MENUCAPTION(0, FSS("TASK LIST..."));
+			DEF_MENUCAPTION(1, FSS("BOARD MAIN MENU"));
+			res = true;
 			break;
 		}
 		default: break;

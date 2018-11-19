@@ -218,16 +218,13 @@ typedef struct
 //-----------------------------------------------------------------------
 #define BEGIN_MENUITEMNAME(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
 { \
-switch (Am->Data.MenuData.ActionData.MenuItemData.ItemIndex) \
-{ 
+uint8_t MenuItemIndex = Am->Data.MenuData.ActionData.MenuItemData.ItemIndex; 
 
 
-#define DEF_MENUITEMNAME(iditem, nameitemstr) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); break;
-#define DEF_MENUITEMNAME_CHECKED(iditem,nameitemstr,boolvalue) case iditem: *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = "[" + String(boolvalue == true ? "*" : " ") + "] "+ String(nameitemstr); break;
+#define DEF_MENUITEMNAME(iditem, nameitemstr) if (MenuItemIndex == iditem) { *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); }
+#define DEF_MENUITEMNAME_CHECKED(iditem,nameitemstr,boolvalue) if (MenuItemIndex == iditem) { *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = "[" + String(boolvalue == true ? "*" : " ") + "] "+ String(nameitemstr); }
 
 #define END_MENUITEMNAME() \
-default: break; \
-} \
 }
 
 
@@ -252,9 +249,10 @@ Am->Data.MenuData.ActionData.MenuInitData.Width = width; \
 }
 
 #define BEGIN_MENUCLICK(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
-{ 
+{ \
+uint8_t MenuItemIndex = Am->Data.MenuData.ActionData.MenuClickData.ItemIndex; 
 
-#define EVENT_MENUCLICK(itemindex) if (Am->Data.MenuData.ActionData.MenuClickData.ItemIndex == itemindex) 
+#define EVENT_MENUCLICK(itemindex) if (MenuItemIndex == itemindex) 
 
 #define END_MENUCLICK() \
 }
