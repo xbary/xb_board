@@ -52,6 +52,18 @@ extern "C" {
 typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError } TFrameType;
 typedef enum { sfpLocal, sfpSerial, sfpSerialBT, sfpSerial1, sfpSerial2, sfpSerialTelnet} TSendFrameProt;
 
+typedef union
+{
+	uint64_t ID64;
+	uint8_t ID[8];
+	uint8_t MAC[6];
+} TUniqueInt64;
+
+typedef struct
+{
+	TUniqueInt64 ID;
+} TUniqueID;
+
 #include <utils\xb_board_message.h>
 struct TTask;
 
@@ -70,8 +82,12 @@ struct TTask
 	TTask *Next;
 	TTask *Prev;
 	TTaskDef *TaskDef;
+	TTaskDef *StreamTaskDef;
 	uint8_t CounterPriority;
-//	uint8_t IDTask;
+	TUniqueID DeviceID;
+	bool ShowLogInfo;
+	bool ShowLogWarn;
+	bool ShowLogError;
 	TIDMessage LastIDMessage;
 
 	int8_t dosetupRC;
@@ -83,18 +99,6 @@ struct TTask
 };
 
 typedef TTaskDef * PTaskDef;
-
-typedef union 
-{ 
-	uint64_t ID64;
-	uint8_t ID[8];
-	uint8_t MAC[6];
-} TUniqueInt64;
-
-typedef struct 
-{
-	TUniqueInt64 ID;
-} TUniqueID;
 
 #ifdef ESP8266
 #include "xb_board_def.h"
@@ -151,12 +155,20 @@ public:
 	void HandleFrame(TFrameTransport *Aft, TSendFrameProt Asfp);
 	void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
 	void handle(void);
-	void Serial_WriteChar(char Achr);
+
+	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskdef=NULL);
+	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef=NULL);
+	int print(String Atext);
+
+	bool Default_ShowLogInfo;
+	bool Default_ShowLogWarn;
+	bool Default_ShowLogError;
 
 	void Log(char Achr, TTypeLog Atl=tlInfo);
 	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTypeLog Atl = tlInfo, TTaskDef *Ataskdef=NULL);
 	void Log(cbufSerial *Acbufserial, TTypeLog Atl = tlInfo);
 	void Log_TimeStamp();
+
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
 
@@ -179,7 +191,7 @@ public:
 
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
-	void PrintDiag(void);
+	//void PrintDiag(void);
 
 	TTask *TaskList;
 	uint8_t TaskCount;
@@ -187,7 +199,7 @@ public:
 	TTask *CurrentTask;
 	TTask *CurrentIterateTask;
 
-	TTask *AddTask(TTaskDef *Ataskdef);
+	TTask *AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID = 0);
 	bool DelTask(TTaskDef *Ataskdef);
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	void IterateTask(void);
@@ -200,12 +212,15 @@ public:
 	void SendKeyPress(char Akey, TTaskDef *Ataskdef);
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey);
 	void SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Ataskdef, bool Aexcludethistask = false);
+	bool DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, TTaskDef *Atotaskdef);
 	bool SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb, bool Arunagain=false);
+	bool SendMessageToTask(TTaskDef *ATaskDef, TIDMessage AIDmessage, bool Arunagain = false);
 	bool SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain = false);
-	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
-	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask=NULL);
+	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
+	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	void SendResponseFrameOnProt(uint32_t AFrameID, TSendFrameProt ASendFrameProt, TFrameType AframeType, TUniqueID ADeviceID);
 	uint32_t SendFrameToDeviceTask(String Ataskname, TSendFrameProt ASendFrameProt, void *ADataFrame, uint32_t Alength);
+	void SendSaveConfigToAllTask(void);
 
 #if defined(ESP32)
 	uint32_t FreePSRAMInLoop;

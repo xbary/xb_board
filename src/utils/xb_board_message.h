@@ -107,6 +107,7 @@ typedef enum { doFORWARD, doBACKWARD, doONLYINTERESTED } TDoMessageDirection;
 typedef enum {
 	IM_IDLE = 0,
 	IM_GPIO,
+	IM_DELTASK,
 	IM_FREEPTR,
 	IM_RX_BLINK,
 	IM_TX_BLINK,
@@ -119,6 +120,7 @@ typedef enum {
 	IM_GET_TASKSTATUS_STRING,
 	IM_FRAME_RECEIVE,
 	IM_FRAME_RESPONSE,
+	IM_STREAM,
 	IM_KEYBOARD,
 	IM_MENU,
 	IM_INPUTDIALOG,
@@ -145,6 +147,19 @@ typedef struct {
 	ActionData;
 
 } TGpioData;
+
+//-----------------------------------------------------------------------
+typedef enum {
+	saGet, saPut
+} TStreamAction;
+
+typedef struct {
+	TStreamAction StreamAction;
+	void *Data;
+	uint32_t Length;
+	uint32_t LengthResult;
+
+} TStreamData;
 
 //-----------------------------------------------------------------------
 typedef struct {
@@ -193,28 +208,6 @@ typedef struct {
 
 } TWindowData;
 
-//-----------------------------------------------------------------------
-/*typedef enum {
-	tcaWRITE_VAR, tcaREAD_VAR, tcaREADED_VAR
-} TTypeConfigAction;
-
-typedef enum { tcvNULL = 255, tcvArrayChar = 0, tcvString = 1, tcvInt32 = 2, tcvStringIP = 3 } TTypeConfigVar;
-
-typedef struct
-{
-	uint8_t IDTask:4;
-	uint8_t TypeVar:2;
-	uint16_t IDVar:10;
-} TIDConfig;
-
-typedef struct
-{
-	void *PointerData;
-	uint8_t Size;
-	TIDConfig ID;
-	TTypeConfigAction TypeConfigAction;
-} TConfigData; 
-*/
 //-----------------------------------------------------------------------
 #define BEGIN_MENUITEMNAME(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
 { \
@@ -298,6 +291,25 @@ typedef struct
 	} ActionData;
 } TMenuData;
 //-----------------------------------------------------------------------
+
+#define BEGIN_INPUTDIALOGINIT(iddialog) if (Am->Data.InputDialogData.IDInputDialog==iddialog) \
+{ 
+
+#define DEF_INPUTDIALOGINIT(ATypeInputVar,AMaxLength,ADataPointer) \
+{ \
+Am->Data.InputDialogData.ActionData.InputDialogInitData.TypeInputVar = ATypeInputVar; \
+Am->Data.InputDialogData.ActionData.InputDialogInitData.MaxLength = AMaxLength; \
+Am->Data.InputDialogData.ActionData.InputDialogInitData.DataPointer = ADataPointer; \
+}
+
+#define END_INPUTDIALOGINIT() \
+}
+
+#define DEF_INPUTDIALOGCAPTION(idinputdialog,caption) {if (Am->Data.InputDialogData.IDInputDialog==idinputdialog) {*(Am->Data.InputDialogData.ActionData.InputDialogCaptionData.PointerString) = caption;}}
+
+#define DEF_INPUTDIALOGDESCRIPTION(idinputdialog,description) {if (Am->Data.InputDialogData.IDInputDialog==idinputdialog) {*(Am->Data.InputDialogData.ActionData.InputDialogDescriptionData.PointerString) = description;}}
+
+
 typedef enum {
 	ida_INIT_INPUTDIALOG,
 	ida_GET_CAPTION_STRING,
@@ -390,10 +402,11 @@ typedef struct
 } TKeyboardData;
 
 //-----------------------------------------------------------------------
-
+struct TTask;
 typedef struct
 {
 	TIDMessage IDMessage;
+	TTask *fromTask;
 	union
 	{
 		//TConfigData ConfigData;
@@ -402,6 +415,7 @@ typedef struct
 		TInputDialogData InputDialogData;
 		TWindowData WindowData;
 		TGpioData GpioData;
+		TStreamData StreamData;
 		TBlinkData BlinkData;
 		TFrameReceiveData FrameReceiveData;
 		TFrameResponseData FrameResponseData;

@@ -166,7 +166,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			END_MENUINIT();
 			BEGIN_MENUINIT(1);
 			{
-				DEF_MENUINIT(1, 0, 15);
+				DEF_MENUINIT(2, 0, 15);
 				res = true;
 			}
 			END_MENUINIT();
@@ -194,14 +194,15 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					n = FSS("task null!");
 				}
-				*(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = n.c_str();
-
+				DEF_MENUITEMNAME(MenuItemIndex, n);
 				res = true;
 			}
 			END_MENUITEMNAME();
+
 			BEGIN_MENUITEMNAME(1);
 			{
 				DEF_MENUITEMNAME(0, FSS("Restart MCU"));
+				DEF_MENUITEMNAME(1, FSS("Save All Config..."));
 				res = true;
 			}
 			END_MENUITEMNAME();
@@ -220,6 +221,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				break;
 			}
 			END_MENUCLICK()
+
 			BEGIN_MENUCLICK(1)
 			{
 				EVENT_MENUCLICK(0)
@@ -234,6 +236,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #endif
 					res = true;
 					break;
+				}
+				EVENT_MENUCLICK(1)
+				{
+					board.SendSaveConfigToAllTask();
 				}
 			}
 			END_MENUCLICK()
@@ -612,6 +618,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					{
 						TUniqueID ID = board.GetUniqueID();
 						char strid[25];
+						xb_memoryfill(strid, 25, 0);
 						
 						uint8tohexstr(strid,(uint8_t *)&ID, 8,':');
 
@@ -740,6 +747,43 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 		*(Am->Data.PointerString) = FSS("...");
 		res = true;
+	}
+	case IM_STREAM:
+	{
+		switch (Am->Data.StreamData.StreamAction)
+		{
+		case saGet:
+		{
+			int av = Serial.available();
+			if (av > 0)
+			{
+				uint8_t ch = 0;
+				uint8_t count = 0;
+				while (av > 0)
+				{
+					ch = (uint8_t)Serial.read();
+					((uint8_t *)Am->Data.StreamData.Data)[count] = ch;
+					count++;
+					if (count >= Am->Data.StreamData.Length) break;
+					av = Serial.available();
+				}
+				Am->Data.StreamData.LengthResult = count;
+			}
+			else
+			{
+				Am->Data.StreamData.LengthResult = 0;
+			}
+			res = true;
+			break;
+		}
+		case saPut:
+		{
+			Am->Data.StreamData.LengthResult = Serial.write((uint8_t *)Am->Data.StreamData.Data, Am->Data.StreamData.Length);
+			res = true;
+			break;
+		}
+		}
+		break;
 	}
 	default:;
 	}
@@ -908,16 +952,10 @@ TXB_board::TXB_board()
 	CurrentTask = NULL;
 	NoTxCounter = 0;
 	TXCounter = 0;
+	Default_ShowLogInfo = true;
+	Default_ShowLogWarn = true;
+	Default_ShowLogError = true;
 
-/*	TaskDefCount = ATaskDefCount;
-	TaskDef = new PTaskDef[ATaskDefCount];
-	CurrentTaskDef = NULL;
-
-	for (int i = 0; i < TaskDefCount; i++)
-	{
-		TaskDef[i] = NULL;
-	}
-*/
 #if defined(ESP8266) || defined(ESP32)
 	SysTickCount_init();
 	DateTimeSecond_init();
@@ -929,11 +967,10 @@ TXB_board::~TXB_board()
 	TTask *t = TaskList;
 	while (t != NULL)
 	{
-		board.DelTask(t->TaskDef);
+		DelTask(t->TaskDef);
 		t = TaskList;
 	}
 }
-
 
 bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 {
@@ -1036,9 +1073,7 @@ void TXB_board::Blink_TX(int8_t Auserid)
 	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
 }
 
-
-
-TTask *TXB_board::AddTask(TTaskDef *Ataskdef)
+TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 {
 
 	TTask *t = (TTask *)board._malloc(sizeof(TTask));
@@ -1048,19 +1083,34 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef)
 
 		t->TaskDef = Ataskdef;
 		t->TaskDef->Task = t;
+		t->StreamTaskDef = &XB_BOARD_DefTask;
+		t->ShowLogInfo = Default_ShowLogInfo;
+		t->ShowLogWarn = Default_ShowLogWarn;
+		t->ShowLogError = Default_ShowLogError;
+		if (ADeviceID != 0)
+		{
+			t->DeviceID.ID.ID64 = ADeviceID;
+		}
+		else
+		{
+			t->DeviceID.ID.ID64 = board.GetUniqueID().ID.ID64;
+		}
+
+
+		TaskCount++;
 
 		if (Ataskdef->dosetup != NULL)
 		{
 			if (t->dosetupRC == 0)
 			{
 				t->dosetupRC++;
+				TTask *lastcurrenttask = CurrentTask;
 				CurrentTask = t;
 				Ataskdef->dosetup();
-				CurrentTask = NULL;
+				CurrentTask = lastcurrenttask;
 				t->dosetupRC--;
 			}
 		}
-		TaskCount++;
 		return t;
 	}
 	return NULL;
@@ -1072,8 +1122,8 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 	{
 		if (Ataskdef->Task != NULL)
 		{
+			SendMessageToTask(Ataskdef, IM_DELTASK,true);
 			DELETE_FROM_LIST_STR(TaskList, Ataskdef->Task);
-
 			board.free(Ataskdef->Task);
 			Ataskdef->Task = NULL;
 			TaskCount--;
@@ -1096,42 +1146,6 @@ TTask *TXB_board::GetTaskByIndex(uint8_t Aindex)
 	return NULL;
 }
 
-/*int TXB_board::DefTask(TTaskDef *Ataskdef,uint8_t Aid)
-{
-	int rez = -1;
-	for (int i = 0; i < TaskDefCount; i++)
-	{
-		if (TaskDef[i] == NULL)
-		{
-			TaskDef[i] = Ataskdef;
-			Ataskdef->IDTask = Aid;
-			Ataskdef->dointerruptRC = 0;
-			if (TaskDef[i]->dosetup != NULL)
-			{
-				if (TaskDef[i]->dosetupRC == 0)
-				{
-					TaskDef[i]->dosetupRC++;
-					CurrentTaskDef = TaskDef[i];
-
-					{
-						TaskDef[i]->dosetup();
-					}
-					CurrentTaskDef = NULL;
-					TaskDef[i]->dosetupRC--;
-				}
-			}
-			rez= i;
-			break;
-
-		}
-	}
-	if (rez == -1)
-	{
-		Log(FSS("Out Of Task Table.\n"));
-	}
-	return rez;
-}
-*/
 void TXB_board::IterateTask(void)
 {
 	TTask *t = TaskList;
@@ -1285,7 +1299,6 @@ void TXB_board::IterateTask(void)
 	iteratetask_procedure = false;
 }
 
-
 void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 {
 	if (Ataskdef != NULL)
@@ -1334,7 +1347,6 @@ void TXB_board::SendMessageOTAUpdateStarted()
 	mb.Data.uData64 = 0;
 	SendMessageToAllTask(&mb, doBACKWARD);
 }
-
 
 void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction,char Akey)
 {
@@ -1390,23 +1402,27 @@ void TXB_board::SendKeyPress(char Akey, TTaskDef *Ataskdef)
 	SendMessageToTask(Ataskdef,&mb, true);
 }
 
-bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb,bool Arunagain)
+bool TXB_board::DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, TTaskDef *Atotaskdef)
 {
 	bool res = false;
-	if (ATaskDef != NULL)
+	if (Atotaskdef != NULL)
 	{
-		if (ATaskDef->Task != NULL)
+		if (Atotaskdef->Task != NULL)
 		{
-			if (ATaskDef->domessage != NULL)
+			if (Atotaskdef->domessage != NULL)
 			{
 
-				if ((ATaskDef->Task->domessageRC == 0) || (Arunagain == true))
+				if ((Atotaskdef->Task->domessageRC == 0) || (Arunagain == true))
 				{
-					ATaskDef->Task->domessageRC++;
+					Atotaskdef->Task->domessageRC++;
 					{
-						res = ATaskDef->domessage(mb);
+						TTask *lt = CurrentTask;
+						CurrentTask = Atotaskdef->Task;
+						mb->fromTask = Afromtask;
+						res = Atotaskdef->domessage(mb);
+						CurrentTask = lt;
 					}
-					ATaskDef->Task->domessageRC--;
+					Atotaskdef->Task->domessageRC--;
 				}
 			}
 		}
@@ -1414,24 +1430,17 @@ bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb,bool Aru
 	return res;
 }
 
-/*bool TXB_board::SendMessageToTaskByID(uint8_t Aidtask, TMessageBoard *mb, bool Arunagain)
+bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb,bool Arunagain)
 {
-	bool res = false;
-
-	for (int i = 0; i < TaskDefCount; i++)
-	{
-		if (TaskDef[i] != NULL)
-		{
-			if (TaskDef[i]->IDTask == Aidtask)
-			{
-				res = SendMessageToTask(TaskDef[i], mb, true);
-				if (res) break;
-			}
-		}
-	}
-	return res;
-}*/
-
+	return DoMessage(mb, Arunagain, CurrentTask, ATaskDef);
+}
+bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TIDMessage AIDmessage, bool Arunagain)
+{
+	TMessageBoard mb;
+	mb.IDMessage = AIDmessage;
+	mb.Data.uData32 = 0;
+	return SendMessageToTask(ATaskDef, &mb, Arunagain);
+}
 bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain)
 {
 	TTask *t = TaskList;
@@ -1459,7 +1468,6 @@ bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, boo
 	return false;
 }
 
-
 bool TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
 {
 	TMessageBoard mb;
@@ -1483,27 +1491,14 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-						if (t->TaskDef->domessage != NULL)
+						if (t->LastIDMessage == mb->IDMessage)
 						{
-							if (t->domessageRC == 0)
+							isinterested++;
+							res = DoMessage(mb, true, CurrentTask, t->TaskDef);
+							if (!res)
 							{
-								if (t->LastIDMessage == mb->IDMessage)
-								{
-									isinterested++;
-
-									t->domessageRC++;
-									{
-										res = t->TaskDef->domessage(mb);
-									}
-									t->domessageRC--;
-
-									if (!res)
-									{
-										t->LastIDMessage = IM_IDLE;
-										isinterested--;
-									}
-
-								}
+								t->LastIDMessage = IM_IDLE;
+								isinterested--;
 							}
 						}
 					}
@@ -1519,29 +1514,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 					{
 						if (Aexcludetask != t->TaskDef)
 						{
-							if (t->TaskDef->domessage != NULL)
-							{
-								if (t->domessageRC == 0)
-								{
-
-									//if (TaskDef[i]->LastIDMessage == mb->IDMessage)
-									{
-
-										t->domessageRC++;
-										{
-											res = t->TaskDef->domessage(mb);
-										}
-										t->domessageRC--;
-
-										if (res)
-										{
-											//TaskDef[i]->LastIDMessage = mb->IDMessage;
-											//break;
-										}
-
-									}
-								}
-							}
+							res = DoMessage(mb, true, CurrentTask, t->TaskDef);
 						}
 					}
 					t = t->Next;
@@ -1558,18 +1531,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-						if (t->TaskDef->domessage != NULL)
-						{
-							if (t->domessageRC == 0)
-							{
-								t->domessageRC++;
-								{
-									res = t->TaskDef->domessage(mb);
-								}
-								t->domessageRC--;
-								//if (res) break;
-							}
-						}
+						res = DoMessage(mb, true, CurrentTask, t->TaskDef);
 					}
 				}
 				t = t->Next;
@@ -1594,19 +1556,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-
-						if (t->TaskDef->domessage != NULL)
-						{
-							if (t->domessageRC == 0)
-							{
-								t->domessageRC++;
-								{
-									res = t->TaskDef->domessage(mb);
-								}
-								t->domessageRC--;
-								//if (res) break;
-							}
-						}
+						res = DoMessage(mb, true, CurrentTask, t->TaskDef);
 					}
 				}
 				t = t->Prev;
@@ -1758,6 +1708,10 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TSendFrameProt ASendF
 	return;
 }
 
+void TXB_board::SendSaveConfigToAllTask(void)
+{
+	SendMessageToAllTask(IM_CONFIG_SAVE);
+}
 
 void TXB_board::setString(char *dst, const char *src, int max_size) 
 {
@@ -1778,7 +1732,6 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 }
 
 #if defined(ESP32)
-
 uint32_t TXB_board::getFreePSRAM()
 {
 #ifdef BOARD_HAS_PSRAM
@@ -2401,121 +2354,211 @@ void TXB_board::handle(void)
 
 }
 
-void TXB_board::Serial_WriteChar(char Achr)
+uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskdef)
 {
-#ifdef SerialBoard
-	Serial_print(Achr);
-#endif
-#ifdef SerialTBoard
-	SerialT_print(Achr);
-#endif
+	if (Amaxlength == 0) return 0;
+	if (Adata == NULL) return 0;
+	if (Ataskdef == NULL)
+	{
+		if (CurrentTask != NULL)
+		{
+			Ataskdef = CurrentTask->StreamTaskDef;
+		}
+		if (Ataskdef == NULL) return 0;
+	}
+
+	TMessageBoard mb;
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saGet;
+	mb.Data.StreamData.Data = Adata;
+	mb.Data.StreamData.Length = Amaxlength;
+	mb.Data.StreamData.LengthResult = 0;
+	if (SendMessageToTask(Ataskdef, &mb, true))
+	{
+		return mb.Data.StreamData.LengthResult;
+	}
+	return 0;
+}
+
+uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef)
+{
+	if (Alength == 0) return 0;
+	if (Adata == NULL) return 0;
+
+	if (Ataskdef == NULL)
+	{
+		if (CurrentTask != NULL)
+		{
+			Ataskdef = CurrentTask->StreamTaskDef;
+		}
+		if (Ataskdef == NULL) return 0;
+	}
+
+	TMessageBoard mb;
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saPut;
+	mb.Data.StreamData.Data = Adata;
+	mb.Data.StreamData.Length = Alength;
+	mb.Data.StreamData.LengthResult = 0;
+	if (SendMessageToTask(Ataskdef, &mb, true))
+	{
+		return mb.Data.StreamData.LengthResult;
+	}
+	return 0;
+}
+
+int TXB_board::print(String Atext)
+{
+	int len = Atext.length();
+	uint32_t rlen = PutStream((void *)Atext.c_str(), len);
 }
 
 void TXB_board::Log(char Achr, TTypeLog Atl)
 {
-	if (NoTxCounter==0) TXCounter++;
-	Serial_WriteChar(Achr);
+	if (CurrentTask != NULL)
+	{
+		if (Atl == tlInfo)
+		{
+			if (CurrentTask->ShowLogInfo == false)
+			{
+				return;
+			}
+		}
+		else if (Atl == tlWarn)
+		{
+			if (CurrentTask->ShowLogWarn == false)
+			{
+				return;
+			}
+		}
+		else if (Atl == tlError)
+		{
+			if (CurrentTask->ShowLogError == false)
+			{
+				return;
+			}
+		}
+	}
+	PutStream(&Achr, 1);
+	if (NoTxCounter == 0) TXCounter++;
+//	if (NoTxCounter==0) TXCounter++;
+//	Serial_WriteChar(Achr);
 }
 
 void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog Atl, TTaskDef *Ataskdef)
 {
-	int len = StringLength((char *)Atxt, 0);
-	if (len == 0) return;
-	int alllen = len;
-
-	/*if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
-	while (len > Serial_availableForWrite())
+	if (Ataskdef == NULL)
 	{
-		delay(0);
-	}*/
-	
-	if (NoTxCounter==0) TXCounter += alllen;
-	
+		if (CurrentTask != NULL)
+		{
+			Ataskdef = CurrentTask->TaskDef;
+		}
+	}
+	if (Ataskdef == NULL) return;
+	TTask *ACurrentTask = Ataskdef->Task;
 
-	String txttime = "";
-	if (puttime)
+	if (ACurrentTask != NULL)
 	{
-		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
-		txttime = "\n[" + txttime + "] ";
+		if (Atl == tlInfo)
+		{
+			if (ACurrentTask->ShowLogInfo == false)
+			{
+				return;
+			}
+		}
+		else if (Atl == tlWarn)
+		{
+			if (ACurrentTask->ShowLogWarn == false)
+			{
+				return;
+			}
+		}
+		else if (Atl == tlError)
+		{
+			if (ACurrentTask->ShowLogError == false)
+			{
+				return;
+			}
+		}
 	}
 
-	String taskname = "";
+	int len = StringLength((char *)Atxt, 0);
+	if (len == 0) return;
+
+	if (puttime)
+	{
+		String txttime = "";
+		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
+		txttime = "\n[" + txttime + "] ";
+		PutStream((void *)txttime.c_str(), txttime.length());
+	}
+
 	if (showtaskname)
 	{
+		String taskname = "";
 		if (Ataskdef == NULL)
 		{
-			if (CurrentTask != NULL)
+			if (ACurrentTask != NULL)
 			{
-				Ataskdef = CurrentTask->TaskDef;
+				Ataskdef = ACurrentTask->TaskDef;
 			}
 		}
 		if (Ataskdef != NULL)
 		{
 			GetTaskName(Ataskdef, taskname);
 		}
+		else
+		{
+			taskname = "---";
+		}
 		if (taskname.length() > 0)
 		{
 			taskname.trim();
 			taskname = '[' + taskname + "] ";
+			PutStream((void *)taskname.c_str(), taskname.length());
 		}
 	}
 
-	const char *p;
-	
-	if (puttime)
-	{
-		p = txttime.c_str();
-		while (*p)
-		{
-			Serial_WriteChar(*p);
-			p++;
-		}
-	}
+	PutStream((void *)Atxt, len);
 
-	if (showtaskname)
-	{
-		p = taskname.c_str();
-		while (*p)
-		{
-			Serial_WriteChar(*p);
-			p++;
-		}
-	}
-
-	p = Atxt;
-	while (*p) 
-	{
-		Serial_WriteChar(*p);
-		p++;
-		
-		alllen--;
-		len--;
-		if (len == 0)
-		{
-			if (alllen == 0)
-			{
-				break;
-			}
-			else
-			{
-				len = alllen;
-/*				if (len >= Serial_EmptyTXBufferSize) len = Serial_EmptyTXBufferSize;
-
-				while (Serial_availableForWrite()<Serial_EmptyTXBufferSize)
-				{
-					delay(0);
-				}
-				*/
-			}
-		}
-	}
+	if (NoTxCounter == 0) TXCounter++;
 }
 
 void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
 {
+	if (CurrentTask != NULL)
+	{
+		if (Atl == tlInfo)
+		{
+			if (CurrentTask->ShowLogInfo == false)
+			{
+				clearbuf(Acbufserial);
+				return;
+			}
+		}
+		else if (Atl == tlWarn)
+		{
+			if (CurrentTask->ShowLogWarn == false)
+			{
+				clearbuf(Acbufserial);
+				return;
+			}
+		}
+		else if (Atl == tlError)
+		{
+			if (CurrentTask->ShowLogError == false)
+			{
+				clearbuf(Acbufserial);
+				return;
+			}
+		}
+	}
+
+
 	while (Acbufserial->available()>0)
 	{
-		Serial_WriteChar(Acbufserial->read());
+		Log((char)(Acbufserial->read()), Atl);
+//		Serial_WriteChar(Acbufserial->read());
 		if (NoTxCounter==0) TXCounter++;
 	}
 }
@@ -2541,7 +2584,7 @@ void TXB_board::PrintTimeFromRun(void)
 	Log(&Astream);
 }
 
-void TXB_board::PrintDiag(void)
+/*void TXB_board::PrintDiag(void)
 {
 #ifdef ESP8266
 	String t;
@@ -2567,5 +2610,6 @@ void TXB_board::PrintDiag(void)
 	Log(&tmp);
 #endif
 }
+*/
 
 
