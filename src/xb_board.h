@@ -1,3 +1,56 @@
+// Szablon projektu .INO z oparty na bibliotece xb_board
+
+/*
+ #include <xb_board.h>
+ 
+ void setup()
+{
+	XB_BOARD_SETUP();
+}
+
+void loop()
+{
+	XB_BOARD_LOOP();
+}
+ */
+
+// Obowi¹zkowa inkluda z parametrami wstêpnymi projektu
+/*
+#ifndef XB_BOARD_DEF_H
+#define XB_BOARD_DEF_H
+
+#define DEVICE_NAME "..."
+#define DEVICE_VERSION "?.? (2019.01.1)"
+
+// Standardowe ustawienia dla UART
+#define SerialBoard			Serial
+#define SerialBoard_BAUD	115200
+// Wskazanie GPIO na których ma zostaæ uruchomiony podstawowy UART
+//#define SerialBoard_RX_PIN  ?
+//#define SerialBoard_TX_PIN  ?
+
+//#define BOARD_LED_TX_PIN ?
+//#define BOARD_LED_RX_PIN ?
+//#define BOARD_LED_TX_STATUS_OFF LOW
+//#define BOARD_LED_RX_STATUS_OFF LOW
+//#define TICK_LED_BLINK 250
+
+// Definicje powoduj¹ce wstawienie standardowego GUI z GADGETAMI na terminalach VT100(?)
+//#define SCREENTEXT_TYPE_BOARDLOG
+//#define XB_GUI
+//#define XB_GUIGADGET
+
+// Definicja powoduj¹ca ¿e task XB_Board systematycznie sprawdza dostêpn¹æ po³¹czenia internetowego i WIFI
+//#define XB_WIFI
+
+// GPIO do którego pod³¹czony jest np LED informuj¹cy u¿ytkownika czy urz¹dzenie siê nie zawiesi³o
+#define BOARD_LED_LIFE_PIN 5
+
+
+
+#endif 
+ */
+
 #ifndef XB_BOARD_H
 #define XB_BOARD_H
 
@@ -27,7 +80,6 @@
 #if defined(ESP32)
 
 typedef uint8_t WiringPinMode;
-#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
 
 #include <utils/xb_util.h>
 #include <utils/cbufSerial.h>
@@ -37,7 +89,6 @@ typedef uint8_t WiringPinMode;
 #ifdef ESP8266
 
 typedef uint8_t WiringPinMode;
-#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
 extern "C" {
 #include "user_interface.h"
 }
@@ -64,10 +115,13 @@ typedef struct
 	TUniqueInt64 ID;
 } TUniqueID;
 
-#include <utils\xb_board_message.h>
 struct TTask;
+struct THandleDataFrameTransport;
 
-typedef struct
+
+#include <utils\xb_board_message.h>
+
+struct TTaskDef
 {
 	uint8_t Priority;
 	void(*dosetup)(void);
@@ -75,7 +129,9 @@ typedef struct
 	bool(*domessage)(TMessageBoard *);
 	void(*dointerrupt)(void);
 	TTask *Task;
-} TTaskDef;
+};
+
+
 
 struct TTask
 {
@@ -83,13 +139,14 @@ struct TTask
 	TTask *Prev;
 	TTaskDef *TaskDef;
 	TTaskDef *StreamTaskDef;
+	TTaskDef *SecStreamTaskDef;
 	uint8_t CounterPriority;
 	TUniqueID DeviceID;
 	bool ShowLogInfo;
 	bool ShowLogWarn;
 	bool ShowLogError;
 	TIDMessage LastIDMessage;
-
+	THandleDataFrameTransport *HandleDataFrameTransport;
 	int8_t dosetupRC;
 	int8_t doloopRC;
 	int8_t domessageRC;
@@ -100,17 +157,10 @@ struct TTask
 
 typedef TTaskDef * PTaskDef;
 
-#ifdef ESP8266
 #include "xb_board_def.h"
-#elif defined(ESP32)
-#include "xb_board_def.h"
-#else
-#include "xb_board_def.h"
-#endif
-
 
 #pragma pack(push, 1)
-typedef struct
+struct TFrameTransport
 {
 	uint8_t size;
 	uint8_t crc8;
@@ -119,24 +169,68 @@ typedef struct
 	char TaskName[16];
 	TFrameType FrameType;
 	uint8_t LengthFrame;
-	uint8_t Frame[255 - (1 + 16 + 8 + 4 + 1 + 1+1)];
-} TFrameTransport;
-#pragma pack(pop)
+	uint8_t Frame[250 - (1 + 16 + 8 + 4 + 1 + 1 + 4)];
+};
 
 #define FRAME_ACK_A 0xf1
 #define FRAME_ACK_B 0x2f
 #define FRAME_ACK_C 0xf3
 #define FRAME_ACK_D 0x4f
 
-#pragma pack(push, 1)
-typedef struct
+struct TFrameTransportACK
 {
 	uint8_t a;
 	uint8_t b;
 	uint8_t c;
 	uint8_t d;
-} TFrameTransportACK;
+};
+
+struct THDFT
+{
+	struct TFrameTransportACK ACK;
+	struct TFrameTransport FT;
+};
+
+struct THandleDataFrameTransport
+{
+	union
+	{
+		uint8_t buf[sizeof(TFrameTransportACK) + sizeof(TFrameTransport)];
+		struct THDFT str;
+	} Data;
+
+	uint8_t indx_interpret;
+	bool isdataframe_interpret;
+
+	bool isdatatoread;
+	uint8_t indxdatatoread;
+	uint8_t max_indxdatatoread;
+
+	uint8_t *BufDataToLong;
+	uint32_t SizeBufDataToLong;
+	uint32_t IndxReadBufDataToLong;
+};
 #pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct
+{
+	uint8_t value : 1;
+	uint8_t use : 1;
+	uint8_t mode : 2;
+	uint8_t functionpin : 4;
+} TPinInfo;
+#pragma pack(pop)
+
+#define FUNCTIONPIN_NOIDENT 0
+#define FUNCTIONPIN_GPIO 1
+#define FUNCTIONPIN_ANALOGIN 2
+#define FUNCTIONPIN_ANALOGOUT 3
+#define FUNCTIONPIN_UARTRXTX 4
+
+#define MODEPIN_INPUT 1
+#define MODEPIN_OUTPUT 2
+#define MODEPIN_ANALOG 3
 
 typedef enum { tlInfo = 0, tlWarn, tlError } TTypeLog;
 
@@ -152,13 +246,22 @@ public:
 	void SysTickCount_init(void);
 	void DateTimeSecond_init(void);
 	void HandleKeyPress(char ch);
-	void HandleFrame(TFrameTransport *Aft, TSendFrameProt Asfp);
+	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
 	void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
 	void handle(void);
-
+	
+	
+	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
+	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
 	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskdef=NULL);
-	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef=NULL);
+	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef=NULL, TTaskDef *ASectaskdef=NULL);
+	bool HandleFrameTransportInGetStream;
+	
 	int print(String Atext);
+
+	TTaskDef *Default_StreamTaskDef;
+	TTaskDef *Default_SecStreamTaskDef;
+
 
 	bool Default_ShowLogInfo;
 	bool Default_ShowLogWarn;
@@ -172,12 +275,17 @@ public:
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
 
+	TPinInfo *PinInfoTable;	
+
+	bool SetPinInfo(uint16_t Anumpin, uint8_t Afunction, uint8_t Amode, bool Alogwarn=false);
+
 	bool pinMode(uint16_t pin, WiringPinMode mode);
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
 	uint8_t digitalToggle(uint16_t pin);
 	void Blink_RX(int8_t Auserid = -1);
 	void Blink_TX(int8_t Auserid = -1);
+
 #ifdef BOARD_LED_TX_PIN
 	uint32_t Tick_TX_BLINK;
 #endif
@@ -203,8 +311,10 @@ public:
 	bool DelTask(TTaskDef *Ataskdef);
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	void IterateTask(void);
+	int8_t doAllInterruptRC;
+	void TriggerInterrupt(TTaskDef *Ataskdef);
 	void DoInterrupt(TTaskDef *Ataskdef);
-
+	
 	bool GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString);
 	bool GetTaskName(TTaskDef *ATaskDef, String &APointerString);
 	void SendMessageOTAUpdateStarted();
@@ -218,8 +328,8 @@ public:
 	bool SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain = false);
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
-	void SendResponseFrameOnProt(uint32_t AFrameID, TSendFrameProt ASendFrameProt, TFrameType AframeType, TUniqueID ADeviceID);
-	uint32_t SendFrameToDeviceTask(String Ataskname, TSendFrameProt ASendFrameProt, void *ADataFrame, uint32_t Alength);
+	void SendResponseFrameOnProt(uint32_t AFrameID,  TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID);
+	uint32_t SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength);
 	void SendSaveConfigToAllTask(void);
 
 #if defined(ESP32)
@@ -246,6 +356,7 @@ public:
 private:
 	bool GetTaskString(TMessageBoard *Amb, TTaskDef *ATaskDef, String &APointerString);
 	bool iteratetask_procedure;
+	bool setup_procedure;
 #ifdef ARDUINO_ARCH_STM32F1
 	uint32_t ADRESS_HEAP;
 	uint32_t ADRESS_STACK;
@@ -267,7 +378,7 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #endif
 
 #ifdef ESP32
-#define SysTickCount ((uint32_t)millis())
+#define SysTickCount (uint32_t)(millis())
 #endif
 
 extern bool showasc;
@@ -339,106 +450,20 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am);
 #endif
 #endif
 
-#ifdef Serial1Board
-
-#ifndef Serial1Board
-#define Serial1Board Serial1
+#ifndef BOARD_NR_GPIO_PINS 
+#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
 #endif
 
-#ifndef Serial1Board_BAUD
-#define Serial1Board_BAUD 230400
-#endif
+#ifndef pin_Mode
+#define pin_Mode pinMode
+#endif 
 
-#ifndef Serial1_print
-#define  Serial1_print Serial1Board.print
-#endif
+#ifndef digital_Read
+#define digital_Read digitalRead
+#endif 
 
-#ifndef Serial1_println
-#define Serial1_println Serial1Board.println
-#endif
-
-#ifndef Serial1_printf
-#define Serial1_printf Serial1Board.printf
-#endif
-
-#if defined(ESP8266) || defined(ESP32)
-#ifndef Serial1_setDebugOutput
-#define Serial1_setDebugOutput Serial1Board.setDebugOutput
-#endif
-#endif
-
-#ifndef Serial1_begin
-#define Serial1_begin Serial1Board.begin
-#endif
-
-#ifndef Serial1_availableForWrite
-#define Serial1_availableForWrite Serial1Board.availableForWrite
-#endif
-
-#ifndef Serial1_available
-#define Serial1_available Serial1Board.available
-#endif
-
-#ifndef Serial1_write
-#define Serial1_write Serial1Board.write
-#endif
-
-#ifndef Serial1_read
-#define Serial1_read Serial1Board.read
-#endif
-
-#ifndef Serial1_flush
-#define Serial1_flush Serial1Board.flush
-#endif
-
-#ifndef Serial1_EmptyTXBufferSize
-#ifdef ESP32
-#define Serial1_EmptyTXBufferSize 127
-#endif
-#endif
-
-#endif
-
-#ifdef SerialTBoard
-#include "xb_TELNET_MOD.h"
-
-#ifndef SerialTBoard
-#define SerialTBoard SerialT
-#endif
-
-#ifndef SerialT_print
-#define  SerialT_print SerialTBoard.print
-#endif
-
-#ifndef SerialT_println
-#define SerialT_println SerialTBoard.println
-#endif
-
-#ifndef SerialT_printf
-#define SerialT_printf SerialTBoard.printf
-#endif
-
-#ifndef SerialT_availableForWrite
-#define SerialT_availableForWrite SerialTBoard.availableForWrite
-#endif
-
-#ifndef SerialT_available
-#define SerialT_available SerialTBoard.available
-#endif
-
-#ifndef SerialT_write
-#define SerialT_write SerialTBoard.write
-#endif
-
-#ifndef SerialT_read
-#define SerialT_read SerialTBoard.read
-#endif
-
-#ifndef SerialT_flush
-#define SerialT_flush SerialTBoard.flush
-#endif
-
-
-#endif
+#ifndef digital_Write
+#define digital_Write digitalWrite
+#endif 
 
 #endif /* XB_BOARD */

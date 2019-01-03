@@ -27,6 +27,10 @@
 #endif
 //#define FSS(str) str
 
+#ifndef offsetof
+#define offsetof(type, member) ((long) &((type *) 0)->member)
+#endif
+
 #define BEGIN_MAXMS(Aname) \
 { \
 uint32_t Aname = SysTickCount; \

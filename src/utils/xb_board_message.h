@@ -6,7 +6,7 @@
 #include <ESP8266WiFi.h>
 #endif
 
-
+// Makra zwi¹zane z listami struktur, u¿ywane wewn¹trz klas przewa¿nie w kontruktorach i destruktorach
 #define ADD_TO_LIST(Alist,AClass) \
 { \
 AClass *lm = Alist;\
@@ -33,7 +33,27 @@ else\
 	} \
 } \
 }
+#define DELETE_FROM_LIST(Alist) \
+{ \
+if (Prev == NULL) \
+{ \
+	Alist = Next; \
+	if (Next != NULL) \
+	{ \
+		Next->Prev = NULL; \
+	} \
+} \
+else \
+{ \
+	Prev->Next = Next; \
+	if (Next != NULL) \
+	{ \
+		Next->Prev = Prev; \
+	} \
+} \
+}
 
+// Makra zwi¹zane z listami struktur, u¿ywane na zewn¹trz klas z mo¿liwoœci¹ wskazania 
 #define ADD_TO_LIST_STR(Alist,AClass,_this_) \
 { \
 AClass *lm = Alist;\
@@ -60,27 +80,6 @@ else\
 	} \
 } \
 }
-
-#define DELETE_FROM_LIST(Alist) \
-{ \
-if (Prev == NULL) \
-{ \
-	Alist = Next; \
-	if (Next != NULL) \
-	{ \
-		Next->Prev = NULL; \
-	} \
-} \
-else \
-{ \
-	Prev->Next = Next; \
-	if (Next != NULL) \
-	{ \
-		Next->Prev = Prev; \
-	} \
-} \
-}
-
 #define DELETE_FROM_LIST_STR(Alist,_this_) \
 { \
 if (_this_->Prev == NULL) \
@@ -101,8 +100,12 @@ else \
 } \
 }
 
+struct TTask;
+struct TTaskDef;
 
-typedef enum { doFORWARD, doBACKWARD, doONLYINTERESTED } TDoMessageDirection;
+//doONLYINTERESTED
+
+typedef enum { doFORWARD, doBACKWARD } TDoMessageDirection;
 
 typedef enum {
 	IM_IDLE = 0,
@@ -169,7 +172,7 @@ typedef struct {
 typedef struct {
 	void *DataFrame;
 	uint32_t SizeFrame;
-	TSendFrameProt FrameProt;
+	TTaskDef *TaskDefStream;
 } TFrameReceiveData;
 //-----------------------------------------------------------------------
 typedef struct {
@@ -402,8 +405,7 @@ typedef struct
 } TKeyboardData;
 
 //-----------------------------------------------------------------------
-struct TTask;
-typedef struct
+struct TMessageBoard
 {
 	TIDMessage IDMessage;
 	TTask *fromTask;
@@ -427,6 +429,6 @@ typedef struct
 		uint16_t uData16;
 		uint8_t uData8;
 	} Data;
-} TMessageBoard;
+};
 
 #endif
