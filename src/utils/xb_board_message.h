@@ -125,10 +125,12 @@ typedef enum {
 	IM_FRAME_RESPONSE,
 	IM_STREAM,
 	IM_KEYBOARD,
+	IM_CONFIG_SAVE,
+#ifdef XB_GUI
 	IM_MENU,
 	IM_INPUTDIALOG,
-	IM_CONFIG_SAVE,
 	IM_WINDOW,
+#endif
 	IM_SD_INIT,
 	IM_SD_DEINIT,
 	IM_SD_EJECT,
@@ -183,6 +185,26 @@ typedef struct {
 typedef int16_t Tx;
 typedef int16_t Ty;
 
+typedef enum {
+	tivString,
+	tivDynArrayChar1, 
+	// Wszystkie znaki
+   tivDynArrayChar2, 
+	// Bez spacji
+   tivDynArrayChar3, 
+	// same litery i cyfry
+   tivInt8,
+	tivInt16,
+	tivInt32,
+	tivInt64,
+	tivUInt8,
+	tivUInt16,
+	tivUInt32,
+	tivUInt64,
+
+} TTypeInputVar;
+
+#ifdef XB_GUI
 typedef enum {
 	waRepaint,waRepaintData,waCreate,waDestroy,waShow,waHide,waGetCaptionWindow
 } TWindowAction;
@@ -330,22 +352,6 @@ typedef struct
 } TInputDialogDescriptionData;
 
 
-
-typedef enum {
-	tivString,
-	tivDynArrayChar1, // Wszystkie znaki
-	tivDynArrayChar2, // Bez spacji
-	tivDynArrayChar3, // same litery i cyfry
-	tivInt8,
-	tivInt16,
-	tivInt32,
-	tivInt64,
-	tivUInt8,
-	tivUInt16,
-	tivUInt32,
-	tivUInt64,
-
-} TTypeInputVar;
 typedef struct
 {
 	TTypeInputVar TypeInputVar;
@@ -365,7 +371,7 @@ typedef struct
 		TInputDialogDescriptionData InputDialogDescriptionData;
 	} ActionData;
 } TInputDialogData;
-
+#endif
 //-----------------------------------------------------------------------
 
 typedef enum {
@@ -413,9 +419,11 @@ struct TMessageBoard
 	{
 		//TConfigData ConfigData;
 		TKeyboardData KeyboardData;
+#ifdef XB_GUI
 		TMenuData MenuData;
 		TInputDialogData InputDialogData;
 		TWindowData WindowData;
+#endif
 		TGpioData GpioData;
 		TStreamData StreamData;
 		TBlinkData BlinkData;

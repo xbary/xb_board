@@ -60,19 +60,6 @@ Aname = SysTickCount; \
 } \
 }
 
-#define BEGIN_WAITMS_PREC(Aname,Ams) \
-{ \
-if (Aname==0) Aname=SysTickCount; \
-if (SysTickCount-Aname>(Ams)) \
-{ uint32_t Aname##_r=(SysTickCount-Aname)-Ams; 
-
-#define END_WAITMS_PREC(Aname) \
-EXITlab##Aname: \
-if (Aname!=0) \
-Aname = SysTickCount - Aname##_r; \
-} \
-}
-
 #define END_WAITMS_BREAK(Aname) \
 EXITlab##Aname: \
 if (Aname!=0) \

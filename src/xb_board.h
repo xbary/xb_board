@@ -38,10 +38,6 @@ void loop()
 // Definicje powoduj¹ce wstawienie standardowego GUI z GADGETAMI na terminalach VT100(?)
 //#define SCREENTEXT_TYPE_BOARDLOG
 //#define XB_GUI
-//#define XB_GUIGADGET
-
-// Definicja powoduj¹ca ¿e task XB_Board systematycznie sprawdza dostêpn¹æ po³¹czenia internetowego i WIFI
-//#define XB_WIFI
 
 // GPIO do którego pod³¹czony jest np LED informuj¹cy u¿ytkownika czy urz¹dzenie siê nie zawiesi³o
 #define BOARD_LED_LIFE_PIN 5
@@ -118,7 +114,7 @@ typedef struct
 struct TTask;
 struct THandleDataFrameTransport;
 
-
+#include "xb_board_def.h"
 #include <utils\xb_board_message.h>
 
 struct TTaskDef

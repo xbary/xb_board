@@ -35,8 +35,7 @@ extern "C" {
 #ifdef XB_GUI
 #include <xb_GUI.h>
 TWindowClass *winHandle0;
-#endif
-#ifdef XB_GUIGADGET
+
 #include <xb_GUI_Gadget.h>
 TGADGETMenu *menuHandle0;
 TGADGETMenu *menuHandle1;
@@ -196,7 +195,280 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		break;
 	}
 
-#ifdef XB_GUIGADGET
+	case IM_KEYBOARD:
+		{
+			if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
+			{
+				if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
+				{
+					static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
+
+					if (showasc)
+					{
+						Serial_print((int)Am->Data.KeyboardData.KeyCode);
+						Serial_print(' ');
+						Serial_println(TerminalFunction);
+					}
+
+					if (TerminalFunction == 0)
+					{
+						switch (Am->Data.KeyboardData.KeyCode)
+						{
+						case 127:
+							{
+								Tick_ESCKey = 0;
+								board.SendKeyFunctionPress(KF_BACKSPACE, 0, &XB_BOARD_DefTask);
+								TerminalFunction = 0;
+								break;
+							}
+						case 10:
+							{
+								if (LastKeyCode != 13)
+								{
+									board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
+									TerminalFunction = 0;
+								}
+								else
+								{
+									Am->Data.KeyboardData.KeyCode = 0;
+								}
+								res = true;
+								break;
+							}
+						case 13:
+							{
+								if (LastKeyCode != 10)
+								{
+									board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
+									TerminalFunction = 0;
+								}
+								else
+								{
+									Am->Data.KeyboardData.KeyCode = 0;
+								}
+								res = true;
+								break;
+							}
+						case 27:
+							{
+								TerminalFunction = 1;
+								Tick_ESCKey = SysTickCount;
+								break;
+							}
+						case 7:
+							{
+								Tick_ESCKey = 0;
+								board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
+								TerminalFunction = 0;
+								break;
+							}
+						case 9:
+							{
+								Tick_ESCKey = 0;
+								board.SendKeyFunctionPress(KF_TABNEXT, 0, &XB_BOARD_DefTask);
+								TerminalFunction = 0;
+								break;
+							}
+						case 255:
+						case 0:
+							{
+								Tick_ESCKey = 0;
+								TerminalFunction = 0;
+								break;
+							}
+
+
+						default:
+							{
+								Tick_ESCKey = 0;
+								break;
+							}
+						}
+					}
+					else if (TerminalFunction == 1)
+					{
+						if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
+							{
+								Tick_ESCKey = 0;
+								TerminalFunction = 2;
+								Am->Data.KeyboardData.KeyCode = 0;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 10)
+						{
+							TerminalFunction = 0;
+						}
+						else
+						{
+							Tick_ESCKey = 0;
+							board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
+							TerminalFunction = 0;
+						}
+					}
+					else if (TerminalFunction == 2)
+					{
+						if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
+							{
+								board.SendKeyFunctionPress(KF_CURSORUP, 0, &XB_BOARD_DefTask);
+								Am->Data.KeyboardData.KeyCode = 0;
+								TerminalFunction = 0;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
+							{
+								board.SendKeyFunctionPress(KF_CURSORDOWN, 0, &XB_BOARD_DefTask);
+								Am->Data.KeyboardData.KeyCode = 0;
+								TerminalFunction = 0;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
+							{
+								board.SendKeyFunctionPress(KF_CURSORLEFT, 0, &XB_BOARD_DefTask);
+								Am->Data.KeyboardData.KeyCode = 0;
+								TerminalFunction = 0;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
+							{
+								board.SendKeyFunctionPress(KF_CURSORRIGHT, 0, &XB_BOARD_DefTask);
+								Am->Data.KeyboardData.KeyCode = 0;
+								TerminalFunction = 0;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
+							{
+								board.SendKeyFunctionPress(KF_TABPREV, 0, &XB_BOARD_DefTask);
+								TerminalFunction = 0;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 49) // F1
+							{
+								KeyboardFunctionDetect = KF_F1;
+								TerminalFunction = 3;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 50) // F9
+							{
+								KeyboardFunctionDetect = KF_F9;
+								TerminalFunction = 5;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 51) 
+						{
+							KeyboardFunctionDetect = KF_DELETE;
+							TerminalFunction = 4;
+						}
+						else
+						{
+							TerminalFunction = 0;
+						}
+
+					}
+					else if (TerminalFunction == 3)
+					{
+						if (Am->Data.KeyboardData.KeyCode == 49) // F1
+							{
+								KeyboardFunctionDetect = KF_F1;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 50) // F2
+							{
+								KeyboardFunctionDetect = KF_F2;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 51) // F3
+							{
+								KeyboardFunctionDetect = KF_F3;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 52) // F4
+							{
+								KeyboardFunctionDetect = KF_F4;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 53) // F5
+							{
+								KeyboardFunctionDetect = KF_F5;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 55) // F6
+							{
+								KeyboardFunctionDetect = KF_F6;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 56) // F7
+							{
+								KeyboardFunctionDetect = KF_F7;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 57) // F8
+							{
+								KeyboardFunctionDetect = KF_F8;
+								TerminalFunction = 4;
+							}
+						else
+						{
+							TerminalFunction = 0;
+						}
+					}
+					else if (TerminalFunction == 5)
+					{
+
+						if (Am->Data.KeyboardData.KeyCode == 48) // F9
+							{
+								KeyboardFunctionDetect = KF_F9;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 49) // F10
+							{
+								KeyboardFunctionDetect = KF_F10;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 51) // F11
+							{
+								KeyboardFunctionDetect = KF_F11;
+								TerminalFunction = 4;
+							}
+						else if (Am->Data.KeyboardData.KeyCode == 52) // F12
+							{
+								KeyboardFunctionDetect = KF_F12;
+								TerminalFunction = 4;
+							}
+						else
+						{
+							TerminalFunction = 0;
+						}
+
+					}
+					else if (TerminalFunction == 4)
+					{
+						if (Am->Data.KeyboardData.KeyCode == 126)
+						{
+							board.SendKeyFunctionPress(KeyboardFunctionDetect, 0, &XB_BOARD_DefTask);
+							TerminalFunction = 0;
+						}
+						else
+						{
+							TerminalFunction = 0;
+						}
+					}
+					else
+					{
+						TerminalFunction = 0;
+					}
+
+					res = true;
+
+				}
+				else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
+				{
+#ifdef XB_GUI
+					GUI_Show();
+					winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
+					menuHandle0 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 0);
+#endif
+					res = true;
+				}
+
+			
+				LastKeyCode = Am->Data.KeyboardData.KeyCode;
+
+			}
+			break;
+		}
+#ifdef XB_GUI
 	case IM_MENU:
 	{
 		switch (Am->Data.MenuData.TypeMenuAction)
@@ -307,283 +579,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		}
 		break;
 	}
-#endif
-	case IM_KEYBOARD:
-	{
-		if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
-		{
-			if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
-			{
-				static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
-
-				if (showasc)
-				{
-					Serial_print((int)Am->Data.KeyboardData.KeyCode);
-					Serial_print(' ');
-					Serial_println(TerminalFunction);
-				}
-
-				if (TerminalFunction == 0)
-				{
-					switch (Am->Data.KeyboardData.KeyCode)
-					{
-					case 127:
-					{
-						Tick_ESCKey = 0;
-						board.SendKeyFunctionPress(KF_BACKSPACE, 0, &XB_BOARD_DefTask);
-						TerminalFunction = 0;
-						break;
-					}
-					case 10:
-					{
-						if (LastKeyCode != 13)
-						{
-							board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
-							TerminalFunction = 0;
-						}
-						else
-						{
-							Am->Data.KeyboardData.KeyCode = 0;
-						}
-						res = true;
-						break;
-					}
-					case 13:
-					{
-						if (LastKeyCode != 10)
-						{
-							board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
-							TerminalFunction = 0;
-						}
-						else
-						{
-							Am->Data.KeyboardData.KeyCode = 0;
-						}
-						res = true;
-						break;
-					}
-					case 27:
-					{
-						TerminalFunction = 1;
-						Tick_ESCKey = SysTickCount;
-						break;
-					}
-					case 7:
-					{
-						Tick_ESCKey = 0;
-						board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
-						TerminalFunction = 0;
-						break;
-					}
-					case 9:
-					{
-						Tick_ESCKey = 0;
-						board.SendKeyFunctionPress(KF_TABNEXT, 0, &XB_BOARD_DefTask);
-						TerminalFunction = 0;
-						break;
-					}
-					case 255:
-					case 0:
-					{
-						Tick_ESCKey = 0;
-						TerminalFunction = 0;
-						break;
-					}
-
-
-					default:
-					{
-						Tick_ESCKey = 0;
-						break;
-					}
-					}
-				}
-				else if (TerminalFunction == 1)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
-					{
-						Tick_ESCKey = 0;
-						TerminalFunction = 2;
-						Am->Data.KeyboardData.KeyCode = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 10)
-					{
-						TerminalFunction = 0;
-					}
-					else
-					{
-						Tick_ESCKey = 0;
-						board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
-						TerminalFunction = 0;
-					}
-				}
-				else if (TerminalFunction == 2)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
-					{
-						board.SendKeyFunctionPress(KF_CURSORUP, 0, &XB_BOARD_DefTask);
-						Am->Data.KeyboardData.KeyCode = 0;
-						TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
-					{
-						board.SendKeyFunctionPress(KF_CURSORDOWN, 0, &XB_BOARD_DefTask);
-						Am->Data.KeyboardData.KeyCode = 0;
-						TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
-					{
-						board.SendKeyFunctionPress(KF_CURSORLEFT, 0, &XB_BOARD_DefTask);
-						Am->Data.KeyboardData.KeyCode = 0;
-						TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
-					{
-						board.SendKeyFunctionPress(KF_CURSORRIGHT, 0, &XB_BOARD_DefTask);
-						Am->Data.KeyboardData.KeyCode = 0;
-						TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
-					{
-						board.SendKeyFunctionPress(KF_TABPREV, 0, &XB_BOARD_DefTask);
-						TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 49) // F1
-					{
-						KeyboardFunctionDetect = KF_F1;
-						TerminalFunction = 3;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 50) // F9
-					{
-						KeyboardFunctionDetect = KF_F9;
-						TerminalFunction = 5;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 51) 
-					{
-						KeyboardFunctionDetect = KF_DELETE;
-						TerminalFunction = 4;
-					}
-					else
-					{
-						TerminalFunction = 0;
-					}
-
-				}
-				else if (TerminalFunction == 3)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 49) // F1
-					{
-						KeyboardFunctionDetect = KF_F1;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 50) // F2
-					{
-						KeyboardFunctionDetect = KF_F2;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 51) // F3
-					{
-						KeyboardFunctionDetect = KF_F3;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 52) // F4
-					{
-						KeyboardFunctionDetect = KF_F4;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 53) // F5
-					{
-						KeyboardFunctionDetect = KF_F5;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 55) // F6
-					{
-						KeyboardFunctionDetect = KF_F6;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 56) // F7
-					{
-						KeyboardFunctionDetect = KF_F7;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 57) // F8
-					{
-						KeyboardFunctionDetect = KF_F8;
-						TerminalFunction = 4;
-					}
-					else
-					{
-						TerminalFunction = 0;
-					}
-				}
-				else if (TerminalFunction == 5)
-				{
-
-					if (Am->Data.KeyboardData.KeyCode == 48) // F9
-					{
-						KeyboardFunctionDetect = KF_F9;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 49) // F10
-					{
-						KeyboardFunctionDetect = KF_F10;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 51) // F11
-					{
-						KeyboardFunctionDetect = KF_F11;
-						TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 52) // F12
-					{
-						KeyboardFunctionDetect = KF_F12;
-						TerminalFunction = 4;
-					}
-					else
-					{
-						TerminalFunction = 0;
-					}
-
-				}
-				else if (TerminalFunction == 4)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 126)
-					{
-						board.SendKeyFunctionPress(KeyboardFunctionDetect, 0, &XB_BOARD_DefTask);
-						TerminalFunction = 0;
-					}
-					else
-					{
-						TerminalFunction = 0;
-					}
-				}
-				else
-				{
-					TerminalFunction = 0;
-				}
-
-				res = true;
-
-			}
-			else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
-			{
-#ifdef XB_GUI
-				GUI_Show();
-				winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
-#endif
-#ifdef XB_GUIGADGET
-				menuHandle0 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 0);
-#endif
-				res = true;
-			}
-
-			
-			LastKeyCode = Am->Data.KeyboardData.KeyCode;
-
-		}
-		break;
-	}
-#ifdef XB_GUI
 	case IM_WINDOW:
 	{
 		switch (Am->Data.WindowData.WindowAction)
@@ -916,22 +911,7 @@ void XB_BOARD_Setup(void)
 
 uint32_t XB_BOARD_DoLoop(void)
 {
-	
-#ifdef XB_WIFI
-	// Sprawdzenie czy nie nast¹pi³o roz³¹czenie z punktem WiFi
-	if (WIFI_CheckDisconnectWiFi())
-	{
-		WIFI_HardDisconnect();
-		return;
-	}
-	// Sprawdzenie stanu krytycznego stosu
-	else if (board.CheckCriticalFreeHeap())
-	{
-		WIFI_HardDisconnect();
-		return;
-	}
-#endif
-	
+	// Sprawdzenie  przy pierwszym  wejsciu do pêtli loop iloœci wolnej pamiêci
 	if (board.MaximumFreeHeapInLoop == 0)
 	{
 #ifdef ESP32
@@ -950,7 +930,6 @@ uint32_t XB_BOARD_DoLoop(void)
 #endif
 	}
 
-	
 	// Zamiganie
 	board.handle();
 
@@ -2017,7 +1996,7 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 void TXB_board::handle(void)
 {
 	DEF_WAITMS_VAR(LOOPW);
-	BEGIN_WAITMS_PREC(LOOPW, 1000)
+	BEGIN_WAITMS(LOOPW, 1000)
 	{
 #ifdef  BOARD_LED_LIFE_PIN
 		digitalToggle(BOARD_LED_LIFE_PIN);
@@ -2032,13 +2011,10 @@ void TXB_board::handle(void)
 
 #endif
 #ifdef XB_GUI
-		if (winHandle0 != NULL)
-		{
-			winHandle0->RepaintDataCounter++;
-		}
+		if (winHandle0 != NULL) winHandle0->RepaintDataCounter++;
 #endif
 	}
-	END_WAITMS_PREC(LOOPW);
+	END_WAITMS(LOOPW);
 
 #ifdef BOARD_LED_TX_PIN
 	if (Tick_TX_BLINK != 0)
