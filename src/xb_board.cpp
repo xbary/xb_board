@@ -1174,6 +1174,27 @@ TTask *TXB_board::GetTaskByIndex(uint8_t Aindex)
 	return NULL;
 }
 
+TTaskDef *TXB_board::GetTaskDefByName(String ATaskName)
+{
+	TTask *t = TaskList;
+	String tmpstr;
+	tmpstr.reserve(32);
+	
+	while (t != NULL)
+	{
+		if (t->TaskDef != NULL)
+		{
+			if (GetTaskName(t->TaskDef, tmpstr))
+			{
+				if (tmpstr == ATaskName) return t->TaskDef;
+			}
+		}
+		t = t->Next;
+	}
+	return NULL;
+}
+
+
 void TXB_board::IterateTask(void)
 {
 	TTask *t = TaskList;
@@ -1623,76 +1644,6 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 	return res;
 }
 
-uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream,void *ADataFrame, uint32_t Alength)
-{	
-	TFrameTransport ft;
-	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
-	if (Alength > sizeof(ft.Frame))
-	{
-		board.Log("Error: send frame too long...", true, true);
-		return 0;
-	}
-
-	if (Ataskname.length() > 15)
-	{
-		board.Log("Error: Destination task name too long (15 char max)...", true, true);
-		return 0;
-	}
-	
-	TFrameTransportACK ftack;
-	ftack.a = FRAME_ACK_A;
-	ftack.b = FRAME_ACK_B;
-	ftack.c = FRAME_ACK_C;
-	ftack.d = FRAME_ACK_D;
-
-	PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
-
-	uint32_t FrameID = SysTickCount;
-
-	xb_memorycopy(ADataFrame, &ft.Frame, Alength);
-	ft.LengthFrame = Alength;
-
-	ft.FrameID = FrameID;
-	ft.DeviceID = board.GetUniqueID();
-	ft.FrameType = ftData;
-	xb_memorycopy((void *)(Ataskname.c_str()), &ft.TaskName, Ataskname.length());
-	
-	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
-	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
-	
-	PutStream(&ft, ft.size, ATaskDefStream);
-
-	return FrameID;
-}
-
-void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, TFrameType AframeType,TUniqueID ADeviceID)
-{
-	
-	TFrameTransport ft;
-	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
-
-	TFrameTransportACK ftack;
-	ftack.a = FRAME_ACK_A;
-	ftack.b = FRAME_ACK_B;
-	ftack.c = FRAME_ACK_C;
-	ftack.d = FRAME_ACK_D;
-	
-	PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
-
-	ft.LengthFrame = 0;
-
-	ft.FrameID = AFrameID;
-	ft.DeviceID = ADeviceID;
-	ft.FrameType = AframeType;
-
-	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
-	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
-
-	PutStream(&ft, ft.size, ATaskDefStream);
-
-	return;
-}
-
 void TXB_board::SendSaveConfigToAllTask(void)
 {
 	SendMessageToAllTask(IM_CONFIG_SAVE);
@@ -1948,6 +1899,88 @@ void TXB_board::HandleKeyPress(char ch)
 	}
 }
 
+uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength)
+{
+	TTaskDef *TaskDefStream = GetTaskDefByName(AONStreamTaskName);
+	if (TaskDefStream == NULL) 
+	{
+		board.Log("Error: Stream task name not found...", true, true,tlError);
+		return 0;
+	}
+	return SendFrameToDeviceTask(Ataskname, TaskDefStream, ADataFrame, Alength);
+}
+
+uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength)
+{	
+	TFrameTransport ft;
+	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
+	if (Alength > sizeof(ft.Frame))
+	{
+		board.Log("Error: send frame too long...", true, true);
+		return 0;
+	}
+
+	if (Ataskname.length() > 15)
+	{
+		board.Log("Error: Destination task name too long (15 char max)...", true, true);
+		return 0;
+	}
+	
+	TFrameTransportACK ftack;
+	ftack.a = FRAME_ACK_A;
+	ftack.b = FRAME_ACK_B;
+	ftack.c = FRAME_ACK_C;
+	ftack.d = FRAME_ACK_D;
+
+	PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+
+	uint32_t FrameID = SysTickCount;
+
+	xb_memorycopy(ADataFrame, &ft.Frame, Alength);
+	ft.LengthFrame = Alength;
+
+	ft.FrameID = FrameID;
+	ft.DeviceID = board.GetUniqueID();
+	ft.FrameType = ftData;
+	xb_memorycopy((void *)(Ataskname.c_str()), &ft.TaskName, Ataskname.length());
+	
+	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
+	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
+	
+	PutStream(&ft, ft.size, ATaskDefStream);
+
+	return FrameID;
+}
+
+void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID)
+{
+	
+	TFrameTransport ft;
+	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
+
+	TFrameTransportACK ftack;
+	ftack.a = FRAME_ACK_A;
+	ftack.b = FRAME_ACK_B;
+	ftack.c = FRAME_ACK_C;
+	ftack.d = FRAME_ACK_D;
+	
+	PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+
+	ft.LengthFrame = 0;
+
+	ft.FrameID = AFrameID;
+	ft.DeviceID = ADeviceID;
+	ft.FrameType = AframeType;
+
+	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
+	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
+
+	PutStream(&ft, ft.size, ATaskDefStream);
+
+	return;
+}
+
+
 void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 {
 	uint8_t crc = Aft->crc8;
@@ -2059,7 +2092,7 @@ void TXB_board::handle(void)
 
 bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport,TTaskDef *ATaskDefStream)
 {
-	uint32_t indx = 0;
+	int32_t indx = 0;
 	uint32_t indxstartinterpret=0;
 	uint8_t v;
 	bool isininterpret = false;
@@ -2117,27 +2150,40 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 			// zapisywanie kolejnego bajtu do bufora
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 
-			if ((AHandleDataFrameTransport->indx_interpret - sizeof(TFrameTransportACK)) >= AHandleDataFrameTransport->Data.str.FT.size)
+			// Sprawdzenie czy jest to ostatni bajt zdeklarowany na poczatku struktury ramki
+			if((AHandleDataFrameTransport->indx_interpret - sizeof(TFrameTransportACK)) >= AHandleDataFrameTransport->Data.str.FT.size)
 			{
-				{
-					String s = "";
-					Log("Detect Frame in [", true, true);
-					GetTaskName(ATaskDefStream, s);
-					Log(s.c_str());
-					Log(']');
-				}
 				HandleFrame(&AHandleDataFrameTransport->Data.str.FT, ATaskDefStream);
-//				xb_memorycopy(&((uint8_t *)mb->Data.StreamData.Data)[indx], &((uint8_t *)mb->Data.StreamData.Data)[indx - indx_firstack], mb->Data.StreamData.LengthResult - indx);
-//				mb->Data.StreamData.LengthResult = (indx - indx_firstack) + (mb->Data.StreamData.LengthResult - indx);
-//				AHandleDataFrameTransport->indx_interpret = 0;
-//				AHandleDataFrameTransport->isdataframe_interpret = false;
+				indx++;
+				uint8_t *src = &((uint8_t *)mb->Data.StreamData.Data)[indx];
+				uint8_t *dest;
+				if (isininterpret)
+				{
+					if (indxstartinterpret == 0xffff) indxstartinterpret = indx; 	
+					dest = &((uint8_t *)mb->Data.StreamData.Data)[indxstartinterpret];
+				}
+				else
+				{
+					dest = &((uint8_t *)mb->Data.StreamData.Data)[0];
+				}
+				
+				int32_t len =	mb->Data.StreamData.LengthResult - indx;
+				
+				mb->Data.StreamData.LengthResult = mb->Data.StreamData.LengthResult - ((uint32_t)(src - dest));
+				indx = indx - (uint32_t)(src - dest);
+				
+				while (len > 0)
+				{
+					dest[len - 1] = src[len - 1];
+					len--;
+				}
+				
+				AHandleDataFrameTransport->indx_interpret = 0;
+				AHandleDataFrameTransport->isdataframe_interpret = false;
+				isininterpret = false;
+				indxstartinterpret = 0xffff;
+				indx--;
 			}
-
-
-			//..
-
-
-
 		}
 		// Bajty siê nie zgadzaj¹ do wzoru nadchodz¹cej ramki
 		else
@@ -2195,13 +2241,7 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 							Log(tmps.c_str(),false,false, tlError);
 						}
 						Log("]. The read buffer is too little.", false, false, tlError);
-						
-						//uint32_t s = (mb->Data.StreamData.LengthResult - indx);
 
-						//cbufSerial cb(150);
-						//cb.printf("\nnie zmieœci siê\n");
-						//cb.printf("\nindx_s = %d, indx_d = %d, c=%d\n", indx_s, indx_d, c);
-						//Log(&cb,Atl);
 					}
 
 					// leæ dalej z interpretacj¹

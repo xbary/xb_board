@@ -306,6 +306,7 @@ public:
 	TTask *AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID = 0);
 	bool DelTask(TTaskDef *Ataskdef);
 	TTask *GetTaskByIndex(uint8_t Aindex);
+	TTaskDef *GetTaskDefByName(String ATaskName);
 	void IterateTask(void);
 	int8_t doAllInterruptRC;
 	void TriggerInterrupt(TTaskDef *Ataskdef);
@@ -325,6 +326,7 @@ public:
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	void SendResponseFrameOnProt(uint32_t AFrameID,  TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID);
+	uint32_t SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength);
 	uint32_t SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength);
 	void SendSaveConfigToAllTask(void);
 
