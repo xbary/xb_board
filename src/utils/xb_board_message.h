@@ -171,10 +171,19 @@ typedef struct {
 	int8_t UserID;
 } TBlinkData;
 //-----------------------------------------------------------------------
+typedef enum
+{
+	frrOK = 0,
+	frrError,
+	frrBufferIsFull,
+	frrOKWaitNext,
+	frrUnrecognizedType
+} TFrameReceiveResult;
 typedef struct {
 	void *DataFrame;
 	uint32_t SizeFrame;
 	TTaskDef *TaskDefStream;
+	TFrameReceiveResult FrameReceiveResult;
 } TFrameReceiveData;
 //-----------------------------------------------------------------------
 typedef struct {

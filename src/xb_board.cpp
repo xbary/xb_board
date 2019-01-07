@@ -614,7 +614,12 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP8266, 160Mhz)");
 #endif
 #ifdef ESP32
+#ifdef BOARD_HAS_PSRAM
+	
+				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP32 wROVER, 240Mhz)");
+#else
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP32, 240Mhz)");
+#endif
 #endif
 #ifdef ARDUINO_ARCH_STM32F1
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (STM32F1, 72Mhz)");
@@ -1990,21 +1995,42 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 	{
 		if (Aft->FrameType == ftData)
 		{
-			TMessageBoard mb;
-			mb.IDMessage = IM_FRAME_RECEIVE;
-			mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
-			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
-			mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
-
-			bool res = SendMessageToTaskByName(String(Aft->TaskName), &mb);
-
-			if (res)
+			TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->TaskName));
+			if (TaskDefReceive == NULL)
 			{
-				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftResponseOK, Aft->DeviceID);
+				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftThereIsNoSuchTask, Aft->DeviceID);
 			}
 			else
 			{
-				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftResponseError, Aft->DeviceID);
+				
+			
+			
+				TMessageBoard mb;
+				mb.IDMessage = IM_FRAME_RECEIVE;
+				mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
+				mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
+				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
+
+				bool res = SendMessageToTask(TaskDefReceive, &mb);
+
+				if (res)
+				{
+					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftResponseOK, Aft->DeviceID);
+				}
+				else
+				{
+					TFrameType ft;
+					switch (mb.Data.FrameReceiveData.FrameReceiveResult)
+					{
+					case frrOK: ft = ftResponseOK; break;
+					case frrError: ft = ftResponseError; break;
+					case frrBufferIsFull: ft = ftBufferIsFull; break;
+					case frrOKWaitNext: ft = ftOKWaitForNext; break;
+					case frrUnrecognizedType: ft = ftUnrecognizedType; break;
+					default: ft = ftResponseError;	
+					}
+					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ft, Aft->DeviceID);
+				}
 			}
 		}
 		else
@@ -2229,8 +2255,6 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 							((uint8_t *)mb->Data.StreamData.Data)[indx_s] = AHandleDataFrameTransport->Data.buf[indx_s];
 							indx_s++;
 						}
-
-
 					}
 					else
 					{
@@ -2241,7 +2265,6 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 							Log(tmps.c_str(),false,false, tlError);
 						}
 						Log("]. The read buffer is too little.", false, false, tlError);
-
 					}
 
 					// leæ dalej z interpretacj¹
@@ -2251,47 +2274,6 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 					indxstartinterpret = 0xffff;
 				}
 			}
-
-			/*
-			// Sprawdzenie czy w ogóle by³o coœ interpretowane
-			if (AHandleDataFrameTransport->isdataframe_interpret)
-			{
-				// jeœli tak to sprawdzenie czy by³o w tej pêtli rozpoczête interpretowanie
-				if (isininterpret)
-				{
-					AHandleDataFrameTransport->indx_interpret = 0;
-					AHandleDataFrameTransport->isdataframe_interpret = false;
-					isininterpret = false;
-				}
-				// jeœli tera nie by³a rozpoczêta interpretacja to resztê danych zapisz do bufora i uruchom
-				// procedura oddwania danych z tego bufora
-				else
-				{
-					while (indx < mb->Data.StreamData.LengthResult)
-					{
-						v = ((uint8_t *)mb->Data.StreamData.Data)[indx];
-						AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
-						indx++;
-					}
-					mb->Data.StreamData.LengthResult = 0;
-					AHandleDataFrameTransport->max_indxdatatoread = AHandleDataFrameTransport->indx_interpret;
-					AHandleDataFrameTransport->isdatatoread = true;
-					AHandleDataFrameTransport->indxdatatoread = 0;
-					AHandleDataFrameTransport->indx_interpret = 0;
-					AHandleDataFrameTransport->isdataframe_interpret = false;
-					return false;
-				}*/
-
-/*
-				if ((AHandleDataFrameTransport->indx_interpret - sizeof(TFrameTransportACK)) >= AHandleDataFrameTransport->Data.str.FT.size)
-				{
-					HandleFrame(&AHandleDataFrameTransport->Data.str.FT, sfpSerial);
-					xb_memorycopy(&((uint8_t *)mb->Data.StreamData.Data)[indx], &((uint8_t *)mb->Data.StreamData.Data)[indx - indx_firstack], mb->Data.StreamData.LengthResult - indx);
-					mb->Data.StreamData.LengthResult = (indx - indx_firstack) + (mb->Data.StreamData.LengthResult - indx);
-					AHandleDataFrameTransport->indx_interpret = 0;
-					AHandleDataFrameTransport->isdataframe_interpret = false;
-				}
-				*/
 		}
 		indx++;
 	}

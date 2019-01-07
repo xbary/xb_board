@@ -96,7 +96,7 @@ extern "C" {
 #endif
 
 
-typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError } TFrameType;
+typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError, ftBufferIsFull, ftOKWaitForNext, ftUnrecognizedType, ftThereIsNoSuchTask } TFrameType;
 typedef enum { sfpLocal, sfpSerial, sfpSerialBT, sfpSerial1, sfpSerial2, sfpSerialTelnet} TSendFrameProt;
 
 typedef union
@@ -243,7 +243,7 @@ public:
 	void DateTimeSecond_init(void);
 	void HandleKeyPress(char ch);
 	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
-	void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
+	//void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
 	void handle(void);
 	
 	
