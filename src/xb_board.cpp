@@ -878,6 +878,11 @@ void XB_BOARD_Setup(void)
 	DateTimeStart = 0;
 
 	board.Log(FSS("Start..."),true,true);
+	
+#ifdef XB_GUI
+	board.AddTask(&XB_GUI_DefTask);
+#endif
+	
 }
 
 uint32_t XB_BOARD_DoLoop(void)
@@ -1071,7 +1076,19 @@ void TXB_board::Blink_TX(int8_t Auserid)
 
 TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 {
-
+	TTask *ta = TaskList;
+	while (ta != NULL)
+	{
+		if (Ataskdef == ta->TaskDef)
+		{
+			String taskname = "";
+			GetTaskName(Ataskdef, taskname);
+			Log(String("The task [" + taskname + "] has already been added...").c_str(), true, true, tlWarn);
+			return ta;
+		}
+		ta = ta->Next;
+	}
+	
 	TTask *t = (TTask *)board._malloc(sizeof(TTask));
 	if (t != NULL)
 	{
