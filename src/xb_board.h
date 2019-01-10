@@ -249,8 +249,8 @@ public:
 	
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
-	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskdef=NULL);
-	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef=NULL, TTaskDef *ASectaskdef=NULL);
+	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef);
+	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef);
 	bool HandleFrameTransportInGetStream;
 	
 	int print(String Atext);
@@ -263,8 +263,8 @@ public:
 	bool Default_ShowLogWarn;
 	bool Default_ShowLogError;
 
-	void Log(char Achr, TTypeLog Atl=tlInfo);
-	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTypeLog Atl = tlInfo, TTaskDef *Ataskdef=NULL);
+	void Log(char Achr, TTypeLog Atl = tlInfo);
+	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTypeLog Atl = tlInfo);
 	void Log(cbufSerial *Acbufserial, TTypeLog Atl = tlInfo);
 	void Log_TimeStamp();
 
@@ -305,6 +305,9 @@ public:
 
 	TTask *AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID = 0);
 	bool DelTask(TTaskDef *Ataskdef);
+
+	void ResetInAllTaskDefaultStream();		
+		
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	TTaskDef *GetTaskDefByName(String ATaskName);
 	void IterateTask(void);

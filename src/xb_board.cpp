@@ -1,16 +1,5 @@
 #include <xb_board.h>
 
-/*
-Insert Into WiFiClient Class
-
-void abort();
-
-void WiFiClient::abort()
-{
-if (_client)
-_client->abort();
-}
-*/
 
 TXB_board board;
 
@@ -49,29 +38,6 @@ TGADGETMenu *menuHandle1;
 
 uint32_t Tick_ESCKey = 0;
 uint8_t TerminalFunction = 0;
-
-#ifdef ESP8266
-#ifdef wificlient_h
-void TCPClientDestroy(WiFiClient **Awificlient)
-{
-	if (Awificlient != NULL)
-	{
-		if (*Awificlient != NULL)
-		{
-
-			delay(50);
-			(*Awificlient)->flush();
-			delay(50);
-			(*Awificlient)->abort();
-			delay(50);
-			delete((*Awificlient));
-			(*Awificlient) = NULL;
-			delay(50);
-		}
-	}
-}
-#endif
-#endif
 
 #if defined(ESP8266) || defined(ESP32)
 /*
@@ -1166,6 +1132,17 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 	return false;
 }
 
+void TXB_board::ResetInAllTaskDefaultStream()
+{
+	TTask *t = TaskList;
+	while (t != NULL)
+	{
+		t->StreamTaskDef = Default_StreamTaskDef;
+		t->SecStreamTaskDef = Default_SecStreamTaskDef;
+		t = t->Next;
+	}
+}
+
 TTask *TXB_board::GetTaskByIndex(uint8_t Aindex)
 {
 	TTask *t = TaskList;
@@ -1385,7 +1362,7 @@ void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 			if (Ataskdef->Task->dointerruptRC < 0)
 			{
 				Ataskdef->Task->dointerruptRC = 0;
-				Log("Error trigger interrupt status.", true, true, tlError, Ataskdef);
+				Log("Error trigger interrupt status.", true, true, tlError);
 			}
 		}
 	}
@@ -2105,14 +2082,23 @@ void TXB_board::handle(void)
 	}
 #endif
 
-
 	{
-		uint8_t bufkey[1];
-		if (GetStream(bufkey, 1) > 0)
+		if (CurrentTask != NULL)
 		{
-			HandleKeyPress((char)bufkey[0]);
-		}
+			uint8_t bufkey[1];
 
+			if (GetStream(bufkey, 1, CurrentTask->StreamTaskDef) > 0)
+			{
+				HandleKeyPress((char)bufkey[0]);
+			}
+			else if (CurrentTask->SecStreamTaskDef != NULL)
+			{
+				if (GetStream(bufkey, 1, CurrentTask->SecStreamTaskDef) > 0)
+				{
+					HandleKeyPress((char)bufkey[0]);
+				}
+			}
+		}
 	}
 }
 
@@ -2312,18 +2298,11 @@ bool TXB_board::GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 	return false;
 }
 
-uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskdef)
+uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef)
 {
 	if (Amaxlength == 0) return 0;
 	if (Adata == NULL) return 0;
-	if (Ataskdef == NULL)
-	{
-		if (CurrentTask != NULL)
-		{
-			Ataskdef = CurrentTask->StreamTaskDef;
-		}
-		if (Ataskdef == NULL) return 0;
-	}
+	if (AStreamtaskdef == NULL) return 0;
 
 	TMessageBoard mb;
 	mb.IDMessage = IM_STREAM;
@@ -2334,13 +2313,13 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskd
 
 	if (HandleFrameTransportInGetStream)
 	{
-		if (Ataskdef->Task != NULL)
+		if (AStreamtaskdef->Task != NULL)
 		{
-			if (Ataskdef->Task->HandleDataFrameTransport != NULL)
+			if (AStreamtaskdef->Task->HandleDataFrameTransport != NULL)
 			{
-				if (Ataskdef->Task->HandleDataFrameTransport->isdatatoread)
+				if (AStreamtaskdef->Task->HandleDataFrameTransport->isdatatoread)
 				{
-					if (GetFromErrFrameTransport(&mb, Ataskdef->Task->HandleDataFrameTransport))
+					if (GetFromErrFrameTransport(&mb, AStreamtaskdef->Task->HandleDataFrameTransport))
 					{
 						return mb.Data.StreamData.LengthResult;
 					}
@@ -2348,20 +2327,20 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskd
 			}
 			else
 			{
-				Ataskdef->Task->HandleDataFrameTransport = (THandleDataFrameTransport *)board._malloc(sizeof(THandleDataFrameTransport));
+				AStreamtaskdef->Task->HandleDataFrameTransport = (THandleDataFrameTransport *)board._malloc(sizeof(THandleDataFrameTransport));
 			}
 		}
 	}
 	
-	if (SendMessageToTask(Ataskdef, &mb, true))
+	if (SendMessageToTask(AStreamtaskdef, &mb, true))
 	{
 		if (HandleFrameTransportInGetStream)
 		{
-			if (Ataskdef->Task != NULL)
+			if (AStreamtaskdef->Task != NULL)
 			{
-				if (Ataskdef->Task->HandleDataFrameTransport != NULL)
+				if (AStreamtaskdef->Task->HandleDataFrameTransport != NULL)
 				{
-					HandleDataFrameTransport(&mb, Ataskdef->Task->HandleDataFrameTransport,Ataskdef);
+					HandleDataFrameTransport(&mb, AStreamtaskdef->Task->HandleDataFrameTransport, AStreamtaskdef);
 				}
 			}
 		}
@@ -2371,30 +2350,11 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *Ataskd
 	return 0;
 }
 
-uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef, TTaskDef *ASectaskdef)
+uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef)
 {
 	if (Alength == 0) return 0;
 	if (Adata == NULL) return 0;
-
-	if (Ataskdef == NULL)
-	{
-		if (CurrentTask != NULL)
-		{
-			Ataskdef = CurrentTask->StreamTaskDef;
-		}
-	}
-
-	if (ASectaskdef == NULL)
-	{
-		if (CurrentTask != NULL)
-		{
-			ASectaskdef = CurrentTask->SecStreamTaskDef;
-		}
-	}
-
-	if ((Ataskdef == NULL) && (ASectaskdef == NULL)) return 0;
-
-	uint32_t result = 0;
+	if (AStreamtaskdef == NULL) return 0;
 
 	TMessageBoard mb;
 	mb.IDMessage = IM_STREAM;
@@ -2402,38 +2362,23 @@ uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *Ataskdef,
 	mb.Data.StreamData.Data = Adata;
 	mb.Data.StreamData.Length = Alength;
 	mb.Data.StreamData.LengthResult = 0;
-	if (Ataskdef != NULL)
+	if (SendMessageToTask(AStreamtaskdef, &mb, true))
 	{
-		if (SendMessageToTask(Ataskdef, &mb, true))
-		{
-			result = mb.Data.StreamData.LengthResult;
-			if (result == 0) return 0;
-		}
+		return mb.Data.StreamData.LengthResult;
 	}
-
-	if (ASectaskdef != NULL)
-	{
-		if (result != mb.Data.StreamData.Length)
-		{
-			mb.Data.StreamData.Length = result;
-			mb.Data.StreamData.LengthResult = 0;
-		}
-		else
-		{
-			mb.Data.StreamData.LengthResult = 0;
-		}
-
-		SendMessageToTask(ASectaskdef, &mb, true);
-	}
-
-
-	return result;
+	return 0;
 }
 
 int TXB_board::print(String Atext)
 {
-	int len = Atext.length();
-	uint32_t rlen = PutStream((void *)Atext.c_str(), len);
+	if (CurrentTask != NULL)
+	{
+		int len = Atext.length();	
+		uint32_t rlen1 = PutStream((void *)Atext.c_str(), len, CurrentTask->StreamTaskDef);
+		uint32_t rlen2 = PutStream((void *)Atext.c_str(), len, CurrentTask->SecStreamTaskDef);
+		return rlen1 == 0 ? rlen2 : rlen1;
+	}
+	return 0;
 }
 
 void TXB_board::Log(char Achr, TTypeLog Atl)
@@ -2462,49 +2407,51 @@ void TXB_board::Log(char Achr, TTypeLog Atl)
 			}
 		}
 	}
-	PutStream(&Achr, 1);
+	else return;
+	PutStream(&Achr, 1, CurrentTask->StreamTaskDef);
+	PutStream(&Achr, 1, CurrentTask->SecStreamTaskDef);
 	if (NoTxCounter == 0) TXCounter++;
-//	if (NoTxCounter==0) TXCounter++;
-//	Serial_WriteChar(Achr);
 }
 
-void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog Atl, TTaskDef *Ataskdef)
+void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog Atl)
 {
-	if (Ataskdef == NULL)
+	TTaskDef *NameTaskDef=NULL;
+		
+	if (showtaskname)
 	{
 		if (CurrentTask != NULL)
 		{
-			Ataskdef = CurrentTask->TaskDef;
+			NameTaskDef = CurrentTask->TaskDef;
 		}
+		else showtaskname = false;
 	}
-	if (Ataskdef == NULL) return;
-	TTask *ACurrentTask = Ataskdef->Task;
 
-	if (ACurrentTask != NULL)
+	if (CurrentTask != NULL)
 	{
 		if (Atl == tlInfo)
 		{
-			if (ACurrentTask->ShowLogInfo == false)
+			if (CurrentTask->ShowLogInfo == false)
 			{
 				return;
 			}
 		}
 		else if (Atl == tlWarn)
 		{
-			if (ACurrentTask->ShowLogWarn == false)
+			if (CurrentTask->ShowLogWarn == false)
 			{
 				return;
 			}
 		}
 		else if (Atl == tlError)
 		{
-			if (ACurrentTask->ShowLogError == false)
+			if (CurrentTask->ShowLogError == false)
 			{
 				return;
 			}
 		}
 	}
-
+	else return;
+	
 	int len = StringLength((char *)Atxt, 0);
 	if (len == 0) return;
 
@@ -2513,36 +2460,30 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 		String txttime = "";
 		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
 		txttime = "\n[" + txttime + "] ";
-		PutStream((void *)txttime.c_str(), txttime.length());
+		PutStream((void *)txttime.c_str(), txttime.length(), CurrentTask->StreamTaskDef);
+		PutStream((void *)txttime.c_str(), txttime.length(), CurrentTask->SecStreamTaskDef);
 	}
 
 	if (showtaskname)
 	{
-		String taskname = "";
-		if (Ataskdef == NULL)
+		if (NameTaskDef != NULL)
 		{
-			if (ACurrentTask != NULL)
+			String taskname = "---";
+			GetTaskName(NameTaskDef, taskname);
+		
+			if (taskname.length() > 0)
 			{
-				Ataskdef = ACurrentTask->TaskDef;
+				taskname.trim();
+				taskname = '[' + taskname + "] ";
+				PutStream((void *)taskname.c_str(), taskname.length(), CurrentTask->StreamTaskDef);
+				PutStream((void *)taskname.c_str(), taskname.length(), CurrentTask->SecStreamTaskDef);
 			}
 		}
-		if (Ataskdef != NULL)
-		{
-			GetTaskName(Ataskdef, taskname);
-		}
-		else
-		{
-			taskname = "---";
-		}
-		if (taskname.length() > 0)
-		{
-			taskname.trim();
-			taskname = '[' + taskname + "] ";
-			PutStream((void *)taskname.c_str(), taskname.length());
-		}
+
 	}
 
-	PutStream((void *)Atxt, len);
+	PutStream((void *)Atxt, len, CurrentTask->StreamTaskDef);
+	PutStream((void *)Atxt, len, CurrentTask->SecStreamTaskDef);
 
 	if (NoTxCounter == 0) TXCounter++;
 }
@@ -2576,12 +2517,16 @@ void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
 			}
 		}
 	}
-
+	else 
+	{
+		clearbuf(Acbufserial);
+		return;
+	}
+		
 
 	while (Acbufserial->available()>0)
 	{
-		Log((char)(Acbufserial->read()), Atl);
-//		Serial_WriteChar(Acbufserial->read());
+		Log((char)(Acbufserial->read()), Atl); 
 		if (NoTxCounter==0) TXCounter++;
 	}
 }
