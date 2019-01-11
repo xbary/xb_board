@@ -203,6 +203,7 @@ typedef enum {
    tivDynArrayChar3, 
 	// same litery i cyfry
    tivInt8,
+	tivIP,
 	tivInt16,
 	tivInt32,
 	tivInt64,
@@ -214,6 +215,7 @@ typedef enum {
 } TTypeInputVar;
 
 #ifdef XB_GUI
+
 typedef enum {
 	waRepaint,waRepaintData,waCreate,waDestroy,waShow,waHide,waGetCaptionWindow
 } TWindowAction;
