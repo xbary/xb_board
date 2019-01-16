@@ -7,6 +7,7 @@ TTaskDef XB_BOARD_DefTask = {0,&XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMess
 
 volatile uint32_t DateTimeUnix;
 volatile uint32_t DateTimeStart;
+volatile uint32_t __SysTickCount;
 
 #ifdef ESP8266
 extern "C" {
@@ -31,25 +32,25 @@ TGADGETMenu *menuHandle1;
 #endif
 
 //------------------------------------------------------------------------------------------------------------
-#if defined(ESP8266) || defined(ESP32)
-//Ticker SysTickCount_ticker;
-//Ticker DateTimeSecond_ticker;
+#if defined(ESP8266) 
+Ticker SysTickCount_ticker;
+Ticker DateTimeSecond_ticker;
 #endif
 
 uint32_t Tick_ESCKey = 0;
 uint8_t TerminalFunction = 0;
 
-#if defined(ESP8266) || defined(ESP32)
-/*
+#if defined(ESP8266)
+
 void SysTickCount_proc(void)
 {
-	SysTickCount++;
+	__SysTickCount++;
 }
 
 void DateTimeSecond_proc(void)
 {
 	DateTimeUnix++;
-}*/
+}
 #endif
 
 bool showasc = false;
@@ -102,8 +103,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_GPIO, MODEPIN_INPUT);
 				else if (Am->Data.GpioData.ActionData.Mode == OUTPUT)
 					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_GPIO, MODEPIN_OUTPUT);
+#ifdef ESP32
 				else if (Am->Data.GpioData.ActionData.Mode == ANALOG)
 					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_ANALOGIN, MODEPIN_ANALOG);
+#endif
 				else
 					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_NOIDENT, MODEPIN_OUTPUT);
 				
@@ -649,7 +652,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->PutStr(18, 7, FSS("MAXpsram:"));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
+#ifdef ESP32					
 					winHandle0->PutStr(String(board.MaximumFreePSRAMInLoop).c_str());
+#else
+					//winHandle0->PutStr("---");
+#endif
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
 					winHandle0->PutStr(0, 7, FSS("MEM USE:"));
@@ -711,6 +718,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->PutStr(9, 4, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
 					winHandle0->PutStr(FSS("% "));
 
+#ifdef ESP32
 					winHandle0->PutStr(10, 6, String(board.FreePSRAMInLoop).c_str());
 					winHandle0->PutChar(' ');
 					winHandle0->PutStr(27, 6, String(board.MinimumFreePSRAMInLoop).c_str());
@@ -718,6 +726,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 					winHandle0->PutStr(9, 7, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
 					winHandle0->PutStr(FSS("% "));
+#else
+				
+#endif
 
 					//---------------
 					{
@@ -810,6 +821,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 void XB_BOARD_Setup(void)
 {
 
+#if defined(ESP8266)
+	board.SysTickCount_init();
+	board.DateTimeSecond_init();
+#endif
+
 // Wy³¹czenie komunikatów od CORE ESPowego
 #ifdef Serial_setDebugOutput
 	Serial_setDebugOutput(false);
@@ -874,6 +890,10 @@ void XB_BOARD_Setup(void)
 #endif
 #endif
 
+#ifdef ESP8266
+
+#endif
+	
 	DateTimeUnix = 0;
 	DateTimeStart = 0;
 
@@ -954,12 +974,6 @@ TXB_board::TXB_board()
 	HandleFrameTransportInGetStream = true;
 
 	PinInfoTable = (TPinInfo *)_malloc(BOARD_NR_GPIO_PINS);
-	
-#if defined(ESP8266) || defined(ESP32)
-	SysTickCount_init();
-	DateTimeSecond_init();
-#endif
-
 }
 
 TXB_board::~TXB_board()
@@ -1707,6 +1721,18 @@ void *TXB_board::_malloc(size_t size)
 
 #endif
 
+#ifdef ESP8266
+void *TXB_board::_malloc(size_t size)
+{
+	void *ptr = malloc(size);
+	if (ptr != NULL)
+	{
+		xb_memoryfill(ptr, size, 0);
+	}
+	return ptr;
+}
+#endif
+
 void ___free(void *Aptr)
 {
 	free(Aptr);
@@ -1868,8 +1894,9 @@ uint8_t TXB_board::crc8(const uint8_t *addr, uint8_t len)
 
 void TXB_board::SysTickCount_init(void)
 {
-#if defined(ESP8266) || defined(ESP32)
-	//SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
+#if defined(ESP8266) 
+	SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
+	
 #endif
 	LastActiveTelnetClientTick = 0;
 	
@@ -1880,10 +1907,6 @@ void TXB_board::DateTimeSecond_init(void)
 #if defined(ESP8266)
 	DateTimeSecond_ticker.attach(1, DateTimeSecond_proc);
 #endif
-#if defined(ESP32)
-	
-#endif
-
 }
 
 void TXB_board::HandleKeyPress(char ch)
@@ -2059,9 +2082,6 @@ void TXB_board::handle(void)
 #endif
 #ifdef ESP32
 		DateTimeUnix++;
-	
-		
-
 #endif
 #ifdef XB_GUI
 		if (winHandle0 != NULL) winHandle0->RepaintDataCounter++;

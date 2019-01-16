@@ -14,6 +14,10 @@ void loop()
 }
  */
 
+// we w³aœciwoœciach projektu dodajemy w 
+// Extra flags: -I{build.path}
+
+
 // Obowi¹zkowa inkluda z parametrami wstêpnymi projektu
 /*
 #ifndef XB_BOARD_DEF_H
@@ -92,6 +96,9 @@ extern "C" {
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <Ticker.h>
+
+#include <utils/xb_util.h>
+#include <utils/cbufSerial.h>
 
 #endif
 
@@ -343,6 +350,9 @@ public:
 	void *_malloc_psram(size_t size);
 	void *_malloc(size_t size);
 #endif
+#if defined(ESP8266)
+	void *_malloc(size_t size);
+#endif
 	void free(void *Aptr);
 	void freeandnull(void **Aptr);
 	uint32_t FreeHeapInLoop;
@@ -374,7 +384,8 @@ extern volatile uint32_t DateTimeStart;
 #endif
 
 #ifdef ESP8266
-extern volatile uint32_t SysTickCount;
+extern volatile uint32_t __SysTickCount;
+#define SysTickCount (__SysTickCount)
 extern void TCPClientDestroy(WiFiClient **Awificlient);
 #endif
 
