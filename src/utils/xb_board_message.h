@@ -245,50 +245,15 @@ typedef struct {
 } TWindowData;
 
 //-----------------------------------------------------------------------
-#define BEGIN_MENUITEMNAME(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
-{ \
-uint8_t MenuItemIndex = Am->Data.MenuData.ActionData.MenuItemData.ItemIndex; 
-
-
-#define DEF_MENUITEMNAME(iditem, nameitemstr) if (MenuItemIndex == iditem) { *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = String(nameitemstr); }
-#define DEF_MENUITEMNAME_CHECKED(iditem,nameitemstr,boolvalue) if (MenuItemIndex == iditem) { *(Am->Data.MenuData.ActionData.MenuItemData.PointerString) = "[" + String(boolvalue == true ? "*" : " ") + "] "+ String(nameitemstr); }
-
-#define END_MENUITEMNAME() \
-}
-
-
-#define DEF_MENUCAPTION(idmenu,caption) {if (Am->Data.MenuData.IDMenu==idmenu) {*(Am->Data.MenuData.ActionData.MenuCaptionData.PointerString) = caption;}}
-
-
-
-
-
-#define BEGIN_MENUINIT(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
-{ 
-
-#define DEF_MENUINIT(itemcount,currentselect,width) \
-{ \
-Am->Data.MenuData.ActionData.MenuInitData.ItemCount = itemcount;  \
-Am->Data.MenuData.ActionData.MenuInitData.CurrentSelect = currentselect; \
-Am->Data.MenuData.ActionData.MenuInitData.Width = width; \
-}
-
-
-#define END_MENUINIT() \
-}
-
-#define BEGIN_MENUCLICK(idmenu) if (Am->Data.MenuData.IDMenu==idmenu) \
-{ \
-uint8_t MenuItemIndex = Am->Data.MenuData.ActionData.MenuClickData.ItemIndex; 
-
-#define EVENT_MENUCLICK(itemindex) if (MenuItemIndex == itemindex) 
-
-#define END_MENUCLICK() \
-}
-
-
 typedef enum {
-	tmaOPEN_MAINMENU, tmaCLOSE_MAINMENU, tmaGET_INIT_MENU, tmaGET_CAPTION_MENU_STRING, tmaGET_ITEM_MENU_STRING, tmaCLICK_ITEM_MENU
+	tmaOPEN_MAINMENU, 
+	tmaCLOSE_MAINMENU, 
+	tmaGET_INIT_MENU, 
+	tmaGET_CAPTION_MENU_STRING, 
+	tmaGET_ITEM_MENU_STRING, 
+	tmaCLICK_ITEM_MENU,
+	tmaESCAPE_MENU,
+	tmaDEL_ITEM_MENU
 } TTypeMenuAction;
 
 typedef struct
@@ -296,6 +261,9 @@ typedef struct
 	uint8_t ItemCount;
 	uint8_t Width;
 	uint8_t CurrentSelect;
+	Tx X;
+	Ty Y;
+	bool EscapeClose;
 } TMenuInitData;
 
 typedef struct
@@ -303,17 +271,26 @@ typedef struct
 	String *PointerString;
 } TMenuCaptionData;
 
+typedef enum { taLeft, taCentre, taRight } TTextAlignment;
+
 typedef struct
 {
 	String *PointerString;
 	uint8_t ItemIndex;
+	TTextAlignment TextAlignment;
 } TMenuItemData;
 
 typedef struct
 {
 	uint8_t ItemIndex;
+	bool Close;
 } TMenuClickData;
 
+typedef struct
+{
+	uint8_t ItemIndex;
+	bool ReInit;
+} TMenuDelData;
 typedef struct
 {
 	TTypeMenuAction TypeMenuAction;
@@ -324,32 +301,17 @@ typedef struct
 		TMenuItemData MenuItemData;
 		TMenuClickData MenuClickData;
 		TMenuCaptionData MenuCaptionData;
+		TMenuDelData MenuDelData;
 	} ActionData;
 } TMenuData;
 //-----------------------------------------------------------------------
 
-#define BEGIN_INPUTDIALOGINIT(iddialog) if (Am->Data.InputDialogData.IDInputDialog==iddialog) \
-{ 
-
-#define DEF_INPUTDIALOGINIT(ATypeInputVar,AMaxLength,ADataPointer) \
-{ \
-Am->Data.InputDialogData.ActionData.InputDialogInitData.TypeInputVar = ATypeInputVar; \
-Am->Data.InputDialogData.ActionData.InputDialogInitData.MaxLength = AMaxLength; \
-Am->Data.InputDialogData.ActionData.InputDialogInitData.DataPointer = ADataPointer; \
-}
-
-#define END_INPUTDIALOGINIT() \
-}
-
-#define DEF_INPUTDIALOGCAPTION(idinputdialog,caption) {if (Am->Data.InputDialogData.IDInputDialog==idinputdialog) {*(Am->Data.InputDialogData.ActionData.InputDialogCaptionData.PointerString) = caption;}}
-
-#define DEF_INPUTDIALOGDESCRIPTION(idinputdialog,description) {if (Am->Data.InputDialogData.IDInputDialog==idinputdialog) {*(Am->Data.InputDialogData.ActionData.InputDialogDescriptionData.PointerString) = description;}}
-
-
 typedef enum {
 	ida_INIT_INPUTDIALOG,
 	ida_GET_CAPTION_STRING,
-	ida_GET_DESCRIPTION_STRING
+	ida_GET_DESCRIPTION_STRING,
+	ida_ENTER_DIALOG,
+	ida_ESCAPE_DIALOG,
 } TTypeInputDialogAction;
 
 typedef struct

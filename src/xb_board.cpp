@@ -452,13 +452,13 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		{
 			BEGIN_MENUINIT(0);
 			{
-				DEF_MENUINIT(board.TaskCount, 0, 20);
+				DEF_MENUINIT(board.TaskCount, 0, 20,-1,0,true);
 				res = true;
 			}
 			END_MENUINIT();
 			BEGIN_MENUINIT(1);
 			{
-				DEF_MENUINIT(2, 0, 15);
+				DEF_MENUINIT(2, 0, 15,-1,0,true);
 				res = true;
 			}
 			END_MENUINIT();
@@ -539,8 +539,18 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		}
 		case tmaGET_CAPTION_MENU_STRING:
 		{
-			DEF_MENUCAPTION(0, FSS("TASK LIST..."));
-			DEF_MENUCAPTION(1, FSS("BOARD MAIN MENU"));
+			BEGIN_MENUCAPTION(0)
+			{
+				DEF_MENUCAPTION("TASK LIST...");
+			}
+			END_MENUCAPTION()
+				else
+			BEGIN_MENUCAPTION(1)
+			{
+				DEF_MENUCAPTION("BOARD MAIN MENU");
+			}
+			END_MENUCAPTION()
+			
 			res = true;
 			break;
 		}
@@ -1684,7 +1694,11 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 uint32_t TXB_board::getFreePSRAM()
 {
 #ifdef BOARD_HAS_PSRAM
-	return ESP.getFreePsram();
+	static uint32_t lastfreepsram = 0;
+	register uint32_t freepsram = ESP.getFreePsram();
+	freepsram = (freepsram == 16 ? lastfreepsram : freepsram);
+	if (freepsram != 16) lastfreepsram = freepsram;
+	return freepsram;
 #else
 	return ESP.getFreeHeap();
 #endif
