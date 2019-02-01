@@ -195,6 +195,7 @@ typedef int16_t Tx;
 typedef int16_t Ty;
 
 typedef enum {
+	tivNoDef =0,
 	tivString,
 	tivDynArrayChar1, 
 	// Wszystkie znaki
@@ -324,14 +325,23 @@ typedef struct
 	String *PointerString;
 } TInputDialogDescriptionData;
 
+typedef struct
+{
+	uint32_t Min;
+	uint32_t Max;
+} Tuint32MinMax;
 
 typedef struct
 {
 	TTypeInputVar TypeInputVar;
 	uint8_t MaxLength;
 	void *DataPointer;
+	union 
+	{
+		Tuint32MinMax uint32MinMax;
+	} MinMax;
 	
-} TInputDialogInitData;
+	} TInputDialogInitData;
 
 typedef struct
 {
