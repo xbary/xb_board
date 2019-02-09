@@ -89,6 +89,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	
 	switch (Am->IDMessage)
 	{
+	case IM_FREEPTR:
+	{
+#ifdef XB_GUI
+		if (Am->Data.FreePTR == winHandle0) winHandle0 = NULL;
+		if (Am->Data.FreePTR == menuHandle0) menuHandle0 = NULL;
+		if (Am->Data.FreePTR == menuHandle1) menuHandle1 = NULL;
+#endif
+		res = true;
+		break;
+	}
 	case IM_GPIO:
 	{
 		switch (Am->Data.GpioData.GpioAction)
@@ -165,7 +175,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 
 	case IM_KEYBOARD:
-		{
+	{
 			if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
 			{
 				if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
@@ -869,7 +879,7 @@ void XB_BOARD_Setup(void)
 
 	
 #ifdef BOARD_LED_LIFE_PIN
-	pinMode(BOARD_LED_LIFE_PIN,OUTPUT);
+	board.pinMode(BOARD_LED_LIFE_PIN,OUTPUT);
 #endif
 
 #ifdef BOARD_LED_TX_PIN
@@ -900,10 +910,6 @@ void XB_BOARD_Setup(void)
 #endif
 #endif
 
-#ifdef ESP8266
-
-#endif
-	
 	DateTimeUnix = 0;
 	DateTimeStart = 0;
 
@@ -912,7 +918,6 @@ void XB_BOARD_Setup(void)
 #ifdef XB_GUI
 	board.AddTask(&XB_GUI_DefTask);
 #endif
-	
 }
 
 uint32_t XB_BOARD_DoLoop(void)
@@ -951,17 +956,17 @@ uint32_t XB_BOARD_DoLoop(void)
 	}
 
 #ifdef XB_GUI
-	DEF_WAITMS_VAR(xbl1);
-	BEGIN_WAITMS(xbl1, 1000)
+	if (winHandle0 != NULL)
 	{
-		if (winHandle0 != NULL)
+		DEF_WAITMS_VAR(xbl1);
+		BEGIN_WAITMS(xbl1, 1000)
 		{
 			winHandle0->RepaintDataCounter++;
 		}
-		RESET_WAITMS(xbl1);
+		END_WAITMS(xbl1)
 	}
-	END_WAITMS(xbl1)
 #endif
+
 	return 0;
 }
 
@@ -1704,8 +1709,12 @@ uint32_t TXB_board::getFreePSRAM()
 #endif
 }
 #if !defined(_VMICRO_INTELLISENSE)
-void *TXB_board::_malloc_psram(size_t size)
+void *TXB_board::_malloc_psram(size_t Asize)
 {
+	size_t size = Asize;
+	size = size >> 4;
+	size = size + 1;
+	size = size << 4;
 #ifdef BOARD_HAS_PSRAM
 	void *ptr= heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
 #else
@@ -1713,7 +1722,11 @@ void *TXB_board::_malloc_psram(size_t size)
 #endif
 	if (ptr != NULL)
 	{
-		xb_memoryfill(ptr, size, 0);
+		if ((size - Asize) > 0)
+		{
+			xb_memoryfill(&((uint8_t *)ptr)[Asize] , size - Asize, 0xff);
+		}
+		xb_memoryfill(ptr, Asize, 0);
 	}
 	return ptr;
 
@@ -1756,10 +1769,7 @@ void TXB_board::free(void *Aptr)
 {
 	if (Aptr != NULL)
 	{
-		TMessageBoard mb;
-		mb.IDMessage = IM_FREEPTR;
-		mb.Data.FreePTR = Aptr;
-		SendMessageToAllTask(&mb, doBACKWARD);
+		SendMessageToAllTask_FreePTR(Aptr);
 		___free(Aptr);
 	}
 }
@@ -1772,6 +1782,18 @@ void TXB_board::freeandnull(void **Aptr)
 		*Aptr = NULL;
 	}
 }
+
+void TXB_board::SendMessageToAllTask_FreePTR(void *Aptr)
+{
+	if (Aptr != NULL)
+	{
+		TMessageBoard mb;
+		mb.IDMessage = IM_FREEPTR;
+		mb.Data.FreePTR = Aptr;
+		SendMessageToAllTask(&mb, doBACKWARD);
+	}
+}
+
 
 uint32_t TXB_board::getFreeHeap()
 {
@@ -1935,21 +1957,25 @@ void TXB_board::HandleKeyPress(char ch)
 	}
 }
 
-uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength)
+bool TXB_board::SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength,uint32_t *AframeID)
 {
-	TTaskDef *TaskDefStream = GetTaskDefByName(AONStreamTaskName);
-	if (TaskDefStream == NULL) 
+	TTaskDef *TaskDefStream = NULL;
+	if (AONStreamTaskName != "local")
 	{
-		board.Log("Error: Stream task name not found...", true, true,tlError);
-		return 0;
+		TaskDefStream = GetTaskDefByName(AONStreamTaskName);
+		if (TaskDefStream == NULL) 
+		{
+			board.Log("Error: Stream task name not found...", true, true, tlError);
+			return false;
+		}
 	}
-	return SendFrameToDeviceTask(Ataskname, TaskDefStream, ADataFrame, Alength);
+	return SendFrameToDeviceTask(Ataskname, TaskDefStream, ADataFrame, Alength,AframeID);
 }
 
-uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength)
+bool TXB_board::SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID)
 {	
-	TFrameTransport ft;
-	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
+	TFrameTransport ft; xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
+
 	if (Alength > sizeof(ft.Frame))
 	{
 		board.Log("Error: send frame too long...", true, true);
@@ -1962,30 +1988,38 @@ uint32_t TXB_board::SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefSt
 		return 0;
 	}
 	
-	TFrameTransportACK ftack;
-	ftack.a = FRAME_ACK_A;
-	ftack.b = FRAME_ACK_B;
-	ftack.c = FRAME_ACK_C;
-	ftack.d = FRAME_ACK_D;
+	if (ATaskDefStream != NULL)
+	{
+		TFrameTransportACK ftack;
+		ftack.a = FRAME_ACK_A;
+		ftack.b = FRAME_ACK_B;
+		ftack.c = FRAME_ACK_C;
+		ftack.d = FRAME_ACK_D;
 
-	PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
-
-	uint32_t FrameID = SysTickCount;
+		PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+	}
+	
+	*AframeID = SysTickCount;
 
 	xb_memorycopy(ADataFrame, &ft.Frame, Alength);
 	ft.LengthFrame = Alength;
 
-	ft.FrameID = FrameID;
+	ft.FrameID = *AframeID;
 	ft.DeviceID = board.GetUniqueID();
 	ft.FrameType = ftData;
 	xb_memorycopy((void *)(Ataskname.c_str()), &ft.TaskName, Ataskname.length());
 	
 	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
-	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
-	
-	PutStream(&ft, ft.size, ATaskDefStream);
-
-	return FrameID;
+	if (ATaskDefStream != NULL)
+	{
+		ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
+		PutStream(&ft, ft.size, ATaskDefStream);
+	}
+	else
+	{
+		HandleFrameLocal(&ft);
+	}
+	return true;
 }
 
 void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID)
@@ -1994,13 +2028,15 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	TFrameTransport ft;
 	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
 
-	TFrameTransportACK ftack;
-	ftack.a = FRAME_ACK_A;
-	ftack.b = FRAME_ACK_B;
-	ftack.c = FRAME_ACK_C;
-	ftack.d = FRAME_ACK_D;
-	
-	PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+	if (ATaskDefStream != NULL)
+	{
+		TFrameTransportACK ftack;
+		ftack.a = FRAME_ACK_A;
+		ftack.b = FRAME_ACK_B;
+		ftack.c = FRAME_ACK_C;
+		ftack.d = FRAME_ACK_D;
+		PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+	}
 
 	ft.LengthFrame = 0;
 
@@ -2009,10 +2045,15 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	ft.FrameType = AframeType;
 
 	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
-	ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
-
-	PutStream(&ft, ft.size, ATaskDefStream);
-
+	if (ATaskDefStream != NULL)
+	{
+		ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
+		PutStream(&ft, ft.size, ATaskDefStream);
+	}
+	else
+	{
+		HandleFrameLocal(&ft);
+	}
 	return;
 }
 
@@ -2081,6 +2122,64 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 	{
 		SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftResponseCRCError, Aft->DeviceID);
 	}
+}
+
+void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
+{
+	if (Aft->FrameType == ftData)
+	{
+		TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->TaskName));
+		if (TaskDefReceive == NULL)
+		{
+			TMessageBoard mb;
+			mb.IDMessage = IM_FRAME_RESPONSE;
+			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
+			mb.Data.FrameResponseData.FrameType = ftThereIsNoSuchTask;
+			SendMessageToAllTask(&mb, doFORWARD);
+			Log("There is no indicated task in the system to send a frame.", true, true,tlError);
+		}
+		else
+		{
+			TMessageBoard mb;
+			mb.IDMessage = IM_FRAME_RECEIVE;
+			mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
+			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
+			mb.Data.FrameReceiveData.TaskDefStream = NULL;
+
+			bool res = SendMessageToTask(TaskDefReceive, &mb);
+
+			if (res)
+			{
+				SendResponseFrameOnProt(Aft->FrameID, NULL, ftResponseOK, Aft->DeviceID);
+			}
+			else
+			{
+				TFrameType ft;
+				switch (mb.Data.FrameReceiveData.FrameReceiveResult)
+				{
+				case frrOK: ft = ftResponseOK; break;
+				case frrError: ft = ftResponseError; break;
+				case frrBufferIsFull: ft = ftBufferIsFull; break;
+				case frrOKWaitNext: ft = ftOKWaitForNext; break;
+				case frrUnrecognizedType: ft = ftUnrecognizedType; break;
+				default: ft = ftResponseError;	
+				}
+				SendResponseFrameOnProt(Aft->FrameID, NULL, ft, Aft->DeviceID);
+			}
+		}
+	}
+	else
+	{
+		if (GetUniqueID().ID.ID64 == Aft->DeviceID.ID.ID64)
+		{
+			TMessageBoard mb;
+			mb.IDMessage = IM_FRAME_RESPONSE;
+			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
+			mb.Data.FrameResponseData.FrameType = Aft->FrameType;
+			SendMessageToAllTask(&mb, doFORWARD);
+		}
+	}
+	
 }
 
 void TXB_board::handle(void)

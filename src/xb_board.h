@@ -250,7 +250,7 @@ public:
 	void DateTimeSecond_init(void);
 	void HandleKeyPress(char ch);
 	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
-	//void HandleTransportFrame(bool ADoKeyPress, TSendFrameProt Asfp, uint16_t Ach=0xffff);
+	void HandleFrameLocal(TFrameTransport *Aft);
 	void handle(void);
 	
 	
@@ -336,8 +336,8 @@ public:
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	void SendResponseFrameOnProt(uint32_t AFrameID,  TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID);
-	uint32_t SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength);
-	uint32_t SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength);
+	bool SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID);
+	bool SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID);
 	void SendSaveConfigToAllTask(void);
 
 #if defined(ESP32)
@@ -355,6 +355,7 @@ public:
 #endif
 	void free(void *Aptr);
 	void freeandnull(void **Aptr);
+	void SendMessageToAllTask_FreePTR(void *Aptr);
 	uint32_t FreeHeapInLoop;
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;

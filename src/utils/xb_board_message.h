@@ -333,12 +333,25 @@ typedef struct
 
 typedef struct
 {
+	uint16_t Min;
+	uint16_t Max;
+} Tuint16MinMax;
+
+typedef struct
+{
+	uint8_t Min;
+	uint8_t Max;
+} Tuint8MinMax;
+typedef struct
+{
 	TTypeInputVar TypeInputVar;
 	uint8_t MaxLength;
 	void *DataPointer;
 	union 
 	{
 		Tuint32MinMax uint32MinMax;
+		Tuint16MinMax uint16MinMax;
+		Tuint8MinMax uint8MinMax;
 	} MinMax;
 	
 	} TInputDialogInitData;
