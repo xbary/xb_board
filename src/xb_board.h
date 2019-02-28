@@ -78,7 +78,7 @@ void loop()
 #define _REG register
 
 #if defined(ESP32)
-
+#include <HardwareSerial.h>
 typedef uint8_t WiringPinMode;
 
 #include <utils/xb_util.h>
@@ -149,7 +149,7 @@ struct TTask
 	bool ShowLogWarn;
 	bool ShowLogError;
 	TIDMessage LastIDMessage;
-	THandleDataFrameTransport *HandleDataFrameTransport;
+	THandleDataFrameTransport *HandleDataFrameTransportList;
 	int8_t dosetupRC;
 	int8_t doloopRC;
 	int8_t domessageRC;
@@ -168,11 +168,16 @@ struct TFrameTransport
 	uint8_t size;
 	uint8_t crc8;
 	uint32_t FrameID;
-	TUniqueID DeviceID;
-	char TaskName[16];
+	uint32_t SourceAddress;
+	TUniqueID SourceDeviceID;
+	uint32_t DestAddress;
+	TUniqueID DestDeviceID;
+//	uint32_t FromChannelStream;
+//	TUniqueID DeviceID;
+	char DestTaskName[16];
 	TFrameType FrameType;
 	uint8_t LengthFrame;
-	uint8_t Frame[250 - (1 + 16 + 8 + 4 + 1 + 1 + 4)];
+	uint8_t Frame[250 - (1 + 16 + 8 + 4 + 8 + 4 + 1 + 1 + 4 + 4)];
 };
 
 #define FRAME_ACK_A 0xf1
@@ -194,8 +199,19 @@ struct THDFT
 	struct TFrameTransport FT;
 };
 
+#ifndef TIMEOUT_HANDLEDATAFRAMETRANSPORT
+#define TIMEOUT_HANDLEDATAFRAMETRANSPORT 10000
+#endif
+
 struct THandleDataFrameTransport
 {
+	THandleDataFrameTransport *Next;
+	THandleDataFrameTransport *Prev;
+	
+	uint32_t TickCreate;
+	
+	uint32_t FromChannel;
+	
 	union
 	{
 		uint8_t buf[sizeof(TFrameTransportACK) + sizeof(TFrameTransport)];
@@ -209,9 +225,9 @@ struct THandleDataFrameTransport
 	uint8_t indxdatatoread;
 	uint8_t max_indxdatatoread;
 
-	uint8_t *BufDataToLong;
-	uint32_t SizeBufDataToLong;
-	uint32_t IndxReadBufDataToLong;
+//	uint8_t *BufDataToLong;
+//	uint32_t SizeBufDataToLong;
+//	uint32_t IndxReadBufDataToLong;
 };
 #pragma pack(pop)
 
@@ -242,7 +258,10 @@ class TXB_board
 public:
 	TXB_board();
 	~TXB_board();
-
+	String DeviceName;
+	
+	void *psram2m;
+	
 	uint32_t LastActiveTelnetClientTick;
 
 	void setString(char *dst, const char *src, int max_size);
@@ -256,8 +275,11 @@ public:
 	
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
-	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef);
-	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef);
+	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef,uint32_t Afromchannel);
+	void CheckOld_HandleDataFrameTransport(TTask *ATask=NULL);
+	
+	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t AChannel = 0);
+	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AChannel = 0);
 	bool HandleFrameTransportInGetStream;
 	
 	int print(String Atext);
@@ -303,7 +325,8 @@ public:
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
 	//void PrintDiag(void);
-
+	void FilterString(const char *Asourcestring, String &Adestinationstring);
+	
 	TTask *TaskList;
 	uint8_t TaskCount;
 
@@ -335,9 +358,9 @@ public:
 	bool SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain = false);
 	bool SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
 	bool SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection = doFORWARD, TTaskDef *Aexcludetask=NULL);
-	void SendResponseFrameOnProt(uint32_t AFrameID,  TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID);
-	bool SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID);
-	bool SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID);
+	void SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream,  uint32_t Afromchannel, uint32_t Achannel, TFrameType AframeType, TUniqueID ADeviceID);
+	bool SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress=0, uint32_t ADestAddress=0);
+	bool SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress=0, uint32_t ADestAddress=0);
 	void SendSaveConfigToAllTask(void);
 
 #if defined(ESP32)
@@ -345,8 +368,14 @@ public:
 	uint32_t MinimumFreePSRAMInLoop;
 	uint32_t MaximumFreePSRAMInLoop;
 
+	uint32_t MaximumMallocPSRAM;
+	
 	uint32_t getFreePSRAM();
+	uint32_t GETFREEPSRAM_ERROR_COUNTER;
+	uint32_t lastfreepsram;
 
+	int OurReservedBlock;
+	
 	void *_malloc_psram(size_t size);
 	void *_malloc(size_t size);
 #endif
@@ -373,6 +402,8 @@ private:
 	uint32_t ADRESS_HEAP;
 	uint32_t ADRESS_STACK;
 #endif
+	
+
 };
 
 extern TXB_board board;

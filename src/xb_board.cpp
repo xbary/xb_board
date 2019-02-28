@@ -578,8 +578,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 				Am->Data.WindowData.ActionData.Create.X = -1;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
-				Am->Data.WindowData.ActionData.Create.Width = 36;
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 12;
+				Am->Data.WindowData.ActionData.Create.Width = 46;
+				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 14;
 
 				res = true;
 			} 
@@ -630,7 +630,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->PutStr(0, 0, FSS("DEVICE NAME: "));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(FSS(DEVICE_NAME));
+					winHandle0->PutStr(board.DeviceName.c_str());
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
@@ -680,11 +680,13 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
 					winHandle0->PutStr(0, 7, FSS("MEM USE:"));
+
+					winHandle0->PutStr(0, 8, FSS("OUR RESERVED BLOCK:"));
 					//--------------
 					{
 						int y;
 						String name;
-						y = 8;
+						y = 10;
 						winHandle0->PutStr(0, y, FSS("__________________________________"));
 						y++;
 						winHandle0->PutStr(0, y, FSS("TASK NAME"));
@@ -749,13 +751,14 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #else
 				
 #endif
-
+					winHandle0->PutStr(20,8,String(board.OurReservedBlock).c_str(),8);
+					
 					//---------------
 					{
 						String name;
 						int y;
 
-						y = 8;
+						y = 10;
 
 						y += 2;
 						for (int i = 0; i < board.TaskCount; i++)
@@ -792,7 +795,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	case IM_GET_TASKSTATUS_STRING:
 	{
-		*(Am->Data.PointerString) = String("Task Count:"+String(board.TaskCount)+" / ");
+		*(Am->Data.PointerString) = String("TC:" + String(board.TaskCount) + " / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER));
 		res = true;
 	}
 	case IM_STREAM:
@@ -825,7 +828,17 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		}
 		case saPut:
 		{
-			Am->Data.StreamData.LengthResult = Serial_write((uint8_t *)Am->Data.StreamData.Data, Am->Data.StreamData.Length);
+			uint32_t indx = 0;
+			uint32_t count = Am->Data.StreamData.Length;
+			Am->Data.StreamData.LengthResult = 0;
+			while (count > 0)
+			{
+				Am->Data.StreamData.LengthResult += Serial_write(((uint8_t *)Am->Data.StreamData.Data)[indx]);
+				count--;
+				indx++;
+				yield();
+					
+			}
 			res = true;
 			break;
 		}
@@ -840,6 +853,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 void XB_BOARD_Setup(void)
 {
+#ifdef BOARD_HAS_PSRAM
+	board.psram2m = board._malloc_psram((1024 * 1024) * 2);
+#endif
 
 #if defined(ESP8266)
 	board.SysTickCount_init();
@@ -866,7 +882,7 @@ void XB_BOARD_Setup(void)
 #ifdef Serial_availableForWrite 
 	while (!Serial_availableForWrite())
 	{
-		yield();
+		delay(1);
 	}
 #endif
 	for (int i = 0; i < 32; i++) {
@@ -975,7 +991,11 @@ TXB_board::TXB_board()
 {
 	TaskList = NULL;
 	TaskCount = 0;
+	lastfreepsram = 0;
+	OurReservedBlock = 0;
+	GETFREEPSRAM_ERROR_COUNTER = 0;
 	iteratetask_procedure = false;
+	MaximumMallocPSRAM = 0;
 	CurrentIterateTask = NULL;
 	CurrentTask = NULL;
 	NoTxCounter = 0;
@@ -987,8 +1007,11 @@ TXB_board::TXB_board()
 	Default_ShowLogWarn = true;
 	Default_ShowLogError = true;
 	HandleFrameTransportInGetStream = true;
-
+	DeviceName = DEVICE_NAME;
+	
 	PinInfoTable = (TPinInfo *)_malloc(BOARD_NR_GPIO_PINS);
+	
+	
 }
 
 TXB_board::~TXB_board()
@@ -1004,7 +1027,7 @@ TXB_board::~TXB_board()
 
 bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinMode;
 	mb.Data.GpioData.NumPin = pin;
@@ -1022,7 +1045,7 @@ bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 
 void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinWrite;
 	mb.Data.GpioData.NumPin = pin;
@@ -1037,7 +1060,7 @@ void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 
 uint8_t TXB_board::digitalRead(uint16_t pin)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinRead;
 	mb.Data.GpioData.NumPin = pin;
@@ -1055,7 +1078,7 @@ uint8_t TXB_board::digitalRead(uint16_t pin)
 
 uint8_t TXB_board::digitalToggle(uint16_t pin)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinToggle;
 	mb.Data.GpioData.NumPin = pin;
@@ -1081,7 +1104,7 @@ void TXB_board::Blink_RX(int8_t Auserid)
 #endif
 	Tick_RX_BLINK = SysTickCount;
 #endif
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_RX_BLINK;
 	mb.Data.BlinkData.UserID = Auserid;
 	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
@@ -1097,7 +1120,7 @@ void TXB_board::Blink_TX(int8_t Auserid)
 #endif
 	Tick_TX_BLINK = SysTickCount;
 #endif
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_TX_BLINK;
 	mb.Data.BlinkData.UserID = Auserid;
 	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
@@ -1431,7 +1454,7 @@ bool TXB_board::GetTaskString(TMessageBoard *Amb,TTaskDef *ATaskDef, String &APo
 
 bool TXB_board::GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GET_TASKSTATUS_STRING;
 	return GetTaskString(&mb, ATaskDef, APointerString);
 }
@@ -1439,14 +1462,14 @@ bool TXB_board::GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString)
 bool TXB_board::GetTaskName(TTaskDef *ATaskDef,String &APointerString)
 {
 	if (ATaskDef == NULL) return false;
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GET_TASKNAME_STRING;
 	return GetTaskString(&mb, ATaskDef, APointerString);
 }
 
 void TXB_board::SendMessageOTAUpdateStarted()
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_OTA_UPDATE_STARTED;
 	mb.Data.uData64 = 0;
 	SendMessageToAllTask(&mb, doBACKWARD);
@@ -1454,7 +1477,7 @@ void TXB_board::SendMessageOTAUpdateStarted()
 
 void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction,char Akey)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_KEYBOARD;
 	mb.Data.KeyboardData.KeyCode = Akey;
 	mb.Data.KeyboardData.KeyFunction = Akeyfunction;
@@ -1464,7 +1487,7 @@ void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction,char Akey)
 
 void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey,TTaskDef *Ataskdef,bool Aexcludethistask)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_KEYBOARD;
 	mb.Data.KeyboardData.KeyCode = Akey;
 	mb.Data.KeyboardData.KeyFunction = Akeyfunction;
@@ -1488,7 +1511,7 @@ void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey,T
 
 void TXB_board::SendKeyPress(char Akey)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_KEYBOARD;
 	mb.Data.KeyboardData.KeyCode=Akey;
 	mb.Data.KeyboardData.KeyFunction = KF_CODE;
@@ -1498,7 +1521,7 @@ void TXB_board::SendKeyPress(char Akey)
 
 void TXB_board::SendKeyPress(char Akey, TTaskDef *Ataskdef)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_KEYBOARD;
 	mb.Data.KeyboardData.KeyCode = Akey;
 	mb.Data.KeyboardData.KeyFunction = KF_CODE;
@@ -1538,13 +1561,15 @@ bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb,bool Aru
 {
 	return DoMessage(mb, Arunagain, CurrentTask, ATaskDef);
 }
+
 bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TIDMessage AIDmessage, bool Arunagain)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = AIDmessage;
 	mb.Data.uData32 = 0;
 	return SendMessageToTask(ATaskDef, &mb, Arunagain);
 }
+
 bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain)
 {
 	TTask *t = TaskList;
@@ -1574,7 +1599,7 @@ bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, boo
 
 bool TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
 {
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = AidMessage;
 	mb.Data.uData32 = 0;
 	return SendMessageToAllTask(&mb, ADoMessageDirection, Aexcludetask);
@@ -1582,7 +1607,7 @@ bool TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection 
 
 bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
 {
-	bool res = false;
+	uint32_t res = 0;
 	switch (ADoMessageDirection)
 	{
 /*		case doONLYINTERESTED:
@@ -1635,7 +1660,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-						res = DoMessage(mb, true, CurrentTask, t->TaskDef);
+						res += DoMessage(mb, true, CurrentTask, t->TaskDef);
 					}
 				}
 				t = t->Next;
@@ -1660,7 +1685,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-						res = DoMessage(mb, true, CurrentTask, t->TaskDef);
+						res += DoMessage(mb, true, CurrentTask, t->TaskDef);
 					}
 				}
 				t = t->Prev;
@@ -1669,7 +1694,7 @@ bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoM
 		}
 		default: break;
 	}
-	return res;
+	return (res>0);
 }
 
 void TXB_board::SendSaveConfigToAllTask(void)
@@ -1699,11 +1724,29 @@ void TXB_board::setString(char *dst, const char *src, int max_size)
 uint32_t TXB_board::getFreePSRAM()
 {
 #ifdef BOARD_HAS_PSRAM
-	static uint32_t lastfreepsram = 0;
-	register uint32_t freepsram = ESP.getFreePsram();
-	freepsram = (freepsram == 16 ? lastfreepsram : freepsram);
-	if (freepsram != 16) lastfreepsram = freepsram;
-	return freepsram;
+	
+	uint32_t freepsram = ESP.getFreePsram();
+	uint32_t r=0;
+	if (lastfreepsram == 0)
+	{
+		lastfreepsram = freepsram;
+	}
+	else
+	{
+		r = (lastfreepsram > freepsram) ? (lastfreepsram - freepsram) : (freepsram - lastfreepsram);	
+	}
+	 
+	
+	if (r > (100 * MaximumMallocPSRAM))
+	{
+		asm("memw");
+		GETFREEPSRAM_ERROR_COUNTER++;
+	}
+	else
+	{
+		lastfreepsram = freepsram;
+	}
+	return lastfreepsram;
 #else
 	return ESP.getFreeHeap();
 #endif
@@ -1712,11 +1755,15 @@ uint32_t TXB_board::getFreePSRAM()
 void *TXB_board::_malloc_psram(size_t Asize)
 {
 	size_t size = Asize;
+	
+	MaximumMallocPSRAM = (Asize > MaximumMallocPSRAM) ? Asize : MaximumMallocPSRAM;
+	
 	size = size >> 4;
 	size = size + 1;
 	size = size << 4;
 #ifdef BOARD_HAS_PSRAM
-	void *ptr= heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+	//void *ptr= heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+	void *ptr = malloc(size);
 #else
 	void *ptr = malloc(size);
 #endif
@@ -1727,6 +1774,7 @@ void *TXB_board::_malloc_psram(size_t Asize)
 			xb_memoryfill(&((uint8_t *)ptr)[Asize] , size - Asize, 0xff);
 		}
 		xb_memoryfill(ptr, Asize, 0);
+		OurReservedBlock++;
 	}
 	return ptr;
 
@@ -1740,6 +1788,7 @@ void *TXB_board::_malloc(size_t size)
 	if (ptr != NULL)
 	{
 		xb_memoryfill(ptr, size, 0);
+		OurReservedBlock++;
 	}
 	return ptr;
 
@@ -1771,6 +1820,7 @@ void TXB_board::free(void *Aptr)
 	{
 		SendMessageToAllTask_FreePTR(Aptr);
 		___free(Aptr);
+		OurReservedBlock--;
 	}
 }
 
@@ -1778,7 +1828,7 @@ void TXB_board::freeandnull(void **Aptr)
 {
 	if (*Aptr != NULL)
 	{
-		free(*Aptr);
+		board.free(*Aptr);
 		*Aptr = NULL;
 	}
 }
@@ -1787,7 +1837,7 @@ void TXB_board::SendMessageToAllTask_FreePTR(void *Aptr)
 {
 	if (Aptr != NULL)
 	{
-		TMessageBoard mb;
+		TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 		mb.IDMessage = IM_FREEPTR;
 		mb.Data.FreePTR = Aptr;
 		SendMessageToAllTask(&mb, doBACKWARD);
@@ -1811,7 +1861,7 @@ uint32_t TXB_board::getFreeHeap()
 
 	ADRESS_STACK = (uint32_t)&a;
 	ADRESS_HEAP = (uint32_t)malloc(32);
-	free((void *)ADRESS_HEAP);
+	board.free((void *)ADRESS_HEAP);
 
 	size = ADRESS_STACK - ADRESS_HEAP;
 	interrupts();
@@ -1957,7 +2007,7 @@ void TXB_board::HandleKeyPress(char ch)
 	}
 }
 
-bool TXB_board::SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName, void *ADataFrame, uint32_t Alength,uint32_t *AframeID)
+bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress, uint32_t ADestAddress)
 {
 	TTaskDef *TaskDefStream = NULL;
 	if (AONStreamTaskName != "local")
@@ -1969,91 +2019,123 @@ bool TXB_board::SendFrameToDeviceTask(String Ataskname, String AONStreamTaskName
 			return false;
 		}
 	}
-	return SendFrameToDeviceTask(Ataskname, TaskDefStream, ADataFrame, Alength,AframeID);
+	return SendFrameToDeviceTask(ADestTaskName, TaskDefStream, ADataFrame, Alength,AframeID,ASourceAddress,ADestAddress);
 }
 
-bool TXB_board::SendFrameToDeviceTask(String Ataskname, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID)
+bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress,uint32_t ADestAddress)
 {	
-	TFrameTransport ft; xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
-
-	if (Alength > sizeof(ft.Frame))
+	uint32_t reslen = 0;
+	static THDFT *hdft = NULL;
+	if (hdft != NULL)
 	{
-		board.Log("Error: send frame too long...", true, true);
-		return 0;
+		board.free(hdft);
+		hdft = NULL;
+	}
+	hdft = (THDFT *)board._malloc(sizeof(THDFT));
+	
+	if (hdft == NULL)
+	{
+		board.Log("Error memory in send frame...", true, true, tlError);
+		return false;
 	}
 
-	if (Ataskname.length() > 15)
+	if (Alength > sizeof(hdft->FT.Frame))
 	{
-		board.Log("Error: Destination task name too long (15 char max)...", true, true);
-		return 0;
+		board.Log("Error: send frame too long...", true, true,tlError);
+		
+		return false;
+	}
+
+	if (ADestTaskName.length() > 15)
+	{
+		board.Log("Error: Destination task name too long (15 char max)...", true, true,tlError);
+		
+		return false;
 	}
 	
 	if (ATaskDefStream != NULL)
 	{
-		TFrameTransportACK ftack;
-		ftack.a = FRAME_ACK_A;
-		ftack.b = FRAME_ACK_B;
-		ftack.c = FRAME_ACK_C;
-		ftack.d = FRAME_ACK_D;
-
-		PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+		hdft->ACK.a = FRAME_ACK_A;
+		hdft->ACK.b = FRAME_ACK_B;
+		hdft->ACK.c = FRAME_ACK_C;
+		hdft->ACK.d = FRAME_ACK_D;
 	}
 	
 	*AframeID = SysTickCount;
-
-	xb_memorycopy(ADataFrame, &ft.Frame, Alength);
-	ft.LengthFrame = Alength;
-
-	ft.FrameID = *AframeID;
-	ft.DeviceID = board.GetUniqueID();
-	ft.FrameType = ftData;
-	xb_memorycopy((void *)(Ataskname.c_str()), &ft.TaskName, Ataskname.length());
+	hdft->FT.SourceAddress = ASourceAddress;
+	hdft->FT.SourceDeviceID = board.GetUniqueID();
+	hdft->FT.DestAddress = ADestAddress;
+	hdft->FT.DestDeviceID.ID.ID64 = 0;
+	hdft->FT.FrameID = *AframeID;
+	hdft->FT.FrameType = ftData;
 	
-	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
+	xb_memorycopy(ADataFrame, &hdft->FT.Frame, Alength);
+	hdft->FT.LengthFrame = Alength;
+
+	xb_memorycopy((void *)(ADestTaskName.c_str()), &hdft->FT.DestTaskName, ADestTaskName.length());
+	
+	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
 	if (ATaskDefStream != NULL)
 	{
-		ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
-		PutStream(&ft, ft.size, ATaskDefStream);
+		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
+		reslen=PutStream(hdft, ltsize, ATaskDefStream,ADestAddress);
+		if (reslen != ltsize)
+		{
+			board.Log(String("Stream error - Send: " + String(ltsize) + " Sended:" + String(reslen) + " ...").c_str(), true, true, tlWarn);
+			return false;
+		}
 	}
 	else
 	{
-		HandleFrameLocal(&ft);
+		HandleFrameLocal(&hdft->FT);
 	}
 	return true;
 }
 
-void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, TFrameType AframeType, TUniqueID ADeviceID)
+void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t ASourceAddress, uint32_t ADestAddress, TFrameType AframeType, TUniqueID ADestDeviceID)
 {
-	
-	TFrameTransport ft;
-	xb_memoryfill(&ft, sizeof(TFrameTransport), 0);
-
-	if (ATaskDefStream != NULL)
+	static THDFT *hdft = NULL;
+	if (hdft != NULL)
 	{
-		TFrameTransportACK ftack;
-		ftack.a = FRAME_ACK_A;
-		ftack.b = FRAME_ACK_B;
-		ftack.c = FRAME_ACK_C;
-		ftack.d = FRAME_ACK_D;
-		PutStream(&ftack, sizeof(TFrameTransportACK), ATaskDefStream);
+		board.free(hdft);
+		hdft = NULL;
+	}
+	hdft=(THDFT *)board._malloc(sizeof(THDFT));
+	if (hdft == NULL)
+	{
+		board.Log("Memory error in send response frame...", true, true, tlError);
+		return;
 	}
 
-	ft.LengthFrame = 0;
-
-	ft.FrameID = AFrameID;
-	ft.DeviceID = ADeviceID;
-	ft.FrameType = AframeType;
-
-	ft.size = (((uint32_t)&ft.Frame) - ((uint32_t)&ft)) + ft.LengthFrame;
 	if (ATaskDefStream != NULL)
 	{
-		ft.crc8 = board.crc8((uint8_t *)&ft, ft.size);
-		PutStream(&ft, ft.size, ATaskDefStream);
+		hdft->ACK.a = FRAME_ACK_A;
+		hdft->ACK.b = FRAME_ACK_B;
+		hdft->ACK.c = FRAME_ACK_C;
+		hdft->ACK.d = FRAME_ACK_D;
+	}
+
+	hdft->FT.SourceAddress = ASourceAddress;
+	hdft->FT.SourceDeviceID = board.GetUniqueID();
+	hdft->FT.DestAddress = ADestAddress;
+	hdft->FT.DestDeviceID = ADestDeviceID;
+	hdft->FT.LengthFrame = 0;
+	hdft->FT.FrameID = AFrameID;
+	hdft->FT.FrameType = AframeType;
+	
+	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
+	if (ATaskDefStream != NULL)
+	{
+		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
+		PutStream(hdft, ltsize, ATaskDefStream, ADestAddress);
 	}
 	else
 	{
-		HandleFrameLocal(&ft);
+		HandleFrameLocal(&hdft->FT);
 	}
+	
 	return;
 }
 
@@ -2067,27 +2149,25 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 	{
 		if (Aft->FrameType == ftData)
 		{
-			TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->TaskName));
-			if (TaskDefReceive == NULL)
+			TTaskDef *DestTaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
+			if (DestTaskDefReceive == NULL)
 			{
-				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftThereIsNoSuchTask, Aft->DeviceID);
+				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream ,Aft->DestAddress, Aft->SourceAddress , ftThereIsNoSuchTask, Aft->SourceDeviceID);
 			}
 			else
 			{
-				
-			
-			
-				TMessageBoard mb;
+				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 				mb.IDMessage = IM_FRAME_RECEIVE;
 				mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
 				mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
 				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
-
-				bool res = SendMessageToTask(TaskDefReceive, &mb);
-
+				mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
+				
+				bool res = SendMessageToTask(DestTaskDefReceive, &mb);
 				if (res)
 				{
-					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftResponseOK, Aft->DeviceID);
+					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseOK, Aft->SourceDeviceID);
+					//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, 0,Aft->FromChannelStream, ftResponseOK, Aft->DeviceID);
 				}
 				else
 				{
@@ -2101,16 +2181,16 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 					case frrUnrecognizedType: ft = ftUnrecognizedType; break;
 					default: ft = ftResponseError;	
 					}
-					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ft, Aft->DeviceID);
+					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ft, Aft->SourceDeviceID);
+					//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream,0, Aft->FromChannelStream, ft, Aft->DeviceID);
 				}
 			}
 		}
 		else
 		{
-			if (GetUniqueID().ID.ID64 == Aft->DeviceID.ID.ID64)
+			if (GetUniqueID().ID.ID64 == Aft->SourceDeviceID.ID.ID64)
 			{
-
-				TMessageBoard mb;
+				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 				mb.IDMessage = IM_FRAME_RESPONSE;
 				mb.Data.FrameResponseData.FrameID = Aft->FrameID;
 				mb.Data.FrameResponseData.FrameType = Aft->FrameType;
@@ -2120,7 +2200,17 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 	}
 	else
 	{
-		SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, ftResponseCRCError, Aft->DeviceID);
+		board.Log("Frame receive CRC error..", true, true, tlError);
+		if (Aft->FrameType == ftData)
+		{
+			board.Log("Send rensponse CRC Eroor...", true, true, tlError);
+			SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseCRCError, Aft->SourceDeviceID);
+			//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, 0, Aft->FromChannelStream, ftResponseCRCError, Aft->DeviceID);
+		}
+		else
+		{
+			board.Log("In response frame is CRC error...", true, true, tlError);
+		}
 	}
 }
 
@@ -2128,10 +2218,10 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 {
 	if (Aft->FrameType == ftData)
 	{
-		TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->TaskName));
+		TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
 		if (TaskDefReceive == NULL)
 		{
-			TMessageBoard mb;
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 			mb.IDMessage = IM_FRAME_RESPONSE;
 			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
 			mb.Data.FrameResponseData.FrameType = ftThereIsNoSuchTask;
@@ -2140,17 +2230,19 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 		}
 		else
 		{
-			TMessageBoard mb;
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 			mb.IDMessage = IM_FRAME_RECEIVE;
 			mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
 			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
 			mb.Data.FrameReceiveData.TaskDefStream = NULL;
+			mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
+			
 
 			bool res = SendMessageToTask(TaskDefReceive, &mb);
 
 			if (res)
 			{
-				SendResponseFrameOnProt(Aft->FrameID, NULL, ftResponseOK, Aft->DeviceID);
+				SendResponseFrameOnProt(Aft->FrameID, NULL,0,0, ftResponseOK, Aft->SourceDeviceID);
 			}
 			else
 			{
@@ -2164,15 +2256,15 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 				case frrUnrecognizedType: ft = ftUnrecognizedType; break;
 				default: ft = ftResponseError;	
 				}
-				SendResponseFrameOnProt(Aft->FrameID, NULL, ft, Aft->DeviceID);
+				SendResponseFrameOnProt(Aft->FrameID, NULL,0,0, ft, Aft->SourceDeviceID);
 			}
 		}
 	}
 	else
 	{
-		if (GetUniqueID().ID.ID64 == Aft->DeviceID.ID.ID64)
+		if (GetUniqueID().ID.ID64 == Aft->SourceDeviceID.ID.ID64)
 		{
-			TMessageBoard mb;
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 			mb.IDMessage = IM_FRAME_RESPONSE;
 			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
 			mb.Data.FrameResponseData.FrameType = Aft->FrameType;
@@ -2199,6 +2291,7 @@ void TXB_board::handle(void)
 #ifdef XB_GUI
 		if (winHandle0 != NULL) winHandle0->RepaintDataCounter++;
 #endif
+		CheckOld_HandleDataFrameTransport();
 	}
 	END_WAITMS(LOOPW);
 
@@ -2255,11 +2348,10 @@ void TXB_board::handle(void)
 bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport,TTaskDef *ATaskDefStream)
 {
 	int32_t indx = 0;
-	uint32_t indxstartinterpret=0;
-	uint8_t v;
+	uint32_t indxstartinterpret = 0xffff;
+	uint8_t v =0;
 	bool isininterpret = false;
-
-	indxstartinterpret = 0xffff;
+	
 	while (indx < mb->Data.StreamData.LengthResult)
 	{
 		v = ((uint8_t *)mb->Data.StreamData.Data)[indx];
@@ -2316,6 +2408,8 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 			if((AHandleDataFrameTransport->indx_interpret - sizeof(TFrameTransportACK)) >= AHandleDataFrameTransport->Data.str.FT.size)
 			{
 				HandleFrame(&AHandleDataFrameTransport->Data.str.FT, ATaskDefStream);
+				
+				
 				indx++;
 				uint8_t *src = &((uint8_t *)mb->Data.StreamData.Data)[indx];
 				uint8_t *dest;
@@ -2448,70 +2542,127 @@ bool TXB_board::GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 	return false;
 }
 
-uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef)
+
+THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef,uint32_t Afromchannel)
+{
+	if (AStreamtaskdef == NULL) return NULL;
+	if (AStreamtaskdef->Task == NULL) return NULL;
+	
+	THandleDataFrameTransport *hdft = AStreamtaskdef->Task->HandleDataFrameTransportList;
+	while (hdft != NULL)
+	{
+		if (Afromchannel == hdft->FromChannel)
+		{
+			hdft->TickCreate = SysTickCount;
+			return hdft;
+		}
+		hdft = hdft->Next;
+	}
+	hdft = (THandleDataFrameTransport *)board._malloc(sizeof(THandleDataFrameTransport));
+	if (hdft == NULL) return NULL;
+	ADD_TO_LIST_STR(AStreamtaskdef->Task->HandleDataFrameTransportList, THandleDataFrameTransport, hdft);
+	hdft->FromChannel = Afromchannel;
+	hdft->TickCreate = SysTickCount;
+	
+	return hdft;
+}
+
+void TXB_board::CheckOld_HandleDataFrameTransport(TTask *Atask)
+{
+
+	TTask *t = TaskList;
+	if (Atask != NULL)
+	{
+		t = Atask;
+	}
+	while (t != NULL)
+	{
+		THandleDataFrameTransport *hdft = t->HandleDataFrameTransportList;
+		while (hdft != NULL)
+		{
+			if (SysTickCount - hdft->TickCreate > TIMEOUT_HANDLEDATAFRAMETRANSPORT)
+			{
+				DELETE_FROM_LIST_STR(t->HandleDataFrameTransportList,hdft);
+				board.free(hdft);
+				hdft = t->HandleDataFrameTransportList;
+			}
+			else
+			{
+				hdft = hdft->Next;
+			}
+		}
+		if (Atask == NULL)
+		{
+			t = t->Next;	
+		}
+		else break;
+	}
+}
+
+uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t AChannel)
 {
 	if (Amaxlength == 0) return 0;
 	if (Adata == NULL) return 0;
 	if (AStreamtaskdef == NULL) return 0;
-
-	TMessageBoard mb;
+	if (AStreamtaskdef->Task == NULL) return 0;
+	
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_STREAM;
 	mb.Data.StreamData.StreamAction = saGet;
 	mb.Data.StreamData.Data = Adata;
 	mb.Data.StreamData.Length = Amaxlength;
-	mb.Data.StreamData.LengthResult = 0;
-
-	if (HandleFrameTransportInGetStream)
+	mb.Data.StreamData.Channel = AChannel;
+	
+	
+	THandleDataFrameTransport *hdft = AStreamtaskdef->Task->HandleDataFrameTransportList;
+	
+	while (hdft != NULL)
 	{
-		if (AStreamtaskdef->Task != NULL)
+		if (hdft->isdatatoread)
 		{
-			if (AStreamtaskdef->Task->HandleDataFrameTransport != NULL)
+			if (GetFromErrFrameTransport(&mb, hdft))
 			{
-				if (AStreamtaskdef->Task->HandleDataFrameTransport->isdatatoread)
-				{
-					if (GetFromErrFrameTransport(&mb, AStreamtaskdef->Task->HandleDataFrameTransport))
-					{
-						return mb.Data.StreamData.LengthResult;
-					}
-				}
-			}
-			else
-			{
-				AStreamtaskdef->Task->HandleDataFrameTransport = (THandleDataFrameTransport *)board._malloc(sizeof(THandleDataFrameTransport));
+				hdft->TickCreate = SysTickCount;
+				return mb.Data.StreamData.LengthResult;
 			}
 		}
+
+		hdft = hdft->Next;
 	}
 	
 	if (SendMessageToTask(AStreamtaskdef, &mb, true))
 	{
-		if (HandleFrameTransportInGetStream)
+		hdft = AddToTask_HandleDataFrameTransport(AStreamtaskdef, mb.Data.StreamData.FromChannel);
+		if (hdft != NULL) 
 		{
-			if (AStreamtaskdef->Task != NULL)
-			{
-				if (AStreamtaskdef->Task->HandleDataFrameTransport != NULL)
-				{
-					HandleDataFrameTransport(&mb, AStreamtaskdef->Task->HandleDataFrameTransport, AStreamtaskdef);
-				}
-			}
+			HandleDataFrameTransport(&mb, hdft, AStreamtaskdef);
 		}
-
 		return mb.Data.StreamData.LengthResult;
 	}
+	
+	CheckOld_HandleDataFrameTransport(AStreamtaskdef->Task);
+	
 	return 0;
 }
 
-uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef)
+uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AChannel)
 {
-	if (Alength == 0) return 0;
 	if (Adata == NULL) return 0;
 	if (AStreamtaskdef == NULL) return 0;
+	if (Alength == 0) 
+	{
+		Alength = StringLength((const char *)Adata, 0);
+	}
+	if (Alength == 0) 	return 0;
 
-	TMessageBoard mb;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_STREAM;
 	mb.Data.StreamData.StreamAction = saPut;
 	mb.Data.StreamData.Data = Adata;
 	mb.Data.StreamData.Length = Alength;
 	mb.Data.StreamData.LengthResult = 0;
+	mb.Data.StreamData.Channel = AChannel;
+	
 	if (SendMessageToTask(AStreamtaskdef, &mb, true))
 	{
 		return mb.Data.StreamData.LengthResult;
@@ -2702,6 +2853,111 @@ void TXB_board::PrintTimeFromRun(void)
 	Log(&Astream);
 }
 
+
+typedef enum
+{
+	sfNormalChar,sfGetVarName,sfCancelGetVarName
+} TStepFilter;
+void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstring)
+{
+	uint32_t lensource = StringLength(Asourcestring,0);
+	uint32_t indx_s = 0;
+	Adestinationstring = "";
+	Adestinationstring.reserve(lensource * 2);
+	char ch = 0;
+	String varname = "";
+	uint32_t indx_startvarname;
+	varname.reserve(256);
+	String varvalue = "";
+	varvalue.reserve(256);
+	TStepFilter sf = sfNormalChar;
+	bool result;
+	
+	while (indx_s < lensource)
+	{
+		ch = Asourcestring[indx_s];
+		switch (sf)
+		{
+		case sfNormalChar:
+			{
+				if (ch == '%')
+				{
+					sf = sfGetVarName;
+					indx_startvarname = indx_s;
+					varname = "";
+					indx_s++;
+				}
+				else
+				{
+					Adestinationstring += ch;
+
+					indx_s++;
+				}
+				break;
+			}
+		case sfGetVarName:
+			{
+				if (ch == '%')	
+				{ // Koniec nazwy zmiennej
+					if(varname.length() > 0)					
+					{
+						TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+						mb.IDMessage = IM_GET_VAR_VALUE;
+						mb.fromTask = NULL;
+						mb.Data.VarValueData.VarName = &varname;
+						mb.Data.VarValueData.VarValue = &varvalue;
+						result = SendMessageToAllTask(&mb);
+						if (result)
+						{	// Wstaw zawartoœæ
+							Adestinationstring += varvalue;
+							varname = "";
+							varvalue = "";
+							indx_s++;
+							sf = sfNormalChar;
+						}
+						else
+						{  // wstaw nazwe zmiennej bo niema w systemie takiej
+
+							Adestinationstring += '%';
+							Adestinationstring += varname;
+							varname = "";
+							sf = sfGetVarName;
+							indx_s++;
+						}
+					}
+					else
+					{
+						Adestinationstring += ch;
+						sf = sfNormalChar;
+					}
+				}
+				else
+				{ // Kolejny znak nazwy zmienne;
+					varname += ch;
+					indx_s++;
+					
+					if (indx_s >= lensource)
+					{ // Anuluj nazwe zmiennej bo koniec Ÿród³a
+						indx_s--;
+						sf = sfCancelGetVarName;		
+					}
+				}
+				break;
+			}
+		case sfCancelGetVarName:
+			{
+				Adestinationstring += '%';
+				Adestinationstring += varname;
+				varname = "";
+				sf = sfNormalChar;
+				indx_s++;
+				break;
+			}
+			
+		}
+	
+	}
+}
 /*void TXB_board::PrintDiag(void)
 {
 #ifdef ESP8266

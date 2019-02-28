@@ -211,6 +211,11 @@ uint8_t ahextoint(register uint8_t Ach)
 
 uint8_t doubletostr(double v,char *buf,uint8_t prec)
 {
+	String s = String(v,prec);
+	s.toCharArray(buf, 16, 0);
+	return s.length();
+	
+	
 	int d1 = v;            // Get the integer part (678).
 	double f2 = (double)v - d1;     // Get fractional part (0.01234567).
 	int d2 = (int)trunc(f2 * 10000.00);   // Turn into integer (123).
@@ -477,7 +482,7 @@ void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aad
 
 }
 //=================================================================================================================
-void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep)
+void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep,bool Aenter)
 {
 	register uint8_t Aint;
 	register int32_t i;
@@ -491,6 +496,14 @@ void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep)
 		Aint = Aint8tab[i];
 		*(Aresult++) = tab[(Aint & 0xf0) >> 4];
 		*(Aresult++) = tab[(Aint & 0x0f)];
+		if (Aenter)
+		{
+			if (Aint == 0x0a) 
+			{
+				*(Aresult++) = 0x0d;
+				*(Aresult++) = 0x0a;
+			}
+		}
 		sep = Asep;
 	}
 }
@@ -703,6 +716,17 @@ uint32_t StringLength(register char *Astr,register uint8_t Acharend)
 	}
 }
 
+uint32_t StringLength(const char *Astr, register uint8_t Acharend)
+{
+	for (register uint32_t i = 0;; i++)
+	{
+		if (((uint8_t *)Astr)[i] == Acharend)
+		{
+			return i;
+		}
+	}
+}
+
 uint32_t StringAddString(register char *Astr, register uint8_t Acharend, register char *Aaddstr, register uint8_t Aaddcharend)
 {
 	uint32_t indx = StringLength(Astr, Acharend);
@@ -784,6 +808,37 @@ void charcat(char *Astr, char Ach)
 	Astr[l++] = Ach;
 	Astr[l] = 0;
 
+}
+
+void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringtextalignment, char Ach)
+{
+	if (Astringtextalignment == staLeft)
+	{
+		if (Astr.length() == Awidth) return;	
+		if (Astr.length() < Awidth) 
+		{
+			uint32_t l = Awidth - Astr.length();
+			for (uint32_t i = 0; i < l; i++) Astr += Ach;
+			return;
+		}
+		if (Astr.length() > Awidth) 
+		{
+			Astr = Astr.substring(Awidth , Astr.length());
+			return;
+		}
+		
+	}
+	else if (Astringtextalignment == staCentre)
+	{
+		
+		
+	}
+	else if (Astringtextalignment == staRight)
+	{
+		
+		
+	}
+	
 }
 
 void xb_memoryfill(register void *Aadr, register uint32_t Alength, register uint8_t Avalue)

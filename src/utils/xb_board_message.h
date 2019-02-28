@@ -126,6 +126,7 @@ typedef enum {
 	IM_STREAM,
 	IM_KEYBOARD,
 	IM_CONFIG_SAVE,
+	IM_GET_VAR_VALUE,
 #ifdef XB_GUI
 	IM_MENU,
 	IM_INPUTDIALOG,
@@ -163,6 +164,8 @@ typedef struct {
 	void *Data;
 	uint32_t Length;
 	uint32_t LengthResult;
+	uint32_t FromChannel;
+	uint32_t Channel;
 
 } TStreamData;
 
@@ -183,6 +186,8 @@ typedef struct {
 	void *DataFrame;
 	uint32_t SizeFrame;
 	TTaskDef *TaskDefStream;
+	uint32_t SourceAddress;
+	//uint32_t Channel;
 	TFrameReceiveResult FrameReceiveResult;
 } TFrameReceiveData;
 //-----------------------------------------------------------------------
@@ -407,6 +412,14 @@ typedef struct
 } TKeyboardData;
 
 //-----------------------------------------------------------------------
+typedef struct
+{
+	String *VarName;
+	String *VarValue;
+	
+} TVarValueData;
+
+//-----------------------------------------------------------------------
 struct TMessageBoard
 {
 	TIDMessage IDMessage;
@@ -425,6 +438,7 @@ struct TMessageBoard
 		TBlinkData BlinkData;
 		TFrameReceiveData FrameReceiveData;
 		TFrameResponseData FrameResponseData;
+		TVarValueData VarValueData;
 		void *PointerData;
 		void *FreePTR;
 		String *PointerString;

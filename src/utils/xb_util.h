@@ -192,7 +192,7 @@ extern uint8_t uinttoa(register uint32_t value, register char* result);
 extern bool hexstrTouint32(char *Astr, int8_t Alen, uint32_t *Aint);
 extern void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aadd);
 extern void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aadd);
-extern void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep=0);
+extern void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep = 0,bool Aenter=false);
 extern int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench);
 extern uint32_t StringPos(const char *Astr,const char *Asubstr, uint32_t *Aposindx);
 extern bool StringTrim(char *Astr);
@@ -201,6 +201,7 @@ extern uint8_t StringToUINT(char *Astr, uint32_t *Aint);
 extern uint8_t StringHEXToUINT(char *Astr, uint32_t *Aint);
 extern uint8_t StringtoIP(char *Asip, uint32_t *Aip);
 extern uint32_t StringLength(register char *Astr, register uint8_t Acharend);
+uint32_t StringLength(const char *Astr, register uint8_t Acharend);
 extern uint32_t StringAddString(register char *Astr, register uint8_t Acharend, register char *Aaddstr, register uint8_t Aaddcharend);
 extern uint32_t StringAddUINT8(register char *Astr, register uint8_t Acharend, register uint8_t Aadduint);
 extern uint32_t StringAddUINT8w(register char *Astr, register uint8_t Acharend, register uint8_t Aadduint, uint8_t Awidth, char Achw);
@@ -212,8 +213,13 @@ extern uint32_t StringAddHexUINT32(register char *Astr, register uint8_t Acharen
 extern uint32_t StringAddChar(register char *Astr, register uint8_t Acharend, register char Aaddchar);
 extern void uintcat(char *Astr, uint32_t Avalue);
 extern void charcat(char *Astr, char Ach);
+
+typedef enum { staLeft, staCentre, staRight } TStringTextAlignment;
+extern void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringtextalignment=staLeft, char Ach=' '); 
 extern void xb_memoryfill(register void *Aadr, register uint32_t Alength, register uint8_t Avalue);
 extern void xb_memorycopy(register void *Asource, register void *Adestination, register int32_t Alength);
 extern bool xb_memorycompare(register void *Aadr1, register void *Aadr2, register uint32_t Alength);
+
+
 
 #endif
