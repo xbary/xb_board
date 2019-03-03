@@ -1,20 +1,21 @@
+#pragma region INCLUDES
 #include <xb_board.h>
 
-
-TXB_board board;
-
-TTaskDef XB_BOARD_DefTask = {0,&XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage};
-
-volatile uint32_t DateTimeUnix;
-volatile uint32_t DateTimeStart;
-volatile uint32_t __SysTickCount;
-
+// Dla ESP8266 inkludy z funkcjami jêzyka C
 #ifdef ESP8266
 extern "C" {
 #include "user_interface.h"
 }
 #endif
 
+// Dla ESP32 inkludy z funkcjami jêzyka C
+#ifdef ESP32
+extern "C" {
+}
+#endif
+
+
+// Dla STM32F1 inkludy z funkcjami jêzyka C
 #ifdef ARDUINO_ARCH_STM32F1
 extern "C" {
 #include <string.h>
@@ -24,23 +25,42 @@ extern "C" {
 
 #ifdef XB_GUI
 #include <xb_GUI.h>
-TWindowClass *winHandle0;
-
 #include <xb_GUI_Gadget.h>
+#endif
+
+#pragma endregion
+#pragma region GLOBAL_VARS
+
+// Podstawowy obiekt tzw. "kernel"
+TXB_board board; 
+
+// Struktura nag³ówkowa zadania obiektu podstawowego.
+uint32_t XB_BOARD_DoLoop(void);
+void XB_BOARD_Setup(void);
+bool XB_BOARD_DoMessage(TMessageBoard *Am);
+TTaskDef XB_BOARD_DefTask = {0,&XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage};
+
+// Data i Czas w formacie Unix
+volatile uint32_t DateTimeUnix;
+// Sekundy które up³ynê³y od startu urz¹dzenia
+volatile uint32_t DateTimeStart;
+// SysTick na ESP8266
+#if defined(ESP8266) 
+volatile uint32_t __SysTickCount;
+#endif
+
+// Zmienne i funkcjonalnoœæ GUI do zadania systemowego
+#ifdef XB_GUI
+TWindowClass *winHandle0;
 TGADGETMenu *menuHandle0;
 TGADGETMenu *menuHandle1;
 #endif
 
-//------------------------------------------------------------------------------------------------------------
+#pragma endregion
+#pragma region FUNKCJE_LICZNIKOW_CZASOWYCH
 #if defined(ESP8266) 
 Ticker SysTickCount_ticker;
 Ticker DateTimeSecond_ticker;
-#endif
-
-uint32_t Tick_ESCKey = 0;
-uint8_t TerminalFunction = 0;
-
-#if defined(ESP8266)
 
 void SysTickCount_proc(void)
 {
@@ -51,37 +71,129 @@ void DateTimeSecond_proc(void)
 {
 	DateTimeUnix++;
 }
+
+void TXB_board::SysTickCount_init(void)
+{
+	SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
+}
+
+void TXB_board::DateTimeSecond_init(void)
+{
+	DateTimeSecond_ticker.attach(1, DateTimeSecond_proc);
+}
 #endif
 
-bool showasc = false;
-
-bool TXB_board::SetPinInfo(uint16_t Anumpin, uint8_t Afunction, uint8_t Amode,bool Alogwarn)
+#pragma endregion
+#pragma region FUNKCJE_SETUP_LOOP_MESSAGES
+// -------------------------------------
+// Procedura inicjuj¹ca zadanie g³ównego
+void XB_BOARD_Setup(void)
 {
-	if ((Anumpin >= 0) && (Anumpin < BOARD_NR_GPIO_PINS))
-	{
-		if (PinInfoTable != NULL)
-		{
-			if (PinInfoTable[Anumpin].use==1)
-			{
-				if ((setup_procedure==true ) || (Alogwarn==true))
-				{
-					String s = "WARN. Pin (" + String(Anumpin) + ") is use...";
-					Log(s.c_str(), true, true, tlWarn);		
-				}
-			}
-			PinInfoTable[Anumpin].use = 1;
-			PinInfoTable[Anumpin].functionpin = Afunction;
-			PinInfoTable[Anumpin].mode = Amode;
-		}
-	}
-	else
-	{
-		Log("ERROR out of num pin",true,true, tlError);
-		return false;	
-	}
-	return true;
-}
+	// Jeœli framework zosta³ uruchomiony na ESP32 z dodatkow¹ pamiêci¹ RAM SPI , rezerwacja pierwszych 2 megabajtów w celu unikniêcia b³ednej wspó³pracy ESP32 z PSRAM
+#ifdef ESP32
+#ifdef PSRAM_BUG
+#ifdef BOARD_HAS_PSRAM
+			board.psram2m = heap_caps_malloc((1024 * 1024) * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#endif
+#endif
+#endif
+
 	
+	// Wy³¹czenie komunikatów od CORE ESPowego
+#ifdef Serial_setDebugOutput
+		Serial_setDebugOutput(false);
+#endif
+
+	// Uruchomienie UARTa podstawowego
+#if defined(SerialBoard_RX_PIN) && defined(SerialBoard_TX_PIN)
+	Serial_begin(SerialBoard_BAUD, SERIAL_8N1, SerialBoard_RX_PIN, SerialBoard_TX_PIN);
+	board.SetPinInfo(SerialBoard_RX_PIN, FUNCTIONPIN_UARTRXTX, MODEPIN_OUTPUT);
+	board.SetPinInfo(SerialBoard_TX_PIN, FUNCTIONPIN_UARTRXTX, MODEPIN_OUTPUT);
+#else
+	Serial_begin(SerialBoard_BAUD);
+#endif
+#if defined(ESP8266) || defined(ESP32)
+#ifdef Serial_availableForWrite 
+	while(!Serial_availableForWrite())
+	{
+		delay(1);
+	}
+#endif
+	for (int i = 0; i < 32; i++) {
+		Serial_write(0);
+		delay(1);
+	}
+#endif
+	board.Log("Start.", true, true);
+	
+	
+	// Jeœli framework zosta³ uruchomiony na ESP8266 to inicjacja liczników czasowych
+#if defined(ESP8266)
+	board.SysTickCount_init();
+	board.DateTimeSecond_init();
+#endif
+	// Zerowanie liczników czasowych
+	DateTimeUnix = 0;
+	DateTimeStart = 0;
+
+	board.Log('.');
+	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e aplikacja dzia³a
+#ifdef BOARD_LED_LIFE_PIN
+	board.pinMode(BOARD_LED_LIFE_PIN, OUTPUT);
+#endif
+
+	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e nast¹pi³a transmisja danych na zewn¹trz
+#ifdef BOARD_LED_TX_PIN
+	board.Tick_TX_BLINK = 0;
+	board.pinMode(BOARD_LED_TX_PIN, OUTPUT);
+#if defined(BOARD_LED_TX_STATUS_OFF)
+	board.digitalWrite(BOARD_LED_TX_PIN, (BOARD_LED_TX_STATUS_OFF));
+#else
+	board.digitalWrite(BOARD_LED_TX_PIN, LOW);
+#endif
+#endif
+
+	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e nast¹pi³a transmisja danych z zewn¹trz
+#ifdef BOARD_LED_RX_PIN
+	board.Tick_RX_BLINK = 0;
+	board.pinMode(BOARD_LED_RX_PIN, OUTPUT);
+#if defined(BOARD_LED_RX_STATUS_OFF)
+	board.digitalWrite(BOARD_LED_RX_PIN, (BOARD_LED_RX_STATUS_OFF));
+#else
+	board.digitalWrite(BOARD_LED_RX_PIN, LOW);
+#endif
+#endif
+
+	// Ustawienie czasu jak d³ugo ma utrzymywaæ siê stan 1 na pinach informuj¹cych na zew¹trz o transmisji danych
+#if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
+#ifdef TICK_LED_BLINK
+	board.TickEnableBlink = TICK_LED_BLINK;
+#else
+	board.TickEnableBlink = 250;
+#endif
+#endif
+	board.Log(".OK");
+
+	// Jeœli interface uruchomiony to dodanie zadania obs³uguj¹cego interface GUI
+#ifdef XB_GUI
+	board.AddTask(&XB_GUI_DefTask);
+#endif
+}
+// -----------------------------
+// G³ówna pêtla zadania g³ównego
+// <-      = 0 - Zadanie dzia³a wed³ug harmonogramu priorytetów
+//         > 0 - Zadanie zostanie uruchomione po iloœci milisekund zwrócnej w rezultacie
+uint32_t XB_BOARD_DoLoop(void)
+{
+	// Zamiganie
+	board.handle();
+	return 0;
+}
+// ---------------------------------
+// Obs³uga messagów zadania g³ównego
+// -> Am - WskaŸnik na strukture messaga
+// <-      = true - messag zosta³ obs³u¿ony
+//         = false - messag nie obs³ugiwany przez zadanie
 bool XB_BOARD_DoMessage(TMessageBoard *Am)
 {
 	bool res = false;
@@ -182,30 +294,23 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
 
-					if (showasc)
-					{
-						Serial_print((int)Am->Data.KeyboardData.KeyCode);
-						Serial_print(' ');
-						Serial_println(TerminalFunction);
-					}
-
-					if (TerminalFunction == 0)
+					if (board.TerminalFunction == 0)
 					{
 						switch (Am->Data.KeyboardData.KeyCode)
 						{
 						case 127:
 							{
-								Tick_ESCKey = 0;
-								board.SendKeyFunctionPress(KF_BACKSPACE, 0, &XB_BOARD_DefTask);
-								TerminalFunction = 0;
+								board.Tick_ESCKey = 0;
+								board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0, &XB_BOARD_DefTask);
+								board.TerminalFunction = 0;
 								break;
 							}
 						case 10:
 							{
 								if (LastKeyCode != 13)
 								{
-									board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
-									TerminalFunction = 0;
+									board.SendMessage_FunctionKeyPress(KF_ENTER, 0, &XB_BOARD_DefTask);
+									board.TerminalFunction = 0;
 								}
 								else
 								{
@@ -218,8 +323,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 							{
 								if (LastKeyCode != 10)
 								{
-									board.SendKeyFunctionPress(KF_ENTER, 0, &XB_BOARD_DefTask);
-									TerminalFunction = 0;
+									board.SendMessage_FunctionKeyPress(KF_ENTER, 0, &XB_BOARD_DefTask);
+									board.TerminalFunction = 0;
 								}
 								else
 								{
@@ -230,202 +335,202 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 							}
 						case 27:
 							{
-								TerminalFunction = 1;
-								Tick_ESCKey = SysTickCount;
+								board.TerminalFunction = 1;
+								board.Tick_ESCKey = SysTickCount;
 								break;
 							}
 						case 7:
 							{
-								Tick_ESCKey = 0;
-								board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
-								TerminalFunction = 0;
+								board.Tick_ESCKey = 0;
+								board.SendMessage_FunctionKeyPress(KF_ESC, 0, &XB_BOARD_DefTask);
+								board.TerminalFunction = 0;
 								break;
 							}
 						case 9:
 							{
-								Tick_ESCKey = 0;
-								board.SendKeyFunctionPress(KF_TABNEXT, 0, &XB_BOARD_DefTask);
-								TerminalFunction = 0;
+								board.Tick_ESCKey = 0;
+								board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0, &XB_BOARD_DefTask);
+								board.TerminalFunction = 0;
 								break;
 							}
 						case 255:
 						case 0:
 							{
-								Tick_ESCKey = 0;
-								TerminalFunction = 0;
+								board.Tick_ESCKey = 0;
+								board.TerminalFunction = 0;
 								break;
 							}
 
 
 						default:
 							{
-								Tick_ESCKey = 0;
+								board.Tick_ESCKey = 0;
 								break;
 							}
 						}
 					}
-					else if (TerminalFunction == 1)
+					else if (board.TerminalFunction == 1)
 					{
 						if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
 							{
-								Tick_ESCKey = 0;
-								TerminalFunction = 2;
+								board.Tick_ESCKey = 0;
+								board.TerminalFunction = 2;
 								Am->Data.KeyboardData.KeyCode = 0;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 10)
 						{
-							TerminalFunction = 0;
+							board.TerminalFunction = 0;
 						}
 						else
 						{
-							Tick_ESCKey = 0;
-							board.SendKeyFunctionPress(KF_ESC, 0, &XB_BOARD_DefTask);
-							TerminalFunction = 0;
+							board.Tick_ESCKey = 0;
+							board.SendMessage_FunctionKeyPress(KF_ESC, 0, &XB_BOARD_DefTask);
+							board.TerminalFunction = 0;
 						}
 					}
-					else if (TerminalFunction == 2)
+					else if (board.TerminalFunction == 2)
 					{
 						if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
 							{
-								board.SendKeyFunctionPress(KF_CURSORUP, 0, &XB_BOARD_DefTask);
+								board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0, &XB_BOARD_DefTask);
 								Am->Data.KeyboardData.KeyCode = 0;
-								TerminalFunction = 0;
+								board.TerminalFunction = 0;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
 							{
-								board.SendKeyFunctionPress(KF_CURSORDOWN, 0, &XB_BOARD_DefTask);
+								board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0, &XB_BOARD_DefTask);
 								Am->Data.KeyboardData.KeyCode = 0;
-								TerminalFunction = 0;
+								board.TerminalFunction = 0;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
 							{
-								board.SendKeyFunctionPress(KF_CURSORLEFT, 0, &XB_BOARD_DefTask);
+								board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0, &XB_BOARD_DefTask);
 								Am->Data.KeyboardData.KeyCode = 0;
-								TerminalFunction = 0;
+								board.TerminalFunction = 0;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
 							{
-								board.SendKeyFunctionPress(KF_CURSORRIGHT, 0, &XB_BOARD_DefTask);
+								board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0, &XB_BOARD_DefTask);
 								Am->Data.KeyboardData.KeyCode = 0;
-								TerminalFunction = 0;
+								board.TerminalFunction = 0;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
 							{
-								board.SendKeyFunctionPress(KF_TABPREV, 0, &XB_BOARD_DefTask);
-								TerminalFunction = 0;
+								board.SendMessage_FunctionKeyPress(KF_TABPREV, 0, &XB_BOARD_DefTask);
+								board.TerminalFunction = 0;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 49) // F1
 							{
 								KeyboardFunctionDetect = KF_F1;
-								TerminalFunction = 3;
+								board.TerminalFunction = 3;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 50) // F9
 							{
 								KeyboardFunctionDetect = KF_F9;
-								TerminalFunction = 5;
+								board.TerminalFunction = 5;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 51) 
 						{
 							KeyboardFunctionDetect = KF_DELETE;
-							TerminalFunction = 4;
+							board.TerminalFunction = 4;
 						}
 						else
 						{
-							TerminalFunction = 0;
+							board.TerminalFunction = 0;
 						}
 
 					}
-					else if (TerminalFunction == 3)
+					else if (board.TerminalFunction == 3)
 					{
 						if (Am->Data.KeyboardData.KeyCode == 49) // F1
 							{
 								KeyboardFunctionDetect = KF_F1;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 50) // F2
 							{
 								KeyboardFunctionDetect = KF_F2;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 51) // F3
 							{
 								KeyboardFunctionDetect = KF_F3;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 52) // F4
 							{
 								KeyboardFunctionDetect = KF_F4;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 53) // F5
 							{
 								KeyboardFunctionDetect = KF_F5;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 55) // F6
 							{
 								KeyboardFunctionDetect = KF_F6;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 56) // F7
 							{
 								KeyboardFunctionDetect = KF_F7;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 57) // F8
 							{
 								KeyboardFunctionDetect = KF_F8;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else
 						{
-							TerminalFunction = 0;
+							board.TerminalFunction = 0;
 						}
 					}
-					else if (TerminalFunction == 5)
+					else if (board.TerminalFunction == 5)
 					{
 
 						if (Am->Data.KeyboardData.KeyCode == 48) // F9
 							{
 								KeyboardFunctionDetect = KF_F9;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 49) // F10
 							{
 								KeyboardFunctionDetect = KF_F10;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 51) // F11
 							{
 								KeyboardFunctionDetect = KF_F11;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else if (Am->Data.KeyboardData.KeyCode == 52) // F12
 							{
 								KeyboardFunctionDetect = KF_F12;
-								TerminalFunction = 4;
+								board.TerminalFunction = 4;
 							}
 						else
 						{
-							TerminalFunction = 0;
+							board.TerminalFunction = 0;
 						}
 
 					}
-					else if (TerminalFunction == 4)
+					else if (board.TerminalFunction == 4)
 					{
 						if (Am->Data.KeyboardData.KeyCode == 126)
 						{
-							board.SendKeyFunctionPress(KeyboardFunctionDetect, 0, &XB_BOARD_DefTask);
-							TerminalFunction = 0;
+							board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+							board.TerminalFunction = 0;
 						}
 						else
 						{
-							TerminalFunction = 0;
+							board.TerminalFunction = 0;
 						}
 					}
 					else
 					{
-						TerminalFunction = 0;
+						board.TerminalFunction = 0;
 					}
 
 					res = true;
@@ -483,7 +588,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				if (t != NULL)
 				{
 
-					if (board.GetTaskName(t->TaskDef, n))
+					if (board.SendMessage_GetTaskNameString(t->TaskDef, n))
 					{
 						n += FSS(" >>>");
 					}
@@ -541,7 +646,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 				EVENT_MENUCLICK(1)
 				{
-					board.SendSaveConfigToAllTask();
+					board.SendMessage_ConfigSave();
 				}
 			}
 			END_MENUCLICK()
@@ -656,7 +761,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->PutStr(0, 5, FSS("DEVICE ID "));
 					
 					{
-						TUniqueID ID = board.GetUniqueID();
+						TUniqueID ID = board.DeviceID;
 						char strid[25];
 						xb_memoryfill(strid, 25, 0);
 						
@@ -699,7 +804,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 							if (t != NULL)
 							{
 
-								if (board.GetTaskName(t->TaskDef, name))
+								if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
 								{
 									winHandle0->PutStr(0, y + i, name.c_str());
 									name = "";
@@ -767,7 +872,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 							if (t != NULL)
 							{
 
-								if (board.GetTaskStatusString(t->TaskDef, name))
+								if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
 								{
 									winHandle0->PutStr(15, y + i, name.c_str());
 									name = "";
@@ -795,7 +900,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	case IM_GET_TASKSTATUS_STRING:
 	{
-		*(Am->Data.PointerString) = String("TC:" + String(board.TaskCount) + " / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER));
+		*(Am->Data.PointerString) = String("TC:" + String(board.TaskCount));
+#ifdef PSRAM_BUG
+		*(Am->Data.PointerString) += String(" / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER));
+#endif
 		res = true;
 	}
 	case IM_STREAM:
@@ -807,13 +915,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			int av = Serial_available();
 			if (av > 0)
 			{
-				uint8_t ch = 0;
-				uint8_t count = 0;
+				int ch = 0;
+				uint32_t count = 0;
 				while (av > 0)
 				{
-					ch = (uint8_t)Serial_read();
-					((uint8_t *)Am->Data.StreamData.Data)[count] = ch;
-					count++;
+					ch = Serial_read();
+					if (ch >= 0)
+					{
+						((uint8_t *)Am->Data.StreamData.Data)[count] = (uint8_t)ch;
+						count++;
+					}
 					if (count >= Am->Data.StreamData.Length) break;
 					av =  Serial_available();
 				}
@@ -850,168 +961,39 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	
 	return res;
 }
-
-void XB_BOARD_Setup(void)
-{
-#ifdef BOARD_HAS_PSRAM
-	board.psram2m = board._malloc_psram((1024 * 1024) * 2);
-#endif
-
-#if defined(ESP8266)
-	board.SysTickCount_init();
-	board.DateTimeSecond_init();
-#endif
-
-// Wy³¹czenie komunikatów od CORE ESPowego
-#ifdef Serial_setDebugOutput
-	Serial_setDebugOutput(false);
-#endif
-
-// Uruchomienie UARTa podstawowego
-#if defined(SerialBoard_RX_PIN) && defined(SerialBoard_TX_PIN)
-	Serial_begin(SerialBoard_BAUD, SERIAL_8N1, SerialBoard_RX_PIN, SerialBoard_TX_PIN);
-	board.SetPinInfo(SerialBoard_RX_PIN,FUNCTIONPIN_UARTRXTX,MODEPIN_OUTPUT);
-	board.SetPinInfo(SerialBoard_TX_PIN, FUNCTIONPIN_UARTRXTX, MODEPIN_OUTPUT);
-#else
-	Serial_begin(SerialBoard_BAUD);
-#endif
-
-// procedura inicjuj¹ca UART ... 
-#if defined(ESP8266) || defined(ESP32)
-
-#ifdef Serial_availableForWrite 
-	while (!Serial_availableForWrite())
-	{
-		delay(1);
-	}
-#endif
-	for (int i = 0; i < 32; i++) {
-		Serial_write(0);
-		delay(1);
-	}
-#endif
-
-
-
-	
-#ifdef BOARD_LED_LIFE_PIN
-	board.pinMode(BOARD_LED_LIFE_PIN,OUTPUT);
-#endif
-
-#ifdef BOARD_LED_TX_PIN
-	board.Tick_TX_BLINK = 0;
-	board.pinMode(BOARD_LED_TX_PIN, OUTPUT);
-#if defined(BOARD_LED_TX_STATUS_OFF)
-	board.digitalWrite(BOARD_LED_TX_PIN, (BOARD_LED_TX_STATUS_OFF));
-#else
-	board.digitalWrite(BOARD_LED_TX_PIN, LOW);
-#endif
-#endif
-
-#ifdef BOARD_LED_RX_PIN
-	board.Tick_RX_BLINK = 0;
-	board.pinMode(BOARD_LED_RX_PIN, OUTPUT);
-#if defined(BOARD_LED_RX_STATUS_OFF)
-	board.digitalWrite(BOARD_LED_RX_PIN, (BOARD_LED_RX_STATUS_OFF));
-#else
-	board.digitalWrite(BOARD_LED_RX_PIN, LOW);
-#endif
-#endif
-
-#if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
-	#ifdef TICK_LED_BLINK
-	board.TickEnableBlink= TICK_LED_BLINK;
-#else
-	board.TickEnableBlink = 250;
-#endif
-#endif
-
-	DateTimeUnix = 0;
-	DateTimeStart = 0;
-
-	board.Log(FSS("Start..."),true,true);
-	
-#ifdef XB_GUI
-	board.AddTask(&XB_GUI_DefTask);
-#endif
-}
-
-uint32_t XB_BOARD_DoLoop(void)
-{
-	// Sprawdzenie  przy pierwszym  wejsciu do pêtli loop iloœci wolnej pamiêci
-	if (board.MaximumFreeHeapInLoop == 0)
-	{
-#ifdef ESP32
-		board.FreePSRAMInLoop = board.getFreePSRAM();
-		board.MinimumFreePSRAMInLoop = board.FreePSRAMInLoop;
-		board.MaximumFreePSRAMInLoop = board.FreePSRAMInLoop;
-	
-		board.FreeHeapInLoop = board.getFreeHeap();
-		board.MaximumFreeHeapInLoop = board.FreeHeapInLoop;
-		board.MinimumFreeHeapInLoop = board.FreeHeapInLoop;
-#else
-
-		board.MaximumFreeHeapInLoop = board.getFreeHeap();
-		board.MinimumFreeHeapInLoop = board.getFreeHeap();
-
-#endif
-	}
-
-	// Zamiganie
-	board.handle();
-
-	if (Tick_ESCKey != 0)
-	{
-		if (SysTickCount - Tick_ESCKey > 100)
-		{
-			Tick_ESCKey = 0;
-			TerminalFunction = 0;
-			board.SendKeyFunctionPress(KF_ESC, 0,&XB_BOARD_DefTask,true);
-			
-		}
-	}
-
-#ifdef XB_GUI
-	if (winHandle0 != NULL)
-	{
-		DEF_WAITMS_VAR(xbl1);
-		BEGIN_WAITMS(xbl1, 1000)
-		{
-			winHandle0->RepaintDataCounter++;
-		}
-		END_WAITMS(xbl1)
-	}
-#endif
-
-	return 0;
-}
-
-//------------------------------------------------------------------------------------------------------------
+#pragma endregion
+#pragma region FUNKCJE_INICJUJACE_TXB_BOARD
 TXB_board::TXB_board()
 {
+	// Reset zmiennych
+	Tick_ESCKey = 0;
+	board.TerminalFunction = 0;
 	TaskList = NULL;
 	TaskCount = 0;
+#ifdef PSRAM_BUG
 	lastfreepsram = 0;
-	OurReservedBlock = 0;
 	GETFREEPSRAM_ERROR_COUNTER = 0;
-	iteratetask_procedure = false;
 	MaximumMallocPSRAM = 0;
+#endif
+	OurReservedBlock = 0;
+	iteratetask_procedure = false;
+	setup_procedure = false;
 	CurrentIterateTask = NULL;
 	CurrentTask = NULL;
 	NoTxCounter = 0;
 	TXCounter = 0;
 	doAllInterruptRC = 0;
+
 	Default_StreamTaskDef = &XB_BOARD_DefTask;
 	Default_SecStreamTaskDef = NULL;
 	Default_ShowLogInfo = true;
 	Default_ShowLogWarn = true;
 	Default_ShowLogError = true;
+
 	HandleFrameTransportInGetStream = true;
 	DeviceName = DEVICE_NAME;
-	
-	PinInfoTable = (TPinInfo *)_malloc(BOARD_NR_GPIO_PINS);
-	
-	
+	DeviceID = GetUniqueID();
+	PinInfoTable = (TPinInfo *)_malloc_psram(BOARD_NR_GPIO_PINS);
 }
 
 TXB_board::~TXB_board()
@@ -1024,7 +1006,250 @@ TXB_board::~TXB_board()
 	}
 	freeandnull((void **)&PinInfoTable);
 }
+#pragma endregion
+#pragma region FUNKCJE_NARZEDZIOWE
+TUniqueID TXB_board::GetUniqueID()
+{
+	TUniqueID V;
+	V.ID.ID64 = 0;
 
+#if defined(ESP8266) 
+	uint8 mac[8];
+	if (wifi_get_macaddr(0,mac))
+	{
+		V.ID.ID[0] = mac[0];
+		V.ID.ID[1] = mac[1];
+		V.ID.ID[2] = mac[2];
+		V.ID.ID[3] = mac[3];
+		V.ID.ID[4] = mac[4];
+		V.ID.ID[5] = mac[5];
+		V.ID.ID[6] = mac[6];
+		V.ID.ID[7] = mac[7];
+		V.ID.ID[6] = V.ID.ID[0];
+		V.ID.ID[0] = V.ID.ID[1] + V.ID.ID[2];
+		V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
+	}
+#endif
+#if defined(ESP32)
+	V.ID.ID64=ESP.getEfuseMac();
+	V.ID.ID[6] = V.ID.ID[0];
+	V.ID.ID[0] = V.ID.ID[1] + V.ID.ID[2];
+	V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
+#endif
+
+#ifdef ARDUINO_ARCH_STM32F1
+#define STM32_UUID ((uint32_t *) 0x1ffff7e8)
+
+	volatile uint32_t idpart[3];
+	idpart[0] = STM32_UUID[0];
+	idpart[1] = STM32_UUID[1];
+	idpart[2] = STM32_UUID[2];
+	uint8_t *idpart8=(uint8_t *)idpart;
+
+	V.ID.ID[0] = idpart8[0];
+	V.ID.ID[1] = idpart8[1];
+	V.ID.ID[2] = idpart8[2] + idpart8[8];
+	V.ID.ID[3] = idpart8[3] + idpart8[9];
+	V.ID.ID[4] = idpart8[4] + idpart8[10];
+	V.ID.ID[5] = idpart8[5] + idpart8[11];
+	V.ID.ID[6] = idpart8[6];
+	V.ID.ID[7] = idpart8[7];
+	
+#endif
+
+	return V;
+}
+// This table comes from Dallas sample code where it is freely reusable,
+// though Copyright (C) 2000 Dallas Semiconductor Corporation
+static const uint8_t PROGMEM dscrc_table[] = {
+	0, 94,188,226, 97, 63,221,131,194,156,126, 32,163,253, 31, 65,
+	157,195, 33,127,252,162, 64, 30, 95,  1,227,189, 62, 96,130,220,
+	35,125,159,193, 66, 28,254,160,225,191, 93,  3,128,222, 60, 98,
+	190,224,  2, 92,223,129, 99, 61,124, 34,192,158, 29, 67,161,255,
+	70, 24,250,164, 39,121,155,197,132,218, 56,102,229,187, 89,  7,
+	219,133,103, 57,186,228,  6, 88, 25, 71,165,251,120, 38,196,154,
+	101, 59,217,135,  4, 90,184,230,167,249, 27, 69,198,152,122, 36,
+	248,166, 68, 26,153,199, 37,123, 58,100,134,216, 91,  5,231,185,
+	140,210, 48,110,237,179, 81, 15, 78, 16,242,172, 47,113,147,205,
+	17, 79,173,243,112, 46,204,146,211,141,111, 49,178,236, 14, 80,
+	175,241, 19, 77,206,144,114, 44,109, 51,209,143, 12, 82,176,238,
+	50,108,142,208, 83, 13,239,177,240,174, 76, 18,145,207, 45,115,
+	202,148,118, 40,171,245, 23, 73,  8, 86,180,234,105, 55,213,139,
+	87,  9,235,181, 54,104,138,212,149,203, 41,119,244,170, 72, 22,
+	233,183, 85, 11,136,214, 52,106, 43,117,151,201, 74, 20,246,168,
+	116, 42,200,150, 21, 75,169,247,182,232, 10, 84,215,137,107, 53 };
+
+// Compute a Dallas Semiconductor 8 bit CRC. These show up in the ROM
+// and the registers.  (note: this might better be done without to
+// table, it would probably be smaller and certainly fast enough
+// compared to all those delayMicrosecond() calls.  But I got
+// confused, so I use this table from the examples.)
+//
+uint8_t TXB_board::crc8(const uint8_t *addr, uint8_t len)
+{
+	uint8_t crc = 0;
+
+	while (len--) {
+		crc = pgm_read_byte(dscrc_table + (crc ^ *addr++));
+	}
+	return crc;
+}
+
+typedef enum
+{
+	sfNormalChar, 
+	sfGetVarName, 
+	sfCancelGetVarName
+} TStepFilter;
+void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstring)
+{
+	uint32_t lensource = StringLength(Asourcestring, 0);
+	uint32_t indx_s = 0;
+	Adestinationstring = "";
+	Adestinationstring.reserve(lensource * 2);
+	char ch = 0;
+	String varname = "";
+	uint32_t indx_startvarname;
+	varname.reserve(256);
+	String varvalue = "";
+	varvalue.reserve(256);
+	TStepFilter sf = sfNormalChar;
+	bool result;
+	
+	while (indx_s < lensource)
+	{
+		ch = Asourcestring[indx_s];
+		switch (sf)
+		{
+		case sfNormalChar:
+			{
+				if (ch == '%')
+				{
+					sf = sfGetVarName;
+					indx_startvarname = indx_s;
+					varname = "";
+					indx_s++;
+				}
+				else
+				{
+					Adestinationstring += ch;
+
+					indx_s++;
+				}
+				break;
+			}
+		case sfGetVarName:
+			{
+				if (ch == '%')	
+				{
+					 // Koniec nazwy zmiennej
+					if(varname.length() > 0)					
+					{
+						TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+						mb.IDMessage = IM_GET_VAR_VALUE;
+						mb.fromTask = NULL;
+						mb.Data.VarValueData.VarName = &varname;
+						mb.Data.VarValueData.VarValue = &varvalue;
+						result = DoMessageOnAllTask(&mb, true, doFORWARD);
+						if (result)
+						{
+								// Wstaw zawartoœæ
+							Adestinationstring += varvalue;
+							varname = "";
+							varvalue = "";
+							indx_s++;
+							sf = sfNormalChar;
+						}
+						else
+						{
+							  // wstaw nazwe zmiennej bo niema w systemie takiej
+
+							Adestinationstring += '%';
+							Adestinationstring += varname;
+							varname = "";
+							sf = sfGetVarName;
+							indx_s++;
+						}
+					}
+					else
+					{
+						Adestinationstring += ch;
+						sf = sfNormalChar;
+					}
+				}
+				else
+				{
+					 // Kolejny znak nazwy zmienne;
+					varname += ch;
+					indx_s++;
+					
+					if (indx_s >= lensource)
+					{
+						 // Anuluj nazwe zmiennej bo koniec Ÿród³a
+						indx_s--;
+						sf = sfCancelGetVarName;		
+					}
+				}
+				break;
+			}
+		case sfCancelGetVarName:
+			{
+				Adestinationstring += '%';
+				Adestinationstring += varname;
+				varname = "";
+				sf = sfNormalChar;
+				indx_s++;
+				break;
+			}
+			
+		}
+	
+	}
+}
+#pragma endregion
+#pragma region FUNKCJE_GPIO
+// -----------------------------------------
+// Ustawienie informacji o ustawieniach pinu
+// Jeœli funkcja zostanie wywo³ana w funkcji setup() zadania to zostan¹ wyœwietlone komunikaty o kolizji u¿ytecznoœci pinu 
+// -> Anumpin    - Numer pinu
+// -> Afunction  - Numer funkcji jak¹ spe³nia pin
+// -> Amode      - Tryb w jakim pin funkcjonuje
+// -> Alogwarn   = true - Wyœwietla ostrze¿enia kolizji
+//               = false - Nie wyœwietla ostrze¿enia kolizji
+// <-            = true - wykonane z powodzeniem, ale kolizja mo¿e zaistnieæ
+//               = false - b³¹d, pin nie obs³ugiwany
+bool TXB_board::SetPinInfo(uint16_t Anumpin, uint8_t Afunction, uint8_t Amode, bool Alogwarn)
+{
+	if ((Anumpin >= 0) && (Anumpin < BOARD_NR_GPIO_PINS))
+	{
+		if (PinInfoTable != NULL)
+		{
+			if (PinInfoTable[Anumpin].use == 1)
+			{
+				if ((setup_procedure == true) || (Alogwarn == true))
+				{
+					String s = "WARN. Pin (" + String(Anumpin) + ") is use...";
+					Log(s.c_str(), true, true, tlWarn);		
+				}
+			}
+			PinInfoTable[Anumpin].use = 1;
+			PinInfoTable[Anumpin].functionpin = Afunction;
+			PinInfoTable[Anumpin].mode = Amode;
+		}
+	}
+	else
+	{
+		Log("ERROR out of num pin", true, true, tlError);
+		return false;	
+	}
+	return true;
+}
+
+//-------------------------
+// Ustalenie trybu dla pinu
+// -> pin  - numer pinu
+// -> mode - tryb pinu
+//	
 bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
@@ -1033,16 +1258,13 @@ bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 	mb.Data.GpioData.NumPin = pin;
 	mb.Data.GpioData.ActionData.Mode = mode;
 
-	
-	if (!SendMessageToAllTask(&mb, doFORWARD)) //doONLYINTERESTED
-	{
-//		Log(FSS("\n[BOARD] GPIO pinMode Error.\n"));
-//		return false;
-	}
-
-	return true;
+	return DoMessageOnAllTask(&mb,true, doFORWARD);
 }
 
+//----------------------
+// Ustawienie stanu pinu
+// -> pin   - numer pinu
+// -> value - wartoœæ stanu
 void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
@@ -1051,31 +1273,25 @@ void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 	mb.Data.GpioData.NumPin = pin;
 	mb.Data.GpioData.ActionData.Value = value;
 
-
-	if (!SendMessageToAllTask(&mb, doFORWARD)) //doONLYINTERESTED
-	{
-	//	Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
-	}
+	DoMessageOnAllTask(&mb, true, doFORWARD);
 }
-
+//------------------
+// Odczyt stanu pinu
+// -> pin - numer pinu
+// <- aktualny stan pinu
 uint8_t TXB_board::digitalRead(uint16_t pin)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinRead;
 	mb.Data.GpioData.NumPin = pin;
-
-	if (!SendMessageToAllTask(&mb, doFORWARD)) //doONLYINTERESTED
-	{
-//		Log(FSS("\n[BOARD] GPIO digitalWrite Error.\n"));
-//		return 0;
-//	}
-//	else
-//	{
-		return mb.Data.GpioData.ActionData.Value;
-	}
+	DoMessageOnAllTask(&mb, true, doFORWARD);
+	return mb.Data.GpioData.ActionData.Value;
 }
-
+//------------------------------
+// Wykonanie toggle bit na pinie
+// -> pin - numer pinu
+// <- aktualny stan pinu
 uint8_t TXB_board::digitalToggle(uint16_t pin)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
@@ -1083,17 +1299,13 @@ uint8_t TXB_board::digitalToggle(uint16_t pin)
 	mb.Data.GpioData.GpioAction = gaPinToggle;
 	mb.Data.GpioData.NumPin = pin;
 
-	if (!SendMessageToAllTask(&mb, doFORWARD)) // doONLYINTERESTED
-	{
-//		Log(FSS("\n[BOARD] GPIO digitalToggle Error.\n"));
-//		return 0;
-//	}
-//	else
-//	{
-		return mb.Data.GpioData.ActionData.Value;
-	}
+	DoMessageOnAllTask(&mb, true, doFORWARD);
+	return mb.Data.GpioData.ActionData.Value;
 }
-
+// ----------------------------------------------------------------------
+// Wys³anie messaga informuj¹cego ¿e urz¹dzenie odczyta³o dane z zewn¹trz
+// ! jeœli zdefiniowano BOARD_LED_RX_PIN to ustawienie tego pinu w stan wysoki na okreœlony czas, ma to zadanie poinformowaæ u¿ytkownika migaj¹cym ledem ¿e nastêpuje transmisja
+// -> AuserId - jest to numer zdefiniowany przez aplikacje , który to bêdzie przekazywany w messagu do ka¿dego zadania
 void TXB_board::Blink_RX(int8_t Auserid)
 {
 #ifdef BOARD_LED_RX_PIN
@@ -1107,9 +1319,12 @@ void TXB_board::Blink_RX(int8_t Auserid)
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_RX_BLINK;
 	mb.Data.BlinkData.UserID = Auserid;
-	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
+	DoMessageOnAllTask(&mb, true, doFORWARD,CurrentTask , &XB_BOARD_DefTask); 
 }
-
+// ----------------------------------------------------------------------
+// Wys³anie messaga informuj¹cego ¿e urz¹dzenie wys³a³o dane na zewn¹trz
+// ! jeœli zdefiniowano BOARD_LED_TX_PIN to ustawienie tego pinu w stan wysoki na okreœlony czas, ma to zadanie poinformowaæ u¿ytkownika migaj¹cym ledem ¿e nastêpuje transmisja
+// -> AuserId - jest to numer zdefiniowany przez aplikacje , który to bêdzie przekazywany w messagu do ka¿dego zadania
 void TXB_board::Blink_TX(int8_t Auserid)
 {
 #ifdef BOARD_LED_TX_PIN
@@ -1123,9 +1338,140 @@ void TXB_board::Blink_TX(int8_t Auserid)
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_TX_BLINK;
 	mb.Data.BlinkData.UserID = Auserid;
-	SendMessageToAllTask(&mb, doFORWARD, &XB_BOARD_DefTask);
+	DoMessageOnAllTask(&mb, true, doFORWARD, CurrentTask, &XB_BOARD_DefTask); 
+}
+// ----------------------------------------------------------------------
+// Wys³anie messaga informuj¹cego ¿e urz¹dzenie ¿e urz¹dzenie ¿yje
+// ! jeœli zdefiniowano BOARD_LED_LIFE_PIN to nastêpuje togglowanie stanu 
+void TXB_board::Blink_Life()
+{
+#ifdef  BOARD_LED_LIFE_PIN
+	digitalToggle(BOARD_LED_LIFE_PIN);
+#endif
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_LIVE_BLINK;
+	DoMessageOnAllTask(&mb, true, doFORWARD, CurrentTask, &XB_BOARD_DefTask); 
+}
+#pragma endregion
+#pragma region FUNKCJE_TASK
+// Procedura wywo³ywana przez g³ówne zadanie frameworka
+// ! W tej procedurze nastêpuje odliczanie sekundowe czasu, blinkowanie LIFE ledem (jeœli zdefiniowany),
+// ! wygaszanie ledów od blink RX blink TX (jeœli zdefiniowane), 
+void TXB_board::handle(void)
+{
+	// Sprawdzenie  przy pierwszym  wejsciu do pêtli loop iloœci wolnej pamiêci
+	if(MaximumFreeHeapInLoop == 0)
+	{
+		FreePSRAMInLoop = getFreePSRAM();
+		MinimumFreePSRAMInLoop = FreePSRAMInLoop;
+		MaximumFreePSRAMInLoop = FreePSRAMInLoop;
+	
+		FreeHeapInLoop = getFreeHeap();
+		MaximumFreeHeapInLoop = FreeHeapInLoop;
+		MinimumFreeHeapInLoop = FreeHeapInLoop;
+	}
+	
+	DEF_WAITMS_VAR(LOOPW);
+	BEGIN_WAITMS(LOOPW, 1000)
+	{
+		Blink_Life();
+
+#if defined(ARDUINO_ARCH_STM32F1) || defined(ESP32)
+		DateTimeUnix++;
+#endif
+		
+#ifdef XB_GUI
+		if (winHandle0 != NULL) winHandle0->RepaintDataCounter++;
+#endif
+		
+		CheckOld_HandleDataFrameTransport();
+	}
+	END_WAITMS(LOOPW);
+
+	//--------------------------------------
+	
+#ifdef BOARD_LED_TX_PIN
+	if (Tick_TX_BLINK != 0)
+	{
+		if (SysTickCount - Tick_TX_BLINK > TickEnableBlink)
+		{
+			Tick_TX_BLINK = 0;
+#if defined(BOARD_LED_TX_STATUS_OFF)
+			digitalWrite(BOARD_LED_TX_PIN, BOARD_LED_TX_STATUS_OFF);
+#else
+			digitalWrite(BOARD_LED_TX_PIN, LOW);
+#endif
+		}
+	}
+#endif
+
+#ifdef BOARD_LED_RX_PIN
+	if (Tick_RX_BLINK != 0)
+	{
+		if (SysTickCount - Tick_RX_BLINK > TickEnableBlink)
+		{
+			Tick_RX_BLINK = 0;
+#if defined(BOARD_LED_RX_STATUS_OFF)
+			digitalWrite(BOARD_LED_RX_PIN, BOARD_LED_RX_STATUS_OFF);
+#else
+			digitalWrite(BOARD_LED_RX_PIN, LOW);
+#endif
+		}
+	}
+#endif
+	//--------------------------------------
+	DEF_WAITMS_VAR(LOOPW2);
+	BEGIN_WAITMS(LOOPW2, 50)
+	{
+		if (CurrentTask != NULL)
+		{
+			uint8_t bufkey[3] = { 0, 0,0 };
+			uint32_t res = GetStream(bufkey, 2, CurrentTask->StreamTaskDef);
+			if (res == 1)
+			{
+				SendMessage_KeyPress((char)bufkey[0]);
+			}
+			else if (res == 2) 
+			{
+				SendMessage_KeyPress((char)bufkey[0]);
+				SendMessage_KeyPress((char)bufkey[1]);
+			}
+			else
+			{
+				res = GetStream(bufkey, 2, CurrentTask->SecStreamTaskDef);
+				if (res == 1)
+				{
+					SendMessage_KeyPress((char)bufkey[0]);
+				}
+				else if (res == 2) 
+				{
+					SendMessage_KeyPress((char)bufkey[0]);
+					SendMessage_KeyPress((char)bufkey[1]);
+				}
+			}
+		}
+	}
+	END_WAITMS(LOOPW2)
+		
+	//--------------------------------------
+	if(Tick_ESCKey != 0)
+	{
+		if (SysTickCount - Tick_ESCKey > 200)
+		{
+			Tick_ESCKey = 0;
+			TerminalFunction = 0;
+			SendMessage_FunctionKeyPress(KF_ESC, 0, &XB_BOARD_DefTask);
+		}
+	}
+
 }
 
+
+// ------------------------------------
+// Dodanie do frameworka nowego zadania
+// -> Ataskdef - wskaŸnik definicji zadania
+// -> DeviceID - 8 bajtowy numer ID urz¹dzenia na którym zadanie zosta³o uruchomione
+// <- WskaŸnik utworzonej struktury opisuj¹cej zadanie
 TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 {
 	TTask *ta = TaskList;
@@ -1134,7 +1480,7 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 		if (Ataskdef == ta->TaskDef)
 		{
 			String taskname = "";
-			GetTaskName(Ataskdef, taskname);
+			SendMessage_GetTaskNameString(Ataskdef, taskname);
 			Log(String("The task [" + taskname + "] has already been added...").c_str(), true, true, tlWarn);
 			return ta;
 		}
@@ -1159,7 +1505,7 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 		}
 		else
 		{
-			t->DeviceID.ID.ID64 = board.GetUniqueID().ID.ID64;
+			t->DeviceID.ID.ID64 = board.DeviceID.ID.ID64;
 		}
 
 
@@ -1183,14 +1529,20 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 	}
 	return NULL;
 }
-
+//------------------------------------------
+// Usuniêcie z frameworka wskazanego zadania
+// -> Ataskdef - wskaŸnik definicji usuwanego zadania
+// <- true OK
+//    false B³¹d
 bool TXB_board::DelTask(TTaskDef *Ataskdef)
 {
 	if (Ataskdef != NULL)
 	{
 		if (Ataskdef->Task != NULL)
 		{
-			SendMessageToTask(Ataskdef, IM_DELTASK,true);
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+			mb.IDMessage = IM_DELTASK;
+			DoMessage(&mb, true, CurrentTask, Ataskdef);
 			DELETE_FROM_LIST_STR(TaskList, Ataskdef->Task);
 			board.free(Ataskdef->Task);
 			Ataskdef->Task = NULL;
@@ -1200,59 +1552,15 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 	}
 	return false;
 }
-
-void TXB_board::ResetInAllTaskDefaultStream()
-{
-	TTask *t = TaskList;
-	while (t != NULL)
-	{
-		t->StreamTaskDef = Default_StreamTaskDef;
-		t->SecStreamTaskDef = Default_SecStreamTaskDef;
-		t = t->Next;
-	}
-}
-
-TTask *TXB_board::GetTaskByIndex(uint8_t Aindex)
-{
-	TTask *t = TaskList;
-	uint8_t i = 0;
-	while (t != NULL)
-	{
-		if (i == Aindex) return t;
-		i++;
-		t = t->Next;
-	}
-	return NULL;
-}
-
-TTaskDef *TXB_board::GetTaskDefByName(String ATaskName)
-{
-	TTask *t = TaskList;
-	String tmpstr;
-	tmpstr.reserve(32);
-	
-	while (t != NULL)
-	{
-		if (t->TaskDef != NULL)
-		{
-			if (GetTaskName(t->TaskDef, tmpstr))
-			{
-				if (tmpstr == ATaskName) return t->TaskDef;
-			}
-		}
-		t = t->Next;
-	}
-	return NULL;
-}
-
-
+// ---------------------------------------------------------------------------------------------------------------
+// G³ówna procedura uruchamiaj¹ca zadania z podzia³em na priorytety, zg³oszeñ z przerwañ i czekaj¹cych zadany czas
 void TXB_board::IterateTask(void)
 {
 	TTask *t = TaskList;
 	iteratetask_procedure = true;
 	{
 		// Sprawdzenie czy uruchomiæ przerwanie
-		if(doAllInterruptRC>0)
+		if(doAllInterruptRC > 0)
 		{
 			doAllInterruptRC--;
 			bool isint = false;
@@ -1403,7 +1711,60 @@ void TXB_board::IterateTask(void)
 	}
 	iteratetask_procedure = false;
 }
-
+// ------------------------------------------------------------------------------------------------------------
+// Ustawienie we wszystkich zadaniach domyœlnych zadañ streamu który wykorzystywany jest przez funkcje .Log(...
+void TXB_board::ResetInAllTaskDefaultStream()
+{
+	TTask *t = TaskList;
+	while (t != NULL)
+	{
+		t->StreamTaskDef = Default_StreamTaskDef;
+		t->SecStreamTaskDef = Default_SecStreamTaskDef;
+		t = t->Next;
+	}
+}
+// -----------------------------------------------------------
+// Pobranie adresu struktury opisuj¹cej zadanie wed³ug indeksu
+// -> Aindex - indeks zadania weg³ug kolejnoœci dodania do frameworka
+// <- wskaŸnik zadania
+TTask *TXB_board::GetTaskByIndex(uint8_t Aindex)
+{
+	TTask *t = TaskList;
+	uint8_t i = 0;
+	while (t != NULL)
+	{
+		if (i == Aindex) return t;
+		i++;
+		t = t->Next;
+	}
+	return NULL;
+}
+// ---------------------------------------------------------
+// Pobranie adresu struktury opisuj¹cej zadanie wed³ug nazwy
+// -> ATaskName - Nazwa zadania 
+// <- wskaŸnik definicji zadania
+TTaskDef *TXB_board::GetTaskDefByName(String ATaskName)
+{
+	TTask *t = TaskList;
+	String tmpstr;
+	tmpstr.reserve(32);
+	
+	while (t != NULL)
+	{
+		if (t->TaskDef != NULL)
+		{
+			if (SendMessage_GetTaskNameString(t->TaskDef, tmpstr))
+			{
+				if (tmpstr == ATaskName) return t->TaskDef;
+			}
+		}
+		t = t->Next;
+	}
+	return NULL;
+}
+// ------------------------------------------------------------------------------------
+// Wyzwolenie przy nastêpnej iteracji procedury z definicji zadania do obs³ugi przerwañ
+// -> WskaŸnik definicji zadania którego ma zostaæ uruchomiona procedura interrupt
 void TXB_board::TriggerInterrupt(TTaskDef *Ataskdef)
 {
 	if (Ataskdef != NULL)
@@ -1415,7 +1776,9 @@ void TXB_board::TriggerInterrupt(TTaskDef *Ataskdef)
 		}
 	}
 }
-
+// ---------------------------------------------------------
+// Wykonanie procedure obs³ugi przerwania wskazanego zadania
+// -> WskaŸnik definicji zadania którego ma zostaæ uruchomiona procedura interrupt
 void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 {
 	if (Ataskdef != NULL)
@@ -1436,99 +1799,16 @@ void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 		}
 	}
 }
-
-bool TXB_board::GetTaskString(TMessageBoard *Amb,TTaskDef *ATaskDef, String &APointerString)
-{
-	Amb->Data.PointerString = &APointerString;
-
-	if (SendMessageToTask(ATaskDef, Amb,true))
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-	
-}
-
-bool TXB_board::GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_GET_TASKSTATUS_STRING;
-	return GetTaskString(&mb, ATaskDef, APointerString);
-}
-
-bool TXB_board::GetTaskName(TTaskDef *ATaskDef,String &APointerString)
-{
-	if (ATaskDef == NULL) return false;
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_GET_TASKNAME_STRING;
-	return GetTaskString(&mb, ATaskDef, APointerString);
-}
-
-void TXB_board::SendMessageOTAUpdateStarted()
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_OTA_UPDATE_STARTED;
-	mb.Data.uData64 = 0;
-	SendMessageToAllTask(&mb, doBACKWARD);
-}
-
-void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction,char Akey)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_KEYBOARD;
-	mb.Data.KeyboardData.KeyCode = Akey;
-	mb.Data.KeyboardData.KeyFunction = Akeyfunction;
-	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
-	SendMessageToAllTask(&mb, doFORWARD); //doONLYINTERESTED
-}
-
-void TXB_board::SendKeyFunctionPress(TKeyboardFunction Akeyfunction, char Akey,TTaskDef *Ataskdef,bool Aexcludethistask)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_KEYBOARD;
-	mb.Data.KeyboardData.KeyCode = Akey;
-	mb.Data.KeyboardData.KeyFunction = Akeyfunction;
-	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
-	if (Aexcludethistask)
-	{
-		SendMessageToAllTask(&mb, doFORWARD,Ataskdef); // doONLYINTERESTED
-	}
-	else
-	{
-		SendMessageToAllTask(&mb, doFORWARD); // doONLYINTERESTED
-		if (Ataskdef->Task != NULL)
-		{
-			if (Ataskdef->Task->domessageRC > 0)
-			{
-				SendMessageToTask(Ataskdef, &mb, true);
-			}
-		}
-	}
-}
-
-void TXB_board::SendKeyPress(char Akey)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_KEYBOARD;
-	mb.Data.KeyboardData.KeyCode=Akey;
-	mb.Data.KeyboardData.KeyFunction = KF_CODE;
-	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
-	SendMessageToAllTask(&mb, doFORWARD); // doONLYINTERESTED
-}
-
-void TXB_board::SendKeyPress(char Akey, TTaskDef *Ataskdef)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_KEYBOARD;
-	mb.Data.KeyboardData.KeyCode = Akey;
-	mb.Data.KeyboardData.KeyFunction = KF_CODE;
-	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
-	SendMessageToTask(Ataskdef,&mb, true);
-}
-
+#pragma endregion
+#pragma region FUNKCJE_MESSAGOW
+// -----------------------------------------------------
+// Wykonanie procedury obs³ugi messaga wybranego zadania
+// -> mb - WskaŸnik struktury opisuj¹cej messaga
+// -> Arunagain  - Jeœli true to wywo³anie procedury messaga z mo¿liwoœci¹ wykonania ponownie
+//               - Jeœli false nie wykona siê procedura messaga odwo³a siê poraz kolejny 
+//                 Argument s³u¿y do nikniêcia ewentualnego zapêtlenia odwo³añ messagów.
+// -> Afromtask  - Zadania od którego wysy³any jest messag
+// -> Atotaskdef - Definicja zadania do którego messag jest wysy³any
 bool TXB_board::DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, TTaskDef *Atotaskdef)
 {
 	bool res = false;
@@ -1538,7 +1818,6 @@ bool TXB_board::DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, T
 		{
 			if (Atotaskdef->domessage != NULL)
 			{
-
 				if ((Atotaskdef->Task->domessageRC == 0) || (Arunagain == true))
 				{
 					Atotaskdef->Task->domessageRC++;
@@ -1556,21 +1835,76 @@ bool TXB_board::DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, T
 	}
 	return res;
 }
-
-bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TMessageBoard *mb,bool Arunagain)
+//---------------------------------------------------------
+// Wykonanie procedury obs³ugi messaga dla wszystkich zadañ
+// -> mb - WskaŸnik struktury opisuj¹cej messaga
+// -> Arunagain    - Jeœli true to wywo³anie procedury messaga z mo¿liwoœci¹ wykonania ponownie
+//                 - Jeœli false nie wykona siê procedura messaga odwo³a siê poraz kolejny 
+//                   Argument s³u¿y do nikniêcia ewentualnego zapêtlenia odwo³añ messagów.
+// -> Afromtask    - Zadania od którego wysy³any jest messag
+// -> Aexcludetask - WskaŸnik definicji zadania które ma zostaæ wykluczone z obœ³ugi messaga
+bool TXB_board::DoMessageOnAllTask(TMessageBoard *mb, bool Arunagain, TDoMessageDirection ADoMessageDirection, TTask *Afromtask, TTaskDef *Aexcludetask)
 {
-	return DoMessage(mb, Arunagain, CurrentTask, ATaskDef);
-}
+	uint32_t res = 0;
+	
+	if (Afromtask == NULL)
+	{
+		Afromtask = CurrentTask;
+	}
+	
+	switch (ADoMessageDirection)
+	{
+	case doFORWARD:
+		{
+			TTask *t = TaskList;
+			while (t != NULL)
+			{
+				if (t->TaskDef != NULL)
+				{
+					if (Aexcludetask != t->TaskDef)
+					{
+						res += DoMessage(mb, true, Afromtask, t->TaskDef);
+					}
+				}
+				t = t->Next;
+			}
+			break;
+		}
 
-bool TXB_board::SendMessageToTask(TTaskDef *ATaskDef, TIDMessage AIDmessage, bool Arunagain)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = AIDmessage;
-	mb.Data.uData32 = 0;
-	return SendMessageToTask(ATaskDef, &mb, Arunagain);
-}
+	case doBACKWARD:
+		{
+			TTask *t = TaskList;
+			while (t != NULL) 
+			{ 
+				if (t->Next == NULL) break;
+				t = t->Next; 
+			}
 
-bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, bool Arunagain)
+			while (t != NULL)
+			{
+				if (t->TaskDef != NULL)
+				{
+					if (Aexcludetask != t->TaskDef)
+					{
+						res += DoMessage(mb, true,  Afromtask, t->TaskDef);
+					}
+				}
+				t = t->Prev;
+			}
+			break;
+		}
+	default: break;
+	}
+	return (res > 0);
+}
+//---------------------------------------------------------------
+// Wykonanie procedury obs³ugi messaga zadania o wskazanej nazwie
+// -> Ataskname    - Nazwa zadania
+// -> mb           - WskaŸnik struktury opisuj¹cej messaga
+// -> Arunagain    - Jeœli true to wywo³anie procedury messaga z mo¿liwoœci¹ wykonania ponownie
+//                 - Jeœli false nie wykona siê procedura messaga odwo³a siê poraz kolejny 
+//                   Argument s³u¿y do nikniêcia ewentualnego zapêtlenia odwo³añ messagów.
+bool TXB_board::DoMessageByTaskName(String Ataskname,TMessageBoard *mb, bool Arunagain)
 {
 	TTask *t = TaskList;
 	bool res = false;
@@ -1583,11 +1917,11 @@ bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, boo
 			if (t->TaskDef->domessage)
 			{
 				tn = "";
-				if (GetTaskName(t->TaskDef, tn))
+				if (SendMessage_GetTaskNameString(t->TaskDef, tn))
 				{
 					if (Ataskname == tn)
 					{
-						return SendMessageToTask(t->TaskDef, mb, Arunagain);
+						return DoMessage(mb, Arunagain, NULL, t->TaskDef);
 					}
 				}
 			}
@@ -1597,136 +1931,94 @@ bool TXB_board::SendMessageToTaskByName(String Ataskname, TMessageBoard *mb, boo
 	return false;
 }
 
-bool TXB_board::SendMessageToAllTask(TIDMessage AidMessage, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
+// ----------------------------------------------------------------
+// Wys³anie messaga do zadania w celu uzyskania stringu statusowego
+// -> ATaskDef       - Definicja zadania od którego uzyskamy string status
+// -> APointerString - Referencja klasy String w którym znajdzie siê status
+// <- True           - wykonano poprawnie procedure pobrania status stringu
+//    False          - Zadanie nie obs³uguje messaga 
+bool TXB_board::SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = AidMessage;
-	mb.Data.uData32 = 0;
-	return SendMessageToAllTask(&mb, ADoMessageDirection, Aexcludetask);
+	mb.IDMessage = IM_GET_TASKSTATUS_STRING;
+	mb.Data.PointerString = &APointerString;
+	return DoMessage(&mb, true, CurrentTask, ATaskDef);
+}
+// --------------------------------------------------------------------
+// Wys³anie messaga do zadania w celu uzyskania stringu z nazw¹ zadania
+// -> ATaskDef       - Definicja zadania od którego uzyskamy string z nazw¹
+// -> APointerString - Referencja klasy String w którym znajdzie siê nazwa
+// <- True           - wykonano poprawnie procedure pobrania nazwy zadania
+//    False          - Zadanie nie obs³uguje messaga 
+bool TXB_board::SendMessage_GetTaskNameString(TTaskDef *ATaskDef,String &APointerString)
+{
+	if (ATaskDef == NULL) return false;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_GET_TASKNAME_STRING;
+	mb.Data.PointerString = &APointerString;
+	return DoMessage(&mb, true, CurrentTask, ATaskDef);
+}
+// -----------------------------------------------------------------------------
+// Wys³anie messaga informuj¹cego zadanie ¿e rozpocznie siê procedura OTA Update
+void TXB_board::SendMessage_OTAUpdateStarted()
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_OTA_UPDATE_STARTED;
+	mb.Data.uData64 = 0;
+	DoMessageOnAllTask(&mb, true, doBACKWARD); 
 }
 
-bool TXB_board::SendMessageToAllTask(TMessageBoard *mb, TDoMessageDirection ADoMessageDirection, TTaskDef *Aexcludetask)
+void TXB_board::SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask)
 {
-	uint32_t res = 0;
-	switch (ADoMessageDirection)
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_KEYBOARD;
+	mb.Data.KeyboardData.KeyCode = Akey;
+	mb.Data.KeyboardData.KeyFunction = Akeyfunction;
+	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
+	DoMessageOnAllTask(&mb, true, doFORWARD, NULL, Aexcludetask);  
+} 
+
+void TXB_board::SendMessage_KeyPress(char Akey,TTaskDef *Aexcludetask)
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_KEYBOARD;
+	mb.Data.KeyboardData.KeyCode = Akey;
+	mb.Data.KeyboardData.KeyFunction = KF_CODE;
+	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
+	DoMessageOnAllTask(&mb, true, doFORWARD, NULL, Aexcludetask);  
+}
+
+void TXB_board::SendMessage_ConfigSave(void)
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_CONFIG_SAVE;
+	DoMessageOnAllTask(&mb, true, doFORWARD);  
+}
+
+void TXB_board::SendMessage_FreePTR(void *Aptr)
+{
+	if (Aptr != NULL)
 	{
-/*		case doONLYINTERESTED:
-		{
-			uint8_t isinterested = 0;
-			TTask *t = TaskList;
-			while(t!=NULL)
-			{
-				if (t->TaskDef != NULL)
-				{
-					if (Aexcludetask != t->TaskDef)
-					{
-						if (t->LastIDMessage == mb->IDMessage)
-						{
-							isinterested++;
-							res = DoMessage(mb, true, CurrentTask, t->TaskDef);
-							if (!res)
-							{
-								t->LastIDMessage = IM_IDLE;
-								isinterested--;
-							}
-						}
-					}
-				}
-				t = t->Next;
-			}
-			if (isinterested == 0)
-			{
-				t = TaskList;
-				while(t!=NULL)
-				{
-					if (t->TaskDef != NULL)
-					{
-						if (Aexcludetask != t->TaskDef)
-						{
-							res = DoMessage(mb, true, CurrentTask, t->TaskDef);
-						}
-					}
-					t = t->Next;
-				}
-			}
-			break;
-		}*/
-		case doFORWARD:
-		{
-			TTask *t = TaskList;
-			while (t!=NULL)
-			{
-				if (t->TaskDef != NULL)
-				{
-					if (Aexcludetask != t->TaskDef)
-					{
-						res += DoMessage(mb, true, CurrentTask, t->TaskDef);
-					}
-				}
-				t = t->Next;
-			}
-			break;
-		}
-
-		case doBACKWARD:
-		{
-			TTask *t = TaskList;
-			while (t != NULL) 
-			{ 
-				if (t->Next == NULL) break;
-				t = t->Next; 
-			}
-
-			
-
-			while (t != NULL)
-			{
-				if (t->TaskDef != NULL)
-				{
-					if (Aexcludetask != t->TaskDef)
-					{
-						res += DoMessage(mb, true, CurrentTask, t->TaskDef);
-					}
-				}
-				t = t->Prev;
-			}
-			break;
-		}
-		default: break;
+		TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+		mb.IDMessage = IM_FREEPTR;
+		mb.Data.FreePTR = Aptr;
+		DoMessageOnAllTask(&mb, true, doBACKWARD);
 	}
-	return (res>0);
 }
 
-void TXB_board::SendSaveConfigToAllTask(void)
-{
-	SendMessageToAllTask(IM_CONFIG_SAVE);
-}
 
-void TXB_board::setString(char *dst, const char *src, int max_size) 
-{
-	max_size--;
-	if (src == NULL) {
-		dst[0] = 0;
-		return;
-	}
-
-	
-	int size = StringLength((char *)src, 0);
-
-	if (size + 1 > max_size)
-		size = max_size - 1;
-	xb_memorycopy((void *)src, dst, size);
-	
-	dst[size] = 0;
-}
-
-#if defined(ESP32)
+#pragma endregion
+#pragma region FUNKCJE_OBSLUGI_RAM
+// -------------------------------------
+// Zwrócenie iloœci wolnej pamiêci PSRAM
+// <- Iloœæ bajtów
 uint32_t TXB_board::getFreePSRAM()
 {
-#ifdef BOARD_HAS_PSRAM
+#if defined(BOARD_HAS_PSRAM) && defined(ESP32)
 	
 	uint32_t freepsram = ESP.getFreePsram();
-	uint32_t r=0;
+#ifdef PSRAM_BUG
+	uint32_t r = 0;
 	if (lastfreepsram == 0)
 	{
 		lastfreepsram = freepsram;
@@ -1735,8 +2027,7 @@ uint32_t TXB_board::getFreePSRAM()
 	{
 		r = (lastfreepsram > freepsram) ? (lastfreepsram - freepsram) : (freepsram - lastfreepsram);	
 	}
-	 
-	
+
 	if (r > (100 * MaximumMallocPSRAM))
 	{
 		asm("memw");
@@ -1748,40 +2039,94 @@ uint32_t TXB_board::getFreePSRAM()
 	}
 	return lastfreepsram;
 #else
+	return freepsram;
+#endif
+#else
 	return ESP.getFreeHeap();
 #endif
 }
+// -------------------------------------
+// Zwrócenie iloœci wolnej pamiêci RAM
+// <- Iloœæ bajtów
+uint32_t TXB_board::getFreeHeap()
+{
+#if defined(ESP8266) || defined(ESP32)
+	return ESP.getFreeHeap();
+#endif
+
+#ifdef ARDUINO_ARCH_STM32F1
+	/*
+		volatile int32_t size = 0; 
+		volatile uint32_t ADR = 0;
+		volatile uint8_t a = 1;
+
+		noInterrupts();
+
+		ADRESS_STACK = (uint32_t)&a;
+		ADRESS_HEAP = (uint32_t)malloc(32);
+		board.free((void *)ADRESS_HEAP);
+
+		size = ADRESS_STACK - ADRESS_HEAP;
+		interrupts();
+
+		return size;
+		*/
+	return 20 * 1024;
+#endif
+}
 #if !defined(_VMICRO_INTELLISENSE)
+//------------------------------------------------------------------------------------------------------------------------------
+// Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
+// -> Asize - Iloœæ rezerwowanej pamiêci PSRAM
+// <- WskaŸnik zarezerwowanego bloku pamiêci PSRAM
 void *TXB_board::_malloc_psram(size_t Asize)
 {
+#ifdef PSRAM_BUG
 	size_t size = Asize;
-	
 	MaximumMallocPSRAM = (Asize > MaximumMallocPSRAM) ? Asize : MaximumMallocPSRAM;
+#endif
 	
+	
+#ifdef BOARD_HAS_PSRAM
+#ifdef PSRAM_BUG
 	size = size >> 4;
 	size = size + 1;
 	size = size << 4;
-#ifdef BOARD_HAS_PSRAM
-	//void *ptr= heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-	void *ptr = malloc(size);
+	size += 4;
+	void *ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
 #else
-	void *ptr = malloc(size);
+	void *ptr = heap_caps_malloc(Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#endif 
+#else
+	void *ptr = malloc(Asize);
 #endif
+
 	if (ptr != NULL)
 	{
+#ifdef BOARD_HAS_PSRAM
+#ifdef PSRAM_BUG
 		if ((size - Asize) > 0)
 		{
-			xb_memoryfill(&((uint8_t *)ptr)[Asize] , size - Asize, 0xff);
+			xb_memoryfill(&((uint8_t *)ptr)[Asize], size - Asize, 0xff);
 		}
+#endif
+#endif
 		xb_memoryfill(ptr, Asize, 0);
 		OurReservedBlock++;
 	}
+	else
+	{
+		board.Log("Out of memory.", true, true, tlError);
+	}
+	
 	return ptr;
-
 }
 #endif
-
 #if !defined(_VMICRO_INTELLISENSE)
+//---------------------------------------
+// Rezerwacja pamiêci RAM mikrokontrolera
+// -> Asize - Iloœæ rezerwowanej pamiêci 
+// <- WskaŸnik zarezerwowanego bloku pamiêci 
 void *TXB_board::_malloc(size_t size)
 {
 	void *ptr = malloc(size);
@@ -1790,40 +2135,33 @@ void *TXB_board::_malloc(size_t size)
 		xb_memoryfill(ptr, size, 0);
 		OurReservedBlock++;
 	}
-	return ptr;
-
-}
-#endif
-
-#endif
-
-#ifdef ESP8266
-void *TXB_board::_malloc(size_t size)
-{
-	void *ptr = malloc(size);
-	if (ptr != NULL)
+	else
 	{
-		xb_memoryfill(ptr, size, 0);
+		board.Log("Out of memory.", true, true, tlError);
 	}
 	return ptr;
 }
 #endif
-
 void ___free(void *Aptr)
 {
 	free(Aptr);
 }
-
+// ------------------
+// Zwolnienie pamiêci
+// -> Aptr wskaŸnik na blok pamiêci zwalnianej
+// ! przed zwolnieniem pamiêci zostaje wys³any messag do wszystkich zadañ informuj¹cy ¿e wskazany blok pamiêci zostaje zwolniony
 void TXB_board::free(void *Aptr)
 {
 	if (Aptr != NULL)
 	{
-		SendMessageToAllTask_FreePTR(Aptr);
+		SendMessage_FreePTR(Aptr);
 		___free(Aptr);
 		OurReservedBlock--;
 	}
 }
-
+// --------------------------------------------------------------------------------------------------------------------
+// Zwolnienie pamiêci z pod wskazanego (wskaŸniniem) wskaŸnika i nastêpnie nadanie wartoœæi NULL wskaŸnikowi wskazanemu
+//  -> WskaŸnik wskaŸnika zwalnianego bloku pamiêci
 void TXB_board::freeandnull(void **Aptr)
 {
 	if (*Aptr != NULL)
@@ -1833,523 +2171,103 @@ void TXB_board::freeandnull(void **Aptr)
 	}
 }
 
-void TXB_board::SendMessageToAllTask_FreePTR(void *Aptr)
+#pragma endregion
+#pragma region FUNKCJE_STREAMU_FRAMES
+//-----------------------------------------------------
+// Odczyt ze wskazanego streamu okreœlon¹ iloœæ bajtów
+// -> Adata          - wskaŸnik na blok pamiêci gdzie maj¹ zostaæ zapisane odczytane bajty
+// -> Amaxlength     - wielkoœæ maksymalna bloku pamiêci i równoczeœnie maksymalna iloœæ bajtów do odczytu
+// -> AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+// -> Afromaaddress	 - adres / kana³ z którego bêdziê czytany stream
+//                   ! Jeœli zero to stream powinien udostêpniæ dane pierwsze w kolejce do odczytu z dowolnego adresu
+// <- iloœæ bajtów odczytanych
+uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t Afromaddress)
 {
-	if (Aptr != NULL)
-	{
-		TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-		mb.IDMessage = IM_FREEPTR;
-		mb.Data.FreePTR = Aptr;
-		SendMessageToAllTask(&mb, doBACKWARD);
-	}
-}
-
-
-uint32_t TXB_board::getFreeHeap()
-{
-#if defined(ESP8266) || defined(ESP32)
-	return ESP.getFreeHeap();
-#endif
-
-#ifdef ARDUINO_ARCH_STM32F1
-/*
-	volatile int32_t size = 0; 
-	volatile uint32_t ADR = 0;
-	volatile uint8_t a = 1;
-
-	noInterrupts();
-
-	ADRESS_STACK = (uint32_t)&a;
-	ADRESS_HEAP = (uint32_t)malloc(32);
-	board.free((void *)ADRESS_HEAP);
-
-	size = ADRESS_STACK - ADRESS_HEAP;
-	interrupts();
-
-	return size;
-	*/
-	return 20 * 1024;
-#endif
-
-
-}
-
-bool TXB_board::CheckCriticalFreeHeap(void)
-{
-	if (getFreeHeap() < (BOARD_CRITICALFREEHEAP))
-	{
-		PrintTimeFromRun();
-		Serial_println(FSS(" CRITICAL FREE STACK...set disconnect."));
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-
-	return false;
-}
-
-TUniqueID TXB_board::GetUniqueID()
-{
-	TUniqueID V;
-	V.ID.ID64 = 0;
-
-#if defined(ESP8266) 
-	uint8 mac[8];
-	if (wifi_get_macaddr(0,mac))
-	{
-		V.ID.ID[0] = mac[0];
-		V.ID.ID[1] = mac[1];
-		V.ID.ID[2] = mac[2];
-		V.ID.ID[3] = mac[3];
-		V.ID.ID[4] = mac[4];
-		V.ID.ID[5] = mac[5];
-		V.ID.ID[6] = mac[6];
-		V.ID.ID[7] = mac[7];
-		V.ID.ID[6] = V.ID.ID[0];
-		V.ID.ID[0] = V.ID.ID[1] + V.ID.ID[2];
-		V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
-	}
-#endif
-#if defined(ESP32)
-	V.ID.ID64=ESP.getEfuseMac();
-	V.ID.ID[6] = V.ID.ID[0];
-	V.ID.ID[0] = V.ID.ID[1] + V.ID.ID[2];
-	V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
-#endif
-
-#ifdef ARDUINO_ARCH_STM32F1
-#define STM32_UUID ((uint32_t *) 0x1ffff7e8)
-
-	volatile uint32_t idpart[3];
-	idpart[0] = STM32_UUID[0];
-	idpart[1] = STM32_UUID[1];
-	idpart[2] = STM32_UUID[2];
-	uint8_t *idpart8=(uint8_t *)idpart;
-
-	V.ID.ID[0] = idpart8[0];
-	V.ID.ID[1] = idpart8[1];
-	V.ID.ID[2] = idpart8[2] + idpart8[8];
-	V.ID.ID[3] = idpart8[3] + idpart8[9];
-	V.ID.ID[4] = idpart8[4] + idpart8[10];
-	V.ID.ID[5] = idpart8[5] + idpart8[11];
-	V.ID.ID[6] = idpart8[6];
-	V.ID.ID[7] = idpart8[7];
+	if (Amaxlength == 0) return 0;
+	if (Adata == NULL) return 0;
+	if (AStreamtaskdef == NULL) return 0;
+	if (AStreamtaskdef->Task == NULL) return 0;
 	
-#endif
-
-	return V;
-}
-
-// This table comes from Dallas sample code where it is freely reusable,
-// though Copyright (C) 2000 Dallas Semiconductor Corporation
-static const uint8_t PROGMEM dscrc_table[] = {
-	0, 94,188,226, 97, 63,221,131,194,156,126, 32,163,253, 31, 65,
-	157,195, 33,127,252,162, 64, 30, 95,  1,227,189, 62, 96,130,220,
-	35,125,159,193, 66, 28,254,160,225,191, 93,  3,128,222, 60, 98,
-	190,224,  2, 92,223,129, 99, 61,124, 34,192,158, 29, 67,161,255,
-	70, 24,250,164, 39,121,155,197,132,218, 56,102,229,187, 89,  7,
-	219,133,103, 57,186,228,  6, 88, 25, 71,165,251,120, 38,196,154,
-	101, 59,217,135,  4, 90,184,230,167,249, 27, 69,198,152,122, 36,
-	248,166, 68, 26,153,199, 37,123, 58,100,134,216, 91,  5,231,185,
-	140,210, 48,110,237,179, 81, 15, 78, 16,242,172, 47,113,147,205,
-	17, 79,173,243,112, 46,204,146,211,141,111, 49,178,236, 14, 80,
-	175,241, 19, 77,206,144,114, 44,109, 51,209,143, 12, 82,176,238,
-	50,108,142,208, 83, 13,239,177,240,174, 76, 18,145,207, 45,115,
-	202,148,118, 40,171,245, 23, 73,  8, 86,180,234,105, 55,213,139,
-	87,  9,235,181, 54,104,138,212,149,203, 41,119,244,170, 72, 22,
-	233,183, 85, 11,136,214, 52,106, 43,117,151,201, 74, 20,246,168,
-	116, 42,200,150, 21, 75,169,247,182,232, 10, 84,215,137,107, 53 };
-
-// Compute a Dallas Semiconductor 8 bit CRC. These show up in the ROM
-// and the registers.  (note: this might better be done without to
-// table, it would probably be smaller and certainly fast enough
-// compared to all those delayMicrosecond() calls.  But I got
-// confused, so I use this table from the examples.)
-//
-uint8_t TXB_board::crc8(const uint8_t *addr, uint8_t len)
-{
-	uint8_t crc = 0;
-
-	while (len--) {
-		crc = pgm_read_byte(dscrc_table + (crc ^ *addr++));
-	}
-	return crc;
-}
-
-void TXB_board::SysTickCount_init(void)
-{
-#if defined(ESP8266) 
-	SysTickCount_ticker.attach_ms(1, SysTickCount_proc);
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saGet;
+	mb.Data.StreamData.Data = Adata;
+	mb.Data.StreamData.Length = Amaxlength;
+	mb.Data.StreamData.FromAddress = Afromaddress;
 	
-#endif
-	LastActiveTelnetClientTick = 0;
 	
-}
-
-void TXB_board::DateTimeSecond_init(void)
-{
-#if defined(ESP8266)
-	DateTimeSecond_ticker.attach(1, DateTimeSecond_proc);
-#endif
-}
-
-void TXB_board::HandleKeyPress(char ch)
-{
-	if (TerminalFunction == 0)
+	THandleDataFrameTransport *hdft = AStreamtaskdef->Task->HandleDataFrameTransportList;
+	
+	while (hdft != NULL)
 	{
-		SendKeyPress(ch);
-	}
-	else
-	{
-		SendKeyPress(ch, &XB_BOARD_DefTask);
-	}
-}
-
-bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress, uint32_t ADestAddress)
-{
-	TTaskDef *TaskDefStream = NULL;
-	if (AONStreamTaskName != "local")
-	{
-		TaskDefStream = GetTaskDefByName(AONStreamTaskName);
-		if (TaskDefStream == NULL) 
+		if (hdft->isdatatoread)
 		{
-			board.Log("Error: Stream task name not found...", true, true, tlError);
-			return false;
-		}
-	}
-	return SendFrameToDeviceTask(ADestTaskName, TaskDefStream, ADataFrame, Alength,AframeID,ASourceAddress,ADestAddress);
-}
-
-bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress,uint32_t ADestAddress)
-{	
-	uint32_t reslen = 0;
-	static THDFT *hdft = NULL;
-	if (hdft != NULL)
-	{
-		board.free(hdft);
-		hdft = NULL;
-	}
-	hdft = (THDFT *)board._malloc(sizeof(THDFT));
-	
-	if (hdft == NULL)
-	{
-		board.Log("Error memory in send frame...", true, true, tlError);
-		return false;
-	}
-
-	if (Alength > sizeof(hdft->FT.Frame))
-	{
-		board.Log("Error: send frame too long...", true, true,tlError);
-		
-		return false;
-	}
-
-	if (ADestTaskName.length() > 15)
-	{
-		board.Log("Error: Destination task name too long (15 char max)...", true, true,tlError);
-		
-		return false;
-	}
-	
-	if (ATaskDefStream != NULL)
-	{
-		hdft->ACK.a = FRAME_ACK_A;
-		hdft->ACK.b = FRAME_ACK_B;
-		hdft->ACK.c = FRAME_ACK_C;
-		hdft->ACK.d = FRAME_ACK_D;
-	}
-	
-	*AframeID = SysTickCount;
-	hdft->FT.SourceAddress = ASourceAddress;
-	hdft->FT.SourceDeviceID = board.GetUniqueID();
-	hdft->FT.DestAddress = ADestAddress;
-	hdft->FT.DestDeviceID.ID.ID64 = 0;
-	hdft->FT.FrameID = *AframeID;
-	hdft->FT.FrameType = ftData;
-	
-	xb_memorycopy(ADataFrame, &hdft->FT.Frame, Alength);
-	hdft->FT.LengthFrame = Alength;
-
-	xb_memorycopy((void *)(ADestTaskName.c_str()), &hdft->FT.DestTaskName, ADestTaskName.length());
-	
-	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
-	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
-	if (ATaskDefStream != NULL)
-	{
-		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
-		reslen=PutStream(hdft, ltsize, ATaskDefStream,ADestAddress);
-		if (reslen != ltsize)
-		{
-			board.Log(String("Stream error - Send: " + String(ltsize) + " Sended:" + String(reslen) + " ...").c_str(), true, true, tlWarn);
-			return false;
-		}
-	}
-	else
-	{
-		HandleFrameLocal(&hdft->FT);
-	}
-	return true;
-}
-
-void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t ASourceAddress, uint32_t ADestAddress, TFrameType AframeType, TUniqueID ADestDeviceID)
-{
-	static THDFT *hdft = NULL;
-	if (hdft != NULL)
-	{
-		board.free(hdft);
-		hdft = NULL;
-	}
-	hdft=(THDFT *)board._malloc(sizeof(THDFT));
-	if (hdft == NULL)
-	{
-		board.Log("Memory error in send response frame...", true, true, tlError);
-		return;
-	}
-
-	if (ATaskDefStream != NULL)
-	{
-		hdft->ACK.a = FRAME_ACK_A;
-		hdft->ACK.b = FRAME_ACK_B;
-		hdft->ACK.c = FRAME_ACK_C;
-		hdft->ACK.d = FRAME_ACK_D;
-	}
-
-	hdft->FT.SourceAddress = ASourceAddress;
-	hdft->FT.SourceDeviceID = board.GetUniqueID();
-	hdft->FT.DestAddress = ADestAddress;
-	hdft->FT.DestDeviceID = ADestDeviceID;
-	hdft->FT.LengthFrame = 0;
-	hdft->FT.FrameID = AFrameID;
-	hdft->FT.FrameType = AframeType;
-	
-	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
-	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
-	if (ATaskDefStream != NULL)
-	{
-		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
-		PutStream(hdft, ltsize, ATaskDefStream, ADestAddress);
-	}
-	else
-	{
-		HandleFrameLocal(&hdft->FT);
-	}
-	
-	return;
-}
-
-
-void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
-{
-	uint8_t crc = Aft->crc8;
-	Aft->crc8 = 0;
-
-	if (crc == crc8((uint8_t *)Aft, Aft->size))
-	{
-		if (Aft->FrameType == ftData)
-		{
-			TTaskDef *DestTaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
-			if (DestTaskDefReceive == NULL)
+			if (GetFromErrFrameTransport(&mb, hdft))
 			{
-				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream ,Aft->DestAddress, Aft->SourceAddress , ftThereIsNoSuchTask, Aft->SourceDeviceID);
-			}
-			else
-			{
-				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-				mb.IDMessage = IM_FRAME_RECEIVE;
-				mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
-				mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
-				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
-				mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
-				
-				bool res = SendMessageToTask(DestTaskDefReceive, &mb);
-				if (res)
-				{
-					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseOK, Aft->SourceDeviceID);
-					//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, 0,Aft->FromChannelStream, ftResponseOK, Aft->DeviceID);
-				}
-				else
-				{
-					TFrameType ft;
-					switch (mb.Data.FrameReceiveData.FrameReceiveResult)
-					{
-					case frrOK: ft = ftResponseOK; break;
-					case frrError: ft = ftResponseError; break;
-					case frrBufferIsFull: ft = ftBufferIsFull; break;
-					case frrOKWaitNext: ft = ftOKWaitForNext; break;
-					case frrUnrecognizedType: ft = ftUnrecognizedType; break;
-					default: ft = ftResponseError;	
-					}
-					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ft, Aft->SourceDeviceID);
-					//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream,0, Aft->FromChannelStream, ft, Aft->DeviceID);
-				}
+				hdft->TickCreate = SysTickCount;
+				return mb.Data.StreamData.LengthResult;
 			}
 		}
-		else
-		{
-			if (GetUniqueID().ID.ID64 == Aft->SourceDeviceID.ID.ID64)
-			{
-				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-				mb.IDMessage = IM_FRAME_RESPONSE;
-				mb.Data.FrameResponseData.FrameID = Aft->FrameID;
-				mb.Data.FrameResponseData.FrameType = Aft->FrameType;
-				SendMessageToAllTask(&mb, doFORWARD);
-			}
-		}
-	}
-	else
-	{
-		board.Log("Frame receive CRC error..", true, true, tlError);
-		if (Aft->FrameType == ftData)
-		{
-			board.Log("Send rensponse CRC Eroor...", true, true, tlError);
-			SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseCRCError, Aft->SourceDeviceID);
-			//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, 0, Aft->FromChannelStream, ftResponseCRCError, Aft->DeviceID);
-		}
-		else
-		{
-			board.Log("In response frame is CRC error...", true, true, tlError);
-		}
-	}
-}
 
-void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
-{
-	if (Aft->FrameType == ftData)
-	{
-		TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
-		if (TaskDefReceive == NULL)
-		{
-			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-			mb.IDMessage = IM_FRAME_RESPONSE;
-			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
-			mb.Data.FrameResponseData.FrameType = ftThereIsNoSuchTask;
-			SendMessageToAllTask(&mb, doFORWARD);
-			Log("There is no indicated task in the system to send a frame.", true, true,tlError);
-		}
-		else
-		{
-			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-			mb.IDMessage = IM_FRAME_RECEIVE;
-			mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
-			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
-			mb.Data.FrameReceiveData.TaskDefStream = NULL;
-			mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
-			
-
-			bool res = SendMessageToTask(TaskDefReceive, &mb);
-
-			if (res)
-			{
-				SendResponseFrameOnProt(Aft->FrameID, NULL,0,0, ftResponseOK, Aft->SourceDeviceID);
-			}
-			else
-			{
-				TFrameType ft;
-				switch (mb.Data.FrameReceiveData.FrameReceiveResult)
-				{
-				case frrOK: ft = ftResponseOK; break;
-				case frrError: ft = ftResponseError; break;
-				case frrBufferIsFull: ft = ftBufferIsFull; break;
-				case frrOKWaitNext: ft = ftOKWaitForNext; break;
-				case frrUnrecognizedType: ft = ftUnrecognizedType; break;
-				default: ft = ftResponseError;	
-				}
-				SendResponseFrameOnProt(Aft->FrameID, NULL,0,0, ft, Aft->SourceDeviceID);
-			}
-		}
-	}
-	else
-	{
-		if (GetUniqueID().ID.ID64 == Aft->SourceDeviceID.ID.ID64)
-		{
-			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-			mb.IDMessage = IM_FRAME_RESPONSE;
-			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
-			mb.Data.FrameResponseData.FrameType = Aft->FrameType;
-			SendMessageToAllTask(&mb, doFORWARD);
-		}
+		hdft = hdft->Next;
 	}
 	
+	if (DoMessage(&mb, true, NULL, AStreamtaskdef))
+	{
+		hdft = AddToTask_HandleDataFrameTransport(AStreamtaskdef, mb.Data.StreamData.FromAddress);
+		if (hdft != NULL) 
+		{
+			HandleDataFrameTransport(&mb, hdft, AStreamtaskdef);
+		}
+		return mb.Data.StreamData.LengthResult;
+	}
+	
+	CheckOld_HandleDataFrameTransport(AStreamtaskdef->Task);
+	
+	return 0;
 }
-
-void TXB_board::handle(void)
+// ------------------------------------------------------------
+// Wys³anie bloku pamiêci wskazanym streamem pod wskazany adres
+// -> Adata          - wskaŸnik na blok pamiêci do wys³ania
+// -> Alength        - wielkoœæ w bajtach bloku pamiêci do wys³ania
+// -> AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+// -> AToAddress     - Adres pod który zostanie wys³any wskazany blok pamiêci
+// <- Iloœæ bajtów ile zdo³ano wys³aæ wskazanym streamem
+uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress)
 {
-	DEF_WAITMS_VAR(LOOPW);
-	BEGIN_WAITMS(LOOPW, 1000)
+	if (Adata == NULL) return 0;
+	if (AStreamtaskdef == NULL) return 0;
+	if (Alength == 0) 
 	{
-#ifdef  BOARD_LED_LIFE_PIN
-		digitalToggle(BOARD_LED_LIFE_PIN);
-#endif
-#ifdef ARDUINO_ARCH_STM32F1
-		DateTimeUnix++;
-#endif
-#ifdef ESP32
-		DateTimeUnix++;
-#endif
-#ifdef XB_GUI
-		if (winHandle0 != NULL) winHandle0->RepaintDataCounter++;
-#endif
-		CheckOld_HandleDataFrameTransport();
+		Alength = StringLength((const char *)Adata, 0);
 	}
-	END_WAITMS(LOOPW);
+	if (Alength == 0) 	return 0;
 
-#ifdef BOARD_LED_TX_PIN
-	if (Tick_TX_BLINK != 0)
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saPut;
+	mb.Data.StreamData.Data = Adata;
+	mb.Data.StreamData.Length = Alength;
+	mb.Data.StreamData.LengthResult = 0;
+	mb.Data.StreamData.ToAddress = AToAddress;
+	
+	if (DoMessage(&mb, true, NULL, AStreamtaskdef))
 	{
-		if (SysTickCount - Tick_TX_BLINK > TickEnableBlink)
-		{
-			Tick_TX_BLINK = 0;
-#if defined(BOARD_LED_TX_STATUS_OFF)
-			digitalWrite(BOARD_LED_TX_PIN, BOARD_LED_TX_STATUS_OFF);
-#else
-			digitalWrite(BOARD_LED_TX_PIN, LOW);
-#endif
-		}
+		return mb.Data.StreamData.LengthResult;
 	}
-#endif
-
-#ifdef BOARD_LED_RX_PIN
-	if (Tick_RX_BLINK != 0)
-	{
-		if (SysTickCount - Tick_RX_BLINK > TickEnableBlink)
-		{
-			Tick_RX_BLINK = 0;
-#if defined(BOARD_LED_RX_STATUS_OFF)
-			digitalWrite(BOARD_LED_RX_PIN, BOARD_LED_RX_STATUS_OFF);
-#else
-			digitalWrite(BOARD_LED_RX_PIN, LOW);
-#endif
-		}
-	}
-#endif
-
-	{
-		if (CurrentTask != NULL)
-		{
-			uint8_t bufkey[1];
-
-			if (GetStream(bufkey, 1, CurrentTask->StreamTaskDef) > 0)
-			{
-				HandleKeyPress((char)bufkey[0]);
-			}
-			else if (CurrentTask->SecStreamTaskDef != NULL)
-			{
-				if (GetStream(bufkey, 1, CurrentTask->SecStreamTaskDef) > 0)
-				{
-					HandleKeyPress((char)bufkey[0]);
-				}
-			}
-		}
-	}
+	return 0;
 }
-
-bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport,TTaskDef *ATaskDefStream)
+// ---------------------------------------------------------------------------------------------------------
+// Funkcja wywo³ywana w GetStream, s³u¿y do wyci¹gania ze streamu ramki która zaczyna siê od 4 bajtowego ACK
+// -> mb			            - WskaŸnik struktury messaga GetStream 
+// -> AHandleDataFrameTransport - WskaŸnik na strukture opisuj¹c¹ bufor odczytanej ramki, s³u¿y do skompletowania fragmentów streamu z jednego Ÿród³a
+// -> ATaskDefStream			- WskaŸnik definicji zadania streamu z którego nadchodz¹ dane
+// <- true                      - Wykonano poprawnie
+bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream)
 {
 	int32_t indx = 0;
 	uint32_t indxstartinterpret = 0xffff;
-	uint8_t v =0;
+	uint8_t v = 0;
 	bool isininterpret = false;
 	
 	while (indx < mb->Data.StreamData.LengthResult)
@@ -2357,7 +2275,7 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 		v = ((uint8_t *)mb->Data.StreamData.Data)[indx];
 
 		// Sprawdzenie czy nadchodz¹cy bajt jest pierwszym od ACK
-		if ((AHandleDataFrameTransport->indx_interpret == 0) && (v == FRAME_ACK_A))
+		if((AHandleDataFrameTransport->indx_interpret == 0) && (v == FRAME_ACK_A))
 		{
 			// Uruchominie interpretowania 
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
@@ -2367,23 +2285,23 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 			indxstartinterpret = indx;
 		}
 		// Sprawdzenie czy nadchodz¹cy bajt jest drugim od ACK
-		else if ((AHandleDataFrameTransport->indx_interpret == 1) && (v == FRAME_ACK_B))
+		else if((AHandleDataFrameTransport->indx_interpret == 1) && (v == FRAME_ACK_B))
 		{
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 			if (!isininterpret)
-				if (indxstartinterpret==0xffff) 
+				if (indxstartinterpret == 0xffff) 
 					indxstartinterpret = indx;
 		}
 		// Sprawdzenie czy nadchodz¹cy bajt jest trzecim od ACK
-		else if ((AHandleDataFrameTransport->indx_interpret == 2) && (v == FRAME_ACK_C))
+		else if((AHandleDataFrameTransport->indx_interpret == 2) && (v == FRAME_ACK_C))
 		{
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 			if (!isininterpret)					
 				if (indxstartinterpret == 0xffff)
-				indxstartinterpret = indx; 
+					indxstartinterpret = indx; 
 		}
 		// Sprawdzenie czy nadchodz¹cy bajt jest czwartym od ACK
-		else if ((AHandleDataFrameTransport->indx_interpret == 3) && (v == FRAME_ACK_D))
+		else if((AHandleDataFrameTransport->indx_interpret == 3) && (v == FRAME_ACK_D))
 		{
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 			if (!isininterpret)	
@@ -2391,15 +2309,15 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 					indxstartinterpret = indx; 
 		}
 		// Sprawdzenie czy nadchodz¹cy bajt to 4 pozycja i czy ma wartoœæ oczekiwan¹ SIZE
-		else if ((AHandleDataFrameTransport->indx_interpret == 4) && (v <= sizeof(TFrameTransport)) && (v >= offsetof(TFrameTransport, LengthFrame)))
+		else if((AHandleDataFrameTransport->indx_interpret == 4) && (v <= sizeof(TFrameTransport)) && (v >= offsetof(TFrameTransport, LengthFrame)))
 		{
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 			if (!isininterpret)				
 				if (indxstartinterpret == 0xffff)
-				indxstartinterpret = indx;
+					indxstartinterpret = indx;
 		}
 		// Sprawdzenie czy kolejny
-		else if (AHandleDataFrameTransport->indx_interpret > 4)
+		else if(AHandleDataFrameTransport->indx_interpret > 4)
 		{
 			// zapisywanie kolejnego bajtu do bufora
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
@@ -2445,7 +2363,7 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 		else
 		{
 			// Sprawdzenie czy by³o teraz rozpoczête interpretowanie
-			if (isininterpret)
+			if(isininterpret)
 			{
 				// jeœli by³o to leæ dalej z interpretacj¹
 				AHandleDataFrameTransport->indx_interpret = 0;
@@ -2456,20 +2374,20 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 			else
 			{
 				// jeœli teraz nie by³o rozpoczêcia to wstawiæ co zbuforowane do streamu
-				if (AHandleDataFrameTransport->isdataframe_interpret)
+				if(AHandleDataFrameTransport->isdataframe_interpret)
 				{
 					//AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 			
-					uint32_t c = AHandleDataFrameTransport->indx_interpret-indx;
+					uint32_t c = AHandleDataFrameTransport->indx_interpret - indx;
 
 					// sprawdzenie czy zmieœci siê do tego bufora streamu
-					if ((mb->Data.StreamData.Length - mb->Data.StreamData.LengthResult) >= c)
+					if((mb->Data.StreamData.Length - mb->Data.StreamData.LengthResult) >= c)
 					{
 						int32_t indx_s = mb->Data.StreamData.LengthResult - 1;
 						int32_t indx_d = mb->Data.StreamData.LengthResult - 1 + c;
 
 						// Mo¿na przesun¹æ to co zosta³o zapamiêtane
-						while (indx_s >= 0)
+						while(indx_s >= 0)
 						{
 							((uint8_t *)mb->Data.StreamData.Data)[indx_d] = ((uint8_t *)mb->Data.StreamData.Data)[indx_s];
 							indx_d--;
@@ -2480,7 +2398,7 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 						
 						indx_s = 0;
 
-						while (indx_s<AHandleDataFrameTransport->indx_interpret)
+						while (indx_s < AHandleDataFrameTransport->indx_interpret)
 						{
 							((uint8_t *)mb->Data.StreamData.Data)[indx_s] = AHandleDataFrameTransport->Data.buf[indx_s];
 							indx_s++;
@@ -2491,8 +2409,8 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 						Log("Data has been lost in the download stream [", true, true, tlError);
 						{
 							String tmps = "";
-							GetTaskName(ATaskDefStream, tmps);
-							Log(tmps.c_str(),false,false, tlError);
+							SendMessage_GetTaskNameString(ATaskDefStream, tmps);
+							Log(tmps.c_str(), false, false, tlError);
 						}
 						Log("]. The read buffer is too little.", false, false, tlError);
 					}
@@ -2508,13 +2426,18 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 		indx++;
 	}
 	// Sprawdzenie czy odnotowano jakieœ interpretowanie
-	if (indxstartinterpret != 0xffff)
+	if(indxstartinterpret != 0xffff)
 	{
 		mb->Data.StreamData.LengthResult = indxstartinterpret;
 	}
 	return true;
 }
-
+// --------------------------------------------------------------------------------------
+// Jeœli ramka zosta³a b³êdnie zinterpretowana to nastêpuje oddanie z powrotem do streamu 
+// -> mb			            - WskaŸnik struktury messaga GetStream 
+// -> AHandleDataFrameTransport - WskaŸnik na strukture opisuj¹c¹ bufor odczytanej ramki, s³u¿y do skompletowania fragmentów streamu z jednego Ÿród³a
+// <- true - Nast¹pi³o oddanie danych do bufora wskazanego w streamie
+//    false - Musi nast¹piæ kolejne wywo³anie messaga streamu w celu odczytu danych
 bool TXB_board::GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport)
 {	
 	if (AHandleDataFrameTransport != NULL)
@@ -2531,7 +2454,7 @@ bool TXB_board::GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 
 				if (AHandleDataFrameTransport->indxdatatoread >= AHandleDataFrameTransport->max_indxdatatoread)
 				{
-					xb_memoryfill(AHandleDataFrameTransport, sizeof(THandleDataFrameTransport),0);
+					xb_memoryfill(AHandleDataFrameTransport, sizeof(THandleDataFrameTransport), 0);
 					break;
 				}
 			}
@@ -2541,9 +2464,12 @@ bool TXB_board::GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 	}
 	return false;
 }
-
-
-THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef,uint32_t Afromchannel)
+// ------------------------------------------------------------------------------------------------------------------------------------------
+// Dodanie struktury opisuj¹cej bufor odczytywanej ramki, struktura jest przypisana do zadania osb³usguj¹cego stream z którego nadchodz¹ dane
+// -> AStreamtaskdef - WskaŸnik na definicje zadania streamu z którego bêd¹ interpretowane ramki
+// -> Afromchannel   - Adres z którego nadchodz¹ dane do intepretowania ramki
+// <- WskaŸnik na strukture opisuj¹c¹ bufor odczytanej ramki
+THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromchannel)
 {
 	if (AStreamtaskdef == NULL) return NULL;
 	if (AStreamtaskdef->Task == NULL) return NULL;
@@ -2566,7 +2492,10 @@ THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDe
 	
 	return hdft;
 }
-
+// -----------------------------------------------------------------------------------------------------------------------------
+// Sprawdzenie oraz usuniêcie bufora odczytywanej ramki jeœli na 10 sekund zatrzyma³a siê transmisja lub jeœli nie by³ potrzebny
+// Atask -> WskaŸnik zadania które ma zostaæ sprawdzone
+//          ! Jeœli podane zostanie NULL to sprawdzenie bêdzie siê odnoœciæ do wszystkich zadañ
 void TXB_board::CheckOld_HandleDataFrameTransport(TTask *Atask)
 {
 
@@ -2582,7 +2511,7 @@ void TXB_board::CheckOld_HandleDataFrameTransport(TTask *Atask)
 		{
 			if (SysTickCount - hdft->TickCreate > TIMEOUT_HANDLEDATAFRAMETRANSPORT)
 			{
-				DELETE_FROM_LIST_STR(t->HandleDataFrameTransportList,hdft);
+				DELETE_FROM_LIST_STR(t->HandleDataFrameTransportList, hdft);
 				board.free(hdft);
 				hdft = t->HandleDataFrameTransportList;
 			}
@@ -2598,78 +2527,308 @@ void TXB_board::CheckOld_HandleDataFrameTransport(TTask *Atask)
 		else break;
 	}
 }
-
-uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t AChannel)
+// ---------------------------------------------------------------
+// Wys³anie ramki danych okreœlonym streamem do wskazanego zadania
+// -> ADestTaskName     - Nazwa zadania do którego ramka danych ma trafiæ
+// -> AONStreamTaskName - Nazwa zadania streamu którym bêdzie wysy³ana ramka
+//                        ! Jeœli podamy nazwê streamu "local", to ramka trafi lokalnie do zadania wskazanego
+// -> ADataFrame        - WskaŸnik na zawartoœæ ramki do wys³ania
+// -> Alength			- Wielkoœæ w bajtach ramki do wys³ania
+// -> AframeID          - WskaŸnik pod którym zostanie zapisany unikalny numer nadawczy ramki
+//                        ! Wartoœæ jest potrzebna do idendyfikacji potwiedzenia odebrania ramki
+// -> ASourceAddress    - Adres z którego nastêpuje wys³anie ramki potrzebny do odpowiedzi
+// -> ADestAddress		- Adres pod który zostanie wys³ana ramka
+// <- true - Pomyœlnie wys³ano ramkê
+//    false - Wyst¹pi³ problem z wys³aniem ramki
+bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress, uint32_t ADestAddress)
 {
-	if (Amaxlength == 0) return 0;
-	if (Adata == NULL) return 0;
-	if (AStreamtaskdef == NULL) return 0;
-	if (AStreamtaskdef->Task == NULL) return 0;
-	
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_STREAM;
-	mb.Data.StreamData.StreamAction = saGet;
-	mb.Data.StreamData.Data = Adata;
-	mb.Data.StreamData.Length = Amaxlength;
-	mb.Data.StreamData.Channel = AChannel;
-	
-	
-	THandleDataFrameTransport *hdft = AStreamtaskdef->Task->HandleDataFrameTransportList;
-	
-	while (hdft != NULL)
+	TTaskDef *TaskDefStream = NULL;
+	if (AONStreamTaskName != "local")
 	{
-		if (hdft->isdatatoread)
+		TaskDefStream = GetTaskDefByName(AONStreamTaskName);
+		if (TaskDefStream == NULL) 
 		{
-			if (GetFromErrFrameTransport(&mb, hdft))
+			board.Log("Error: Stream task name not found...", true, true, tlError);
+			return false;
+		}
+	}
+	return SendFrameToDeviceTask(ADestTaskName, TaskDefStream, ADataFrame, Alength,AframeID,ASourceAddress,ADestAddress);
+}
+// ---------------------------------------------------------------
+// Wys³anie ramki danych okreœlonym streamem do wskazanego zadania
+// -> ADestTaskName     - Nazwa zadania do którego ramka danych ma trafiæ
+// -> ATaskDefStream    - WskaŸnik definicji zadania streamu którym bêdzie wysy³ana ramka
+//                        ! Jeœli podamy NULL, to ramka trafi lokalnie do zadania wskazanego
+// -> ADataFrame        - WskaŸnik na zawartoœæ ramki do wys³ania
+// -> Alength			- Wielkoœæ w bajtach ramki do wys³ania
+// -> AframeID          - WskaŸnik pod którym zostanie zapisany unikalny numer nadawczy ramki
+//                        ! Wartoœæ jest potrzebna do idendyfikacji potwiedzenia odebrania ramki
+// -> ASourceAddress    - Adres z którego nastêpuje wys³anie ramki potrzebny do odpowiedzi
+// -> ADestAddress		- Adres pod który zostanie wys³ana ramka
+// <- true - Pomyœlnie wys³ano ramkê
+//    false - Wyst¹pi³ problem z wys³aniem ramki
+bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress,uint32_t ADestAddress)
+{	
+	uint32_t reslen = 0;
+	static THDFT *hdft = NULL;
+	if (hdft != NULL)
+	{
+		board.free(hdft);
+		hdft = NULL;
+	}
+	hdft = (THDFT *)board._malloc(sizeof(THDFT));
+	
+	if (hdft == NULL)
+	{
+		board.Log("Error memory in send frame...", true, true, tlError);
+		return false;
+	}
+
+	if (Alength > sizeof(hdft->FT.Frame))
+	{
+		board.Log("Error: send frame too long...", true, true,tlError);
+		
+		return false;
+	}
+
+	if (ADestTaskName.length() > 15)
+	{
+		board.Log("Error: Destination task name too long (15 char max)...", true, true,tlError);
+		
+		return false;
+	}
+	
+	if (ATaskDefStream != NULL)
+	{
+		hdft->ACK.a = FRAME_ACK_A;
+		hdft->ACK.b = FRAME_ACK_B;
+		hdft->ACK.c = FRAME_ACK_C;
+		hdft->ACK.d = FRAME_ACK_D;
+	}
+	
+	*AframeID = SysTickCount;
+	hdft->FT.SourceAddress = ASourceAddress;
+	hdft->FT.SourceDeviceID = board.DeviceID;
+	hdft->FT.DestAddress = ADestAddress;
+	hdft->FT.DestDeviceID.ID.ID64 = 0;
+	hdft->FT.FrameID = *AframeID;
+	hdft->FT.FrameType = ftData;
+	
+	xb_memorycopy(ADataFrame, &hdft->FT.Frame, Alength);
+	hdft->FT.LengthFrame = Alength;
+
+	xb_memorycopy((void *)(ADestTaskName.c_str()), &hdft->FT.DestTaskName, ADestTaskName.length());
+	
+	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
+	if (ATaskDefStream != NULL)
+	{
+		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
+		reslen=PutStream(hdft, ltsize, ATaskDefStream,ADestAddress);
+		if (reslen != ltsize)
+		{
+			board.Log(String("Stream error - Send: " + String(ltsize) + " Sended:" + String(reslen) + " ...").c_str(), true, true, tlWarn);
+			return false;
+		}
+	}
+	else
+	{
+		HandleFrameLocal(&hdft->FT);
+	}
+	return true;
+}
+// ------------------------------
+// Wys³anie ramki potwierdzaj¹cej
+// -> AFrameID - Numer ID ramki potwierdzanej
+// -> ATaskDefStream - WskaŸnik zadania streamu którym zostanie wys³ana ramka odpowiadaj¹ca
+//                     ! Jeœli NULL to ramka potwierdzaj¹ca zostanie rozg³oszona lokalnie
+// -> ASourceAddress - Adres z podktórego wysy³ane jest potwierdzaj¹ca ramka
+// -> ADestAddress   - Adres pod który potwierdzaj¹ca ramka ma trafiæ
+// -> AframeType	 - Okreœlenie typu ramki, w przypadku wysy³ania potwierdzenie jest to rezultat
+// -> ADestDeviceID  - ID urz¹dzenia do którego ramka potwierdzaj¹ca ma trafiæ. Potrzebny w celu wstêpnej segragacji przez framework
+void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t ASourceAddress, uint32_t ADestAddress, TFrameType AframeType, TUniqueID ADestDeviceID)
+{
+	static THDFT *hdft = NULL;
+	if (hdft != NULL)
+	{
+		board.free(hdft);
+		hdft = NULL;
+	}
+	hdft=(THDFT *)board._malloc(sizeof(THDFT));
+	if (hdft == NULL)
+	{
+		board.Log("Memory error in send response frame...", true, true, tlError);
+		return;
+	}
+
+	if (ATaskDefStream != NULL)
+	{
+		hdft->ACK.a = FRAME_ACK_A;
+		hdft->ACK.b = FRAME_ACK_B;
+		hdft->ACK.c = FRAME_ACK_C;
+		hdft->ACK.d = FRAME_ACK_D;
+	}
+
+	hdft->FT.SourceAddress = ASourceAddress;
+	hdft->FT.SourceDeviceID = board.DeviceID;
+	hdft->FT.DestAddress = ADestAddress;
+	hdft->FT.DestDeviceID = ADestDeviceID;
+	hdft->FT.LengthFrame = 0;
+	hdft->FT.FrameID = AFrameID;
+	hdft->FT.FrameType = AframeType;
+	
+	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
+	if (ATaskDefStream != NULL)
+	{
+		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
+		PutStream(hdft, ltsize, ATaskDefStream, ADestAddress);
+	}
+	else
+	{
+		HandleFrameLocal(&hdft->FT);
+	}
+	
+	return;
+}
+// -----------------------------------------------------------------------------------------------------------------------
+// Sprawdzenie sumy kontrolnej wskazanej ramki, wys³anie messaga do wskazanego zadania w ramce z wskaŸnikiem na dane ramki
+// -> Aft - WskaŸnik ramki transportowej
+// -> wskaŸnik definicji zadania streamu którym ramka dotar³a do urz¹dzenia
+void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
+{
+	uint8_t crc = Aft->crc8;
+	Aft->crc8 = 0;
+
+	if (crc == crc8((uint8_t *)Aft, Aft->size))
+	{
+		if (Aft->FrameType == ftData)
+		{
+			TTaskDef *DestTaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
+			if (DestTaskDefReceive == NULL)
 			{
-				hdft->TickCreate = SysTickCount;
-				return mb.Data.StreamData.LengthResult;
+				SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream ,Aft->DestAddress, Aft->SourceAddress , ftThereIsNoSuchTask, Aft->SourceDeviceID);
+			}
+			else
+			{
+				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+				mb.IDMessage = IM_FRAME_RECEIVE;
+				mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
+				mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
+				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
+				mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
+				
+				bool res = DoMessage(&mb,true,NULL,DestTaskDefReceive);
+				if (res)
+				{
+					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseOK, Aft->SourceDeviceID);
+				}
+				else
+				{
+					TFrameType ft;
+					switch (mb.Data.FrameReceiveData.FrameReceiveResult)
+					{
+					case frrOK: ft = ftResponseOK; break;
+					case frrError: ft = ftResponseError; break;
+					case frrBufferIsFull: ft = ftBufferIsFull; break;
+					case frrOKWaitNext: ft = ftOKWaitForNext; break;
+					case frrUnrecognizedType: ft = ftUnrecognizedType; break;
+					default: ft = ftResponseError;	
+					}
+					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ft, Aft->SourceDeviceID);
+					//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream,0, Aft->FromChannelStream, ft, Aft->DeviceID);
+				}
 			}
 		}
-
-		hdft = hdft->Next;
-	}
-	
-	if (SendMessageToTask(AStreamtaskdef, &mb, true))
-	{
-		hdft = AddToTask_HandleDataFrameTransport(AStreamtaskdef, mb.Data.StreamData.FromChannel);
-		if (hdft != NULL) 
+		else
 		{
-			HandleDataFrameTransport(&mb, hdft, AStreamtaskdef);
+			if (DeviceID.ID.ID64 == Aft->SourceDeviceID.ID.ID64)
+			{
+				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+				mb.IDMessage = IM_FRAME_RESPONSE;
+				mb.Data.FrameResponseData.FrameID = Aft->FrameID;
+				mb.Data.FrameResponseData.FrameType = Aft->FrameType;
+				DoMessageOnAllTask(&mb, true, doFORWARD);
+			}
 		}
-		return mb.Data.StreamData.LengthResult;
 	}
-	
-	CheckOld_HandleDataFrameTransport(AStreamtaskdef->Task);
-	
-	return 0;
+	else
+	{
+		board.Log("Frame receive CRC error..", true, true, tlError);
+		if (Aft->FrameType == ftData)
+		{
+			board.Log("Send rensponse CRC Eroor...", true, true, tlError);
+			SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseCRCError, Aft->SourceDeviceID);
+		}
+		else
+		{
+			board.Log("In response frame is CRC error...", true, true, tlError);
+		}
+	}
 }
-
-uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AChannel)
+// -----------------------------------------------------------------------------------
+// Wys³anie messaga do wskazanego zadania w ramce z wskaŸnikiem na dane ramki lokalnie
+// -> Aft - WskaŸnik ramki transportowej
+void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 {
-	if (Adata == NULL) return 0;
-	if (AStreamtaskdef == NULL) return 0;
-	if (Alength == 0) 
+	if (Aft->FrameType == ftData)
 	{
-		Alength = StringLength((const char *)Adata, 0);
-	}
-	if (Alength == 0) 	return 0;
+		TTaskDef *TaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
+		if (TaskDefReceive == NULL)
+		{
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+			mb.IDMessage = IM_FRAME_RESPONSE;
+			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
+			mb.Data.FrameResponseData.FrameType = ftThereIsNoSuchTask;
+			DoMessageOnAllTask(&mb, true, doFORWARD);
+			Log("There is no indicated task in the system to send a frame.", true, true,tlError);
+		}
+		else
+		{
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+			mb.IDMessage = IM_FRAME_RECEIVE;
+			mb.Data.FrameReceiveData.DataFrame = &Aft->Frame;
+			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
+			mb.Data.FrameReceiveData.TaskDefStream = NULL;
+			mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
+			
 
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_STREAM;
-	mb.Data.StreamData.StreamAction = saPut;
-	mb.Data.StreamData.Data = Adata;
-	mb.Data.StreamData.Length = Alength;
-	mb.Data.StreamData.LengthResult = 0;
-	mb.Data.StreamData.Channel = AChannel;
+			bool res = DoMessage(&mb,true,NULL,TaskDefReceive);
+			if (res)
+			{
+				SendResponseFrameOnProt(Aft->FrameID, NULL,0,0, ftResponseOK, Aft->SourceDeviceID);
+			}
+			else
+			{
+				TFrameType ft;
+				switch (mb.Data.FrameReceiveData.FrameReceiveResult)
+				{
+				case frrOK: ft = ftResponseOK; break;
+				case frrError: ft = ftResponseError; break;
+				case frrBufferIsFull: ft = ftBufferIsFull; break;
+				case frrOKWaitNext: ft = ftOKWaitForNext; break;
+				case frrUnrecognizedType: ft = ftUnrecognizedType; break;
+				default: ft = ftResponseError;	
+				}
+				SendResponseFrameOnProt(Aft->FrameID, NULL,0,0, ft, Aft->SourceDeviceID);
+			}
+		}
+	}
+	else
+	{
+		if (DeviceID.ID.ID64 == Aft->SourceDeviceID.ID.ID64)
+		{
+			TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+			mb.IDMessage = IM_FRAME_RESPONSE;
+			mb.Data.FrameResponseData.FrameID = Aft->FrameID;
+			mb.Data.FrameResponseData.FrameType = Aft->FrameType;
+			DoMessageOnAllTask(&mb, true, doFORWARD);
+		}
+	}
 	
-	if (SendMessageToTask(AStreamtaskdef, &mb, true))
-	{
-		return mb.Data.StreamData.LengthResult;
-	}
-	return 0;
 }
-
+#pragma endregion
+#pragma region FUNKCJE_KOMUNIKATOW
 int TXB_board::print(String Atext)
 {
 	if (CurrentTask != NULL)
@@ -2770,7 +2929,7 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 		if (NameTaskDef != NULL)
 		{
 			String taskname = "---";
-			GetTaskName(NameTaskDef, taskname);
+			SendMessage_GetTaskNameString(NameTaskDef, taskname);
 		
 			if (taskname.length() > 0)
 			{
@@ -2852,138 +3011,5 @@ void TXB_board::PrintTimeFromRun(void)
 	Astream.print(FSS("] "));
 	Log(&Astream);
 }
-
-
-typedef enum
-{
-	sfNormalChar,sfGetVarName,sfCancelGetVarName
-} TStepFilter;
-void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstring)
-{
-	uint32_t lensource = StringLength(Asourcestring,0);
-	uint32_t indx_s = 0;
-	Adestinationstring = "";
-	Adestinationstring.reserve(lensource * 2);
-	char ch = 0;
-	String varname = "";
-	uint32_t indx_startvarname;
-	varname.reserve(256);
-	String varvalue = "";
-	varvalue.reserve(256);
-	TStepFilter sf = sfNormalChar;
-	bool result;
-	
-	while (indx_s < lensource)
-	{
-		ch = Asourcestring[indx_s];
-		switch (sf)
-		{
-		case sfNormalChar:
-			{
-				if (ch == '%')
-				{
-					sf = sfGetVarName;
-					indx_startvarname = indx_s;
-					varname = "";
-					indx_s++;
-				}
-				else
-				{
-					Adestinationstring += ch;
-
-					indx_s++;
-				}
-				break;
-			}
-		case sfGetVarName:
-			{
-				if (ch == '%')	
-				{ // Koniec nazwy zmiennej
-					if(varname.length() > 0)					
-					{
-						TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-						mb.IDMessage = IM_GET_VAR_VALUE;
-						mb.fromTask = NULL;
-						mb.Data.VarValueData.VarName = &varname;
-						mb.Data.VarValueData.VarValue = &varvalue;
-						result = SendMessageToAllTask(&mb);
-						if (result)
-						{	// Wstaw zawartoœæ
-							Adestinationstring += varvalue;
-							varname = "";
-							varvalue = "";
-							indx_s++;
-							sf = sfNormalChar;
-						}
-						else
-						{  // wstaw nazwe zmiennej bo niema w systemie takiej
-
-							Adestinationstring += '%';
-							Adestinationstring += varname;
-							varname = "";
-							sf = sfGetVarName;
-							indx_s++;
-						}
-					}
-					else
-					{
-						Adestinationstring += ch;
-						sf = sfNormalChar;
-					}
-				}
-				else
-				{ // Kolejny znak nazwy zmienne;
-					varname += ch;
-					indx_s++;
-					
-					if (indx_s >= lensource)
-					{ // Anuluj nazwe zmiennej bo koniec Ÿród³a
-						indx_s--;
-						sf = sfCancelGetVarName;		
-					}
-				}
-				break;
-			}
-		case sfCancelGetVarName:
-			{
-				Adestinationstring += '%';
-				Adestinationstring += varname;
-				varname = "";
-				sf = sfNormalChar;
-				indx_s++;
-				break;
-			}
-			
-		}
-	
-	}
-}
-/*void TXB_board::PrintDiag(void)
-{
-#ifdef ESP8266
-	String t;
-	cbufSerial tmp(1024);
-	
-	tmp.print(FSS("\n\rPrint Diag:\n\r"));
-	tmp.print(FSS("\n\r-----------"));
-	
-	t = ""; GetTimeIndx(t, DateTimeUnix - DateTimeStart);
-	tmp.printf(FSS("\n\rTime running:   (%s)"), t.c_str());
-
-	tmp.printf(FSS("\n\rIP:                %s"), WiFi.localIP().toString().c_str());
-	tmp.printf(FSS("\n\rRSSI:              %d"), WiFi.RSSI());
-	tmp.printf(FSS("\n\rFree heap:         %d"), FreeHeapInLoop);
-	tmp.printf(FSS("\n\rMinimum free heap: %d"), MinimumFreeHeapInLoop);
-	tmp.printf(FSS("\n\r\n\rReset Info:        \n\r%s"), ESP.getResetInfo().c_str());
-
-
-	tmp.print(FSS("\n\r--------\n\rESPdiag:\n\r\n\r"));
-	WiFi.printDiag(tmp);
-	tmp.print(FSS("\n\r"));
-
-	Log(&tmp);
-#endif
-}
-*/
-
+#pragma endregion
 

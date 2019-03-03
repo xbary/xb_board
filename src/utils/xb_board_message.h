@@ -114,6 +114,7 @@ typedef enum {
 	IM_FREEPTR,
 	IM_RX_BLINK,
 	IM_TX_BLINK,
+	IM_LIVE_BLINK,
 	IM_WIFI_DISCONNECT,
 	IM_WIFI_CONNECT,
 	IM_INTERNET_DISCONNECT,
@@ -164,8 +165,8 @@ typedef struct {
 	void *Data;
 	uint32_t Length;
 	uint32_t LengthResult;
-	uint32_t FromChannel;
-	uint32_t Channel;
+	uint32_t FromAddress;
+	uint32_t ToAddress;
 
 } TStreamData;
 
