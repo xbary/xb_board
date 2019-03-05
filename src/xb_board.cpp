@@ -567,7 +567,14 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		{
 			BEGIN_MENUINIT(0);
 			{
-				DEF_MENUINIT(board.TaskCount, 0, 20,-1,0,true);
+				Ty y=0;
+				
+				if (winHandle0 != NULL)
+				{
+					y = winHandle0->Height - board.TaskCount - 2;
+					y += winHandle0->WindowRect.Top;
+				}
+				DEF_MENUINIT(board.TaskCount, 0, 20,-1,y,true);
 				res = true;
 			}
 			END_MENUINIT();
@@ -683,7 +690,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 				Am->Data.WindowData.ActionData.Create.X = -1;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
-				Am->Data.WindowData.ActionData.Create.Width = 46;
+				Am->Data.WindowData.ActionData.Create.Width = 40;
 				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 14;
 
 				res = true;
@@ -748,37 +755,28 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->SetTextColor(tfcWhite);
 					winHandle0->PutStr(0, 2, FSS("TIME FROM RUN:"));
 					winHandle0->PutStr(0, 3, FSS("FREE HEAP:"));
-					winHandle0->PutStr(18, 3, FSS("MIN HEAP:"));
-					winHandle0->PutStr(18, 4, FSS("MAX HEAP:"));
+					winHandle0->PutStr(winHandle0->Width - 18, 3, FSS("MIN HEAP:"));
+					winHandle0->PutStr(winHandle0->Width - 18, 4, FSS("MAX HEAP:"));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(String(board.MaximumFreeHeapInLoop).c_str());
+					winHandle0->PutStr(winHandle0->Width - 9,4,String(board.MaximumFreeHeapInLoop).c_str());
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
 					winHandle0->PutStr(0, 4, FSS("MEM USE:"));
 
 					winHandle0->PutStr(0, 5, FSS("DEVICE ID "));
-					
-					{
-						TUniqueID ID = board.DeviceID;
-						char strid[25];
-						xb_memoryfill(strid, 25, 0);
-						
-						uint8tohexstr(strid,(uint8_t *)&ID, 8,':');
-
-						winHandle0->PutStr(strid);
-					}
+					winHandle0->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
 					winHandle0->PutStr(0, 6, FSS("FREEpsram:"));
-					winHandle0->PutStr(18, 6, FSS("MINpsram:"));
-					winHandle0->PutStr(18, 7, FSS("MAXpsram:"));
+					winHandle0->PutStr(winHandle0->Width - 18, 6, FSS("MINpsram:"));
+					winHandle0->PutStr(winHandle0->Width - 18, 7, FSS("MAXpsram:"));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
 #ifdef ESP32					
-					winHandle0->PutStr(String(board.MaximumFreePSRAMInLoop).c_str());
+					winHandle0->PutStr(winHandle0->Width - 9,7,String(board.MaximumFreePSRAMInLoop).c_str());
 #else
 					//winHandle0->PutStr("---");
 #endif
@@ -792,7 +790,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 						int y;
 						String name;
 						y = 10;
-						winHandle0->PutStr(0, y, FSS("__________________________________"));
+						
+						winHandle0->PutStr(0, y, "_", winHandle0->Width, '_');
 						y++;
 						winHandle0->PutStr(0, y, FSS("TASK NAME"));
 						winHandle0->PutStr(15, y, FSS("STATUS"));
@@ -837,7 +836,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 					winHandle0->PutStr(10, 3, String(board.FreeHeapInLoop).c_str());
 					winHandle0->PutChar(' ');
-					winHandle0->PutStr(27, 3, String(board.MinimumFreeHeapInLoop).c_str());
+					winHandle0->PutStr(winHandle0->Width - 9, 3, String(board.MinimumFreeHeapInLoop).c_str());
 					winHandle0->PutChar(' ');
 
 
@@ -848,7 +847,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #ifdef ESP32
 					winHandle0->PutStr(10, 6, String(board.FreePSRAMInLoop).c_str());
 					winHandle0->PutChar(' ');
-					winHandle0->PutStr(27, 6, String(board.MinimumFreePSRAMInLoop).c_str());
+					winHandle0->PutStr(winHandle0->Width - 9, 6, String(board.MinimumFreePSRAMInLoop).c_str());
 					winHandle0->PutChar(' ');
 
 					winHandle0->PutStr(9, 7, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
@@ -1206,6 +1205,15 @@ void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstri
 	
 	}
 }
+String TXB_board::DeviceIDtoString(TUniqueID Adevid)
+{
+	char strid[25];
+	xb_memoryfill(strid, 25, 0);
+	uint8tohexstr(strid, (uint8_t *)&Adevid, 8, ':');
+
+	return String(strid);
+}
+
 #pragma endregion
 #pragma region FUNKCJE_GPIO
 // -----------------------------------------
@@ -1421,7 +1429,7 @@ void TXB_board::handle(void)
 #endif
 	//--------------------------------------
 	DEF_WAITMS_VAR(LOOPW2);
-	BEGIN_WAITMS(LOOPW2, 50)
+	BEGIN_WAITMS(LOOPW2, 25)
 	{
 		if (CurrentTask != NULL)
 		{
@@ -1465,8 +1473,6 @@ void TXB_board::handle(void)
 	}
 
 }
-
-
 // ------------------------------------
 // Dodanie do frameworka nowego zadania
 // -> Ataskdef - wskaŸnik definicji zadania
@@ -1930,7 +1936,6 @@ bool TXB_board::DoMessageByTaskName(String Ataskname,TMessageBoard *mb, bool Aru
 	}
 	return false;
 }
-
 // ----------------------------------------------------------------
 // Wys³anie messaga do zadania w celu uzyskania stringu statusowego
 // -> ATaskDef       - Definicja zadania od którego uzyskamy string status
@@ -2467,9 +2472,9 @@ bool TXB_board::GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 // ------------------------------------------------------------------------------------------------------------------------------------------
 // Dodanie struktury opisuj¹cej bufor odczytywanej ramki, struktura jest przypisana do zadania osb³usguj¹cego stream z którego nadchodz¹ dane
 // -> AStreamtaskdef - WskaŸnik na definicje zadania streamu z którego bêd¹ interpretowane ramki
-// -> Afromchannel   - Adres z którego nadchodz¹ dane do intepretowania ramki
+// -> Afromaddress   - Adres z którego nadchodz¹ dane do intepretowania ramki
 // <- WskaŸnik na strukture opisuj¹c¹ bufor odczytanej ramki
-THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromchannel)
+THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress)
 {
 	if (AStreamtaskdef == NULL) return NULL;
 	if (AStreamtaskdef->Task == NULL) return NULL;
@@ -2477,7 +2482,7 @@ THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDe
 	THandleDataFrameTransport *hdft = AStreamtaskdef->Task->HandleDataFrameTransportList;
 	while (hdft != NULL)
 	{
-		if (Afromchannel == hdft->FromChannel)
+		if (Afromaddress == hdft->FromAddress)
 		{
 			hdft->TickCreate = SysTickCount;
 			return hdft;
@@ -2487,7 +2492,7 @@ THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDe
 	hdft = (THandleDataFrameTransport *)board._malloc(sizeof(THandleDataFrameTransport));
 	if (hdft == NULL) return NULL;
 	ADD_TO_LIST_STR(AStreamtaskdef->Task->HandleDataFrameTransportList, THandleDataFrameTransport, hdft);
-	hdft->FromChannel = Afromchannel;
+	hdft->FromAddress = Afromaddress;
 	hdft->TickCreate = SysTickCount;
 	
 	return hdft;
@@ -2691,6 +2696,19 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	
 	return;
 }
+
+void PrintFrameTransport(TFrameTransport *Aft)
+{
+	String s;
+	s.reserve(512);
+	s += "\nAft->DestAddress   = " + IPAddress(Aft->DestAddress).toString();
+	s += "\nAft->DestDeviceID = " + board.DeviceIDtoString(Aft->DestDeviceID);
+	s += "\nAft->SourceAddress = " + IPAddress(Aft->SourceAddress).toString();
+	s += "\nAft->SourceDeviceID = " + board.DeviceIDtoString(Aft->SourceDeviceID);
+	s += "\n";
+	board.Log(s.c_str());
+	
+}
 // -----------------------------------------------------------------------------------------------------------------------
 // Sprawdzenie sumy kontrolnej wskazanej ramki, wys³anie messaga do wskazanego zadania w ramce z wskaŸnikiem na dane ramki
 // -> Aft - WskaŸnik ramki transportowej
@@ -2704,6 +2722,8 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 	{
 		if (Aft->FrameType == ftData)
 		{
+			
+			
 			TTaskDef *DestTaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
 			if (DestTaskDefReceive == NULL)
 			{
@@ -2717,6 +2737,7 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 				mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
 				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
 				mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
+
 				
 				bool res = DoMessage(&mb,true,NULL,DestTaskDefReceive);
 				if (res)
@@ -2736,13 +2757,12 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 					default: ft = ftResponseError;	
 					}
 					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ft, Aft->SourceDeviceID);
-					//SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream,0, Aft->FromChannelStream, ft, Aft->DeviceID);
 				}
 			}
 		}
 		else
 		{
-			if (DeviceID.ID.ID64 == Aft->SourceDeviceID.ID.ID64)
+			if (DeviceID.ID.ID64 == Aft->DestDeviceID.ID.ID64)
 			{
 				TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 				mb.IDMessage = IM_FRAME_RESPONSE;

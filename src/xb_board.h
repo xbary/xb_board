@@ -198,7 +198,7 @@ struct THandleDataFrameTransport
 	
 	uint32_t TickCreate;
 	
-	uint32_t FromChannel;
+	uint32_t FromAddress;
 	
 	union
 	{
@@ -263,6 +263,7 @@ public:
 	//-----------------------------------------------------------------------------------------------------------------
 	uint8_t crc8(const uint8_t *addr, uint8_t len);
 	void FilterString(const char *Asourcestring, String &Adestinationstring);	
+	String DeviceIDtoString(TUniqueID Adevid);
     //-----------------------------------------------------------------------------------------------------------------
 	TPinInfo *PinInfoTable;	
 #ifdef BOARD_LED_TX_PIN
@@ -342,11 +343,11 @@ public:
 	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress = 0);
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
-	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromchannel);
+	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress);
 	void CheckOld_HandleDataFrameTransport(TTask *ATask = NULL);
-	bool SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress = 0, uint32_t ADestAddress = 0);
-	bool SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress = 0, uint32_t ADestAddress = 0);
-	void SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t Afromchannel, uint32_t Achannel, TFrameType AframeType, TUniqueID ADeviceID);
+	bool SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress , uint32_t ADestAddress );
+	bool SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress , uint32_t ADestAddress );
+	void SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t Afromaddress, uint32_t Atoaddress, TFrameType AframeType, TUniqueID ADeviceID);
 	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
 	void HandleFrameLocal(TFrameTransport *Aft);
 
