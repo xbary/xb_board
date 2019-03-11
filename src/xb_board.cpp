@@ -2099,11 +2099,20 @@ void *TXB_board::_malloc_psram(size_t Asize)
 	size = size << 4;
 	size += 4;
 	void *ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("inbug _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
 #else
 	void *ptr = heap_caps_malloc(Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("_malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
 #endif 
 #else
 	void *ptr = malloc(Asize);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("nopsram _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
 #endif
 
 	if (ptr != NULL)
@@ -2135,6 +2144,9 @@ void *TXB_board::_malloc_psram(size_t Asize)
 void *TXB_board::_malloc(size_t size)
 {
 	void *ptr = malloc(size);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("_malloc, size: [" + String(size) + "] adress:"+String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
 	if (ptr != NULL)
 	{
 		xb_memoryfill(ptr, size, 0);
@@ -2162,6 +2174,9 @@ void TXB_board::free(void *Aptr)
 		SendMessage_FreePTR(Aptr);
 		___free(Aptr);
 		OurReservedBlock--;
+#ifdef LOG_MALLOC_FREE
+		board.Log(String("free adress:" + String((uint32_t)Aptr,HEX)).c_str(), true, true);
+#endif
 	}
 }
 // --------------------------------------------------------------------------------------------------------------------
@@ -2489,6 +2504,7 @@ THandleDataFrameTransport *TXB_board::AddToTask_HandleDataFrameTransport(TTaskDe
 		}
 		hdft = hdft->Next;
 	}
+
 	hdft = (THandleDataFrameTransport *)board._malloc(sizeof(THandleDataFrameTransport));
 	if (hdft == NULL) return NULL;
 	ADD_TO_LIST_STR(AStreamtaskdef->Task->HandleDataFrameTransportList, THandleDataFrameTransport, hdft);
