@@ -2550,45 +2550,48 @@ void TXB_board::CheckOld_HandleDataFrameTransport(TTask *Atask)
 }
 // ---------------------------------------------------------------
 // Wys³anie ramki danych okreœlonym streamem do wskazanego zadania
-// -> ADestTaskName     - Nazwa zadania do którego ramka danych ma trafiæ
+// -> ASourceTaskName   - Nazwa zadania z którego ramka jest wysy³ana 
+// -> ASourceAddress    - Adres z którego nastêpuje wys³anie ramki potrzebny do odpowiedzi
 // -> AONStreamTaskName - Nazwa zadania streamu którym bêdzie wysy³ana ramka
 //                        ! Jeœli podamy nazwê streamu "local", to ramka trafi lokalnie do zadania wskazanego
+// -> ADestAddress		- Adres pod który zostanie wys³ana ramka
+// -> ADestTaskName     - Nazwa zadania do którego ramka danych ma trafiæ
+//                        ! Jeœli podamy NULL, to ramka trafi lokalnie do zadania wskazanego
 // -> ADataFrame        - WskaŸnik na zawartoœæ ramki do wys³ania
 // -> Alength			- Wielkoœæ w bajtach ramki do wys³ania
 // -> AframeID          - WskaŸnik pod którym zostanie zapisany unikalny numer nadawczy ramki
 //                        ! Wartoœæ jest potrzebna do idendyfikacji potwiedzenia odebrania ramki
-// -> ASourceAddress    - Adres z którego nastêpuje wys³anie ramki potrzebny do odpowiedzi
-// -> ADestAddress		- Adres pod który zostanie wys³ana ramka
 // <- true - Pomyœlnie wys³ano ramkê
 //    false - Wyst¹pi³ problem z wys³aniem ramki
-bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress, uint32_t ADestAddress)
+bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAddress, String AOnStreamTaskName, uint32_t ADestAddress, String ADestTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID)
 {
 	TTaskDef *TaskDefStream = NULL;
-	if (AONStreamTaskName != "local")
+	if (AOnStreamTaskName != "local")
 	{
-		TaskDefStream = GetTaskDefByName(AONStreamTaskName);
+		TaskDefStream = GetTaskDefByName(AOnStreamTaskName);
 		if (TaskDefStream == NULL) 
 		{
 			board.Log("Error: Stream task name not found...", true, true, tlError);
 			return false;
 		}
 	}
-	return SendFrameToDeviceTask(ADestTaskName, TaskDefStream, ADataFrame, Alength,AframeID,ASourceAddress,ADestAddress);
+	return SendFrameToDeviceTask(ASourceTaskName ,ASourceAddress , TaskDefStream,ADestAddress,ADestTaskName,ADataFrame, Alength,AframeID);
 }
 // ---------------------------------------------------------------
 // Wys³anie ramki danych okreœlonym streamem do wskazanego zadania
-// -> ADestTaskName     - Nazwa zadania do którego ramka danych ma trafiæ
+// -> ASourceTaskName   - Nazwa zadania z którego ramka jest wysy³ana 
+// -> ASourceAddress    - Adres z którego nastêpuje wys³anie ramki potrzebny do odpowiedzi
 // -> ATaskDefStream    - WskaŸnik definicji zadania streamu którym bêdzie wysy³ana ramka
+// -> ADestAddress		- Adres pod który zostanie wys³ana ramka
+// -> ADestTaskName     - Nazwa zadania do którego ramka danych ma trafiæ
 //                        ! Jeœli podamy NULL, to ramka trafi lokalnie do zadania wskazanego
 // -> ADataFrame        - WskaŸnik na zawartoœæ ramki do wys³ania
 // -> Alength			- Wielkoœæ w bajtach ramki do wys³ania
 // -> AframeID          - WskaŸnik pod którym zostanie zapisany unikalny numer nadawczy ramki
 //                        ! Wartoœæ jest potrzebna do idendyfikacji potwiedzenia odebrania ramki
-// -> ASourceAddress    - Adres z którego nastêpuje wys³anie ramki potrzebny do odpowiedzi
-// -> ADestAddress		- Adres pod który zostanie wys³ana ramka
 // <- true - Pomyœlnie wys³ano ramkê
 //    false - Wyst¹pi³ problem z wys³aniem ramki
-bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress,uint32_t ADestAddress)
+bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAddress, TTaskDef *ATaskDefStream, uint32_t ADestAddress, String ADestTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID)
 {	
 	uint32_t reslen = 0;
 	static THDFT *hdft = NULL;
@@ -2615,10 +2618,15 @@ bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefSt
 	if (ADestTaskName.length() > 15)
 	{
 		board.Log("Error: Destination task name too long (15 char max)...", true, true,tlError);
-		
 		return false;
 	}
-	
+
+	if (ASourceTaskName.length() > 15)
+	{
+		board.Log("Error: Sounrce task name too long (15 char max)...", true, true, tlError);
+		return false;
+	}
+
 	if (ATaskDefStream != NULL)
 	{
 		hdft->ACK.a = FRAME_ACK_A;
@@ -2638,6 +2646,7 @@ bool TXB_board::SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefSt
 	xb_memorycopy(ADataFrame, &hdft->FT.Frame, Alength);
 	hdft->FT.LengthFrame = Alength;
 
+	xb_memorycopy((void *)(ASourceTaskName.c_str()), &hdft->FT.SourceTaskName, ASourceTaskName.length());
 	xb_memorycopy((void *)(ADestTaskName.c_str()), &hdft->FT.DestTaskName, ADestTaskName.length());
 	
 	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
@@ -2753,8 +2762,8 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 				mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
 				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
 				mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
+				mb.Data.FrameReceiveData.SourceTaskName = Aft->SourceTaskName;
 
-				
 				bool res = DoMessage(&mb,true,NULL,DestTaskDefReceive);
 				if (res)
 				{
@@ -2827,7 +2836,7 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 			mb.Data.FrameReceiveData.SizeFrame = Aft->LengthFrame;
 			mb.Data.FrameReceiveData.TaskDefStream = NULL;
 			mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
-			
+			mb.Data.FrameReceiveData.SourceTaskName = Aft->SourceTaskName;
 
 			bool res = DoMessage(&mb,true,NULL,TaskDefReceive);
 			if (res)

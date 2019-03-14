@@ -188,7 +188,7 @@ typedef struct {
 	uint32_t SizeFrame;
 	TTaskDef *TaskDefStream;
 	uint32_t SourceAddress;
-	//uint32_t Channel;
+	char *SourceTaskName;
 	TFrameReceiveResult FrameReceiveResult;
 } TFrameReceiveData;
 //-----------------------------------------------------------------------

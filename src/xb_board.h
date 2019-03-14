@@ -160,12 +160,13 @@ struct TFrameTransport
 	uint32_t FrameID;
 	uint32_t SourceAddress;
 	TUniqueID SourceDeviceID;
+	char SourceTaskName[16];
 	uint32_t DestAddress;
 	TUniqueID DestDeviceID;
 	char DestTaskName[16];
 	TFrameType FrameType;
 	uint8_t LengthFrame;
-	uint8_t Frame[250 - (1 + 16 + 8 + 4 + 8 + 4 + 1 + 1 + 4 + 4)];
+	uint8_t Frame[255 - (4+1+1+4+4+8+16+4+8+16+1+1)];
 };
 
 #define FRAME_ACK_A 0xf1
@@ -345,8 +346,8 @@ public:
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
 	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress);
 	void CheckOld_HandleDataFrameTransport(TTask *ATask = NULL);
-	bool SendFrameToDeviceTask(String ADestTaskName, String AONStreamTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress , uint32_t ADestAddress );
-	bool SendFrameToDeviceTask(String ADestTaskName, TTaskDef *ATaskDefStream, void *ADataFrame, uint32_t Alength, uint32_t *AframeID, uint32_t ASourceAddress , uint32_t ADestAddress );
+	bool SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAddress, String AOnStreamTaskName, uint32_t ADestAddress, String ADestTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID);
+	bool SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAddress, TTaskDef *ATaskDefStream, uint32_t ADestAddress, String ADestTaskName, void *ADataFrame, uint32_t Alength, uint32_t *AframeID);
 	void SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t Afromaddress, uint32_t Atoaddress, TFrameType AframeType, TUniqueID ADeviceID);
 	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
 	void HandleFrameLocal(TFrameTransport *Aft);
