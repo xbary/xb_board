@@ -1,5 +1,4 @@
 // Szablon projektu .INO z oparty na bibliotece xb_board
-
 /*
  #include <xb_board.h>
  
@@ -51,19 +50,18 @@ void loop()
 #endif 
  */
 
-#ifndef XB_BOARD_H
-#define XB_BOARD_H
+#ifndef __XB_BOARD_H
+#define __XB_BOARD_H
 
 #include <Arduino.h>
 
 #ifndef FSS
-
 #ifdef ESP8266
 #include <WString.h>
 #define FSS(str) (String(F(str)).c_str())
 #endif
 
-#if defined(ESP32)
+#ifdef ESP32
 #include <WString.h>
 #define FSS(str) (String(F(str)).c_str())
 #endif
@@ -76,28 +74,18 @@ void loop()
 
 #endif
 
-#if defined(ESP32)
-
-#include <HardwareSerial.h>
-typedef uint8_t WiringPinMode;
-
+#ifdef ESP32
 #include <utils/xb_util.h>
 #include <utils/cbufSerial.h>
-
 #endif
 
 #ifdef ESP8266
-
-typedef uint8_t WiringPinMode;
 extern "C" {
 #include "user_interface.h"
 }
-
 #include <Ticker.h>
-
 #include <utils/xb_util.h>
 #include <utils/cbufSerial.h>
-
 #endif
 
 typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError, ftBufferIsFull, ftOKWaitForNext, ftUnrecognizedType, ftThereIsNoSuchTask } TFrameType;
@@ -135,8 +123,15 @@ struct TTask
 	TTask *Next;
 	TTask *Prev;
 	TTaskDef *TaskDef;
-	TTaskDef *StreamTaskDef;
-	TTaskDef *SecStreamTaskDef;
+
+	uint8_t CountGetStreamAddressAsKeyboard;
+	uint8_t CountPutStreamAddressAsLog;
+	uint8_t CountPutStreamAddressAsGui;
+	uint32_t *GetStreamAddressAsKeyboard;
+	uint32_t *PutStreamAddressAsLog;
+	uint32_t *PutStreamAddressAsGui;
+
+
 	uint8_t CounterPriority;
 	TUniqueID DeviceID;
 	bool ShowLogInfo;
@@ -214,6 +209,10 @@ struct THandleDataFrameTransport
 	uint8_t indxdatatoread;
 	uint8_t max_indxdatatoread;
 };
+
+#ifndef WiringPinMode
+typedef uint8_t WiringPinMode;
+#endif
 
 typedef struct
 {
@@ -342,6 +341,8 @@ public:
 
 	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t Afromaddress = 0);
 	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress = 0);
+	void BeginUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
+	void EndUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
 	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress);
@@ -351,16 +352,22 @@ public:
 	void SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t Afromaddress, uint32_t Atoaddress, TFrameType AframeType, TUniqueID ADeviceID);
 	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
 	void HandleFrameLocal(TFrameTransport *Aft);
-
+	void AddStreamAddressAsKeyboard(TTaskDef *AStreamDefTask, uint32_t Aaddress);
+	void SubStreamAddressAsKeyboard(TTaskDef *AStreamDefTask, uint32_t Aaddress);
+	void AddStreamAddressAsLog(TTaskDef *AStreamDefTask, uint32_t Aaddress);
+	void SubStreamAddressAsLog(TTaskDef *AStreamDefTask, uint32_t Aaddress);
+	void AddStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddress);
+	void SubStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddress);
 	//-----------------------------------------------------------------------------------------------------------------
-	TTaskDef *Default_StreamTaskDef;
-	TTaskDef *Default_SecStreamTaskDef;
+	
 	bool Default_ShowLogInfo;
 	bool Default_ShowLogWarn;
 	bool Default_ShowLogError;
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
 
+	void AllPutStreamGui(void *Adata, uint32_t Alength);
+	void AllPutStreamLog(void *Adata, uint32_t Alength);
 	int print(String Atext);
 	void Log(char Achr, TTypeLog Atl = tlInfo);
 	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTypeLog Atl = tlInfo);
@@ -397,62 +404,6 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #define BOARD_CRITICALFREEHEAP (1024*19)
 #endif
 
-#ifndef SerialBoard
-#define SerialBoard Serial
-#endif
-
-#ifndef SerialBoard_BAUD
-#define SerialBoard_BAUD 230400
-#endif
-
-#ifndef Serial_print
-#define  Serial_print SerialBoard.print
-#endif
-
-#ifndef Serial_println
-#define Serial_println SerialBoard.println
-#endif
-
-#ifndef Serial_printf
-#define Serial_printf SerialBoard.printf
-#endif
-
-#if defined(ESP8266) || defined(ESP32)
-#ifndef Serial_setDebugOutput
-#define Serial_setDebugOutput SerialBoard.setDebugOutput
-#endif
-#endif
-
-#ifndef Serial_begin
-#define Serial_begin SerialBoard.begin
-#endif
-
-#ifndef Serial_availableForWrite
-#define Serial_availableForWrite SerialBoard.availableForWrite
-#endif
-
-#ifndef Serial_available
-#define Serial_available SerialBoard.available
-#endif
-
-#ifndef Serial_write
-#define Serial_write SerialBoard.write
-#endif
-
-#ifndef Serial_read
-#define Serial_read SerialBoard.read
-#endif
-
-#ifndef Serial_flush
-#define Serial_flush SerialBoard.flush
-#endif
-
-#ifndef Serial_EmptyTXBufferSize
-#ifdef ESP32
-#define Serial_EmptyTXBufferSize 127
-#endif
-#endif
-
 #ifndef BOARD_NR_GPIO_PINS 
 #define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
 #endif
@@ -469,4 +420,4 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #define digital_Write digitalWrite
 #endif 
 
-#endif /* XB_BOARD */
+#endif

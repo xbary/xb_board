@@ -157,7 +157,7 @@ typedef struct {
 
 //-----------------------------------------------------------------------
 typedef enum {
-	saGet, saPut
+	saGet, saPut, saBeginUseGet, saEndUseGet
 } TStreamAction;
 
 typedef struct {

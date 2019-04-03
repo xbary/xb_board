@@ -1,18 +1,26 @@
 #pragma region INCLUDES
 #include <xb_board.h>
 
+
+// Jeœli zdefiniowano jak¹œ szybkoœæ dla któregoœ z UARTów to obowi¹zko pod³¹czona zostanie inkluda 
+// i uruchomienie zadania odpowiedzialnego za obœ³ugê UARTów.
+/*#if defined(Serial0Board_BAUD) || defined(Serial1Board_BAUD) || defined(Serial2Board_BAUD)
+#include <xb_SERIAL.h>
+#endif*/
+
+
 // Dla ESP8266 inkludy z funkcjami jêzyka C
 #ifdef ESP8266
 extern "C" {
-#include "user_interface.h"
+#include "user_interface.h"	
 }
 #endif
-
+ 
 // Dla ESP32 inkludy z funkcjami jêzyka C
-#ifdef ESP32
-extern "C" {
-}
-#endif
+//#ifdef ESP32
+//extern "C" {
+//}
+//#endif
 
 
 // Dla STM32F1 inkludy z funkcjami jêzyka C
@@ -98,35 +106,6 @@ void XB_BOARD_Setup(void)
 #endif
 #endif
 
-	
-	// Wy³¹czenie komunikatów od CORE ESPowego
-#ifdef Serial_setDebugOutput
-		Serial_setDebugOutput(false);
-#endif
-
-	// Uruchomienie UARTa podstawowego
-#if defined(SerialBoard_RX_PIN) && defined(SerialBoard_TX_PIN)
-	Serial_begin(SerialBoard_BAUD, SERIAL_8N1, SerialBoard_RX_PIN, SerialBoard_TX_PIN);
-	board.SetPinInfo(SerialBoard_RX_PIN, FUNCTIONPIN_UARTRXTX, MODEPIN_OUTPUT);
-	board.SetPinInfo(SerialBoard_TX_PIN, FUNCTIONPIN_UARTRXTX, MODEPIN_OUTPUT);
-#else
-	Serial_begin(SerialBoard_BAUD);
-#endif
-#if defined(ESP8266) || defined(ESP32)
-#ifdef Serial_availableForWrite 
-	while(!Serial_availableForWrite())
-	{
-		delay(1);
-	}
-#endif
-	for (int i = 0; i < 32; i++) {
-		Serial_write(0);
-		delay(1);
-	}
-#endif
-	board.Log("Start.", true, true);
-	
-	
 	// Jeœli framework zosta³ uruchomiony na ESP8266 to inicjacja liczników czasowych
 #if defined(ESP8266)
 	board.SysTickCount_init();
@@ -905,56 +884,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #endif
 		res = true;
 	}
-	case IM_STREAM:
-	{
-		switch (Am->Data.StreamData.StreamAction)
-		{
-		case saGet:
-		{
-			int av = Serial_available();
-			if (av > 0)
-			{
-				int ch = 0;
-				uint32_t count = 0;
-				while (av > 0)
-				{
-					ch = Serial_read();
-					if (ch >= 0)
-					{
-						((uint8_t *)Am->Data.StreamData.Data)[count] = (uint8_t)ch;
-						count++;
-					}
-					if (count >= Am->Data.StreamData.Length) break;
-					av =  Serial_available();
-				}
-				Am->Data.StreamData.LengthResult = count;
-			}
-			else
-			{
-				Am->Data.StreamData.LengthResult = 0;
-			}
-			res = true;
-			break;
-		}
-		case saPut:
-		{
-			uint32_t indx = 0;
-			uint32_t count = Am->Data.StreamData.Length;
-			Am->Data.StreamData.LengthResult = 0;
-			while (count > 0)
-			{
-				Am->Data.StreamData.LengthResult += Serial_write(((uint8_t *)Am->Data.StreamData.Data)[indx]);
-				count--;
-				indx++;
-				yield();
-					
-			}
-			res = true;
-			break;
-		}
-		}
-		break;
-	}
 	default:;
 	}
 	
@@ -983,8 +912,8 @@ TXB_board::TXB_board()
 	TXCounter = 0;
 	doAllInterruptRC = 0;
 
-	Default_StreamTaskDef = &XB_BOARD_DefTask;
-	Default_SecStreamTaskDef = NULL;
+/*	Default_StreamTaskDef = NULL;
+	Default_SecStreamTaskDef = NULL;*/
 	Default_ShowLogInfo = true;
 	Default_ShowLogWarn = true;
 	Default_ShowLogError = true;
@@ -1429,34 +1358,27 @@ void TXB_board::handle(void)
 #endif
 	//--------------------------------------
 	DEF_WAITMS_VAR(LOOPW2);
-	BEGIN_WAITMS(LOOPW2, 25)
+	BEGIN_WAITMS(LOOPW2, 5)
 	{
-		if (CurrentTask != NULL)
+		TTask *t = TaskList;
+		while (t != NULL)
 		{
-			uint8_t bufkey[3] = { 0, 0,0 };
-			uint32_t res = GetStream(bufkey, 2, CurrentTask->StreamTaskDef);
-			if (res == 1)
+			if ((t->CountGetStreamAddressAsKeyboard > 0) && (t->GetStreamAddressAsKeyboard!=NULL))
 			{
-				SendMessage_KeyPress((char)bufkey[0]);
-			}
-			else if (res == 2) 
-			{
-				SendMessage_KeyPress((char)bufkey[0]);
-				SendMessage_KeyPress((char)bufkey[1]);
-			}
-			else
-			{
-				res = GetStream(bufkey, 2, CurrentTask->SecStreamTaskDef);
-				if (res == 1)
+				uint32_t res = 0;
+				for (uint32_t l = 0; l < t->CountGetStreamAddressAsKeyboard; l++)
 				{
-					SendMessage_KeyPress((char)bufkey[0]);
+					uint8_t bufkey[7] = { 0, 0, 0, 0, 0, 0, 0 };
+					res = GetStream(bufkey, 7, t->TaskDef, t->GetStreamAddressAsKeyboard[l]);
+					if (res > 0)
+					{
+						for (uint32_t i = 0; i < res; i++) SendMessage_KeyPress((char)bufkey[i]);
+						break;
+					}
 				}
-				else if (res == 2) 
-				{
-					SendMessage_KeyPress((char)bufkey[0]);
-					SendMessage_KeyPress((char)bufkey[1]);
-				}
+				if (res > 0) break;
 			}
+			t = t->Next;
 		}
 	}
 	END_WAITMS(LOOPW2)
@@ -1500,8 +1422,14 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 
 		t->TaskDef = Ataskdef;
 		t->TaskDef->Task = t;
+
+/*		t->CountGetStreamAddressAsKeyboard = 0;
+		t->GetStreamAddressAsKeyboard = NULL;
+		
 		t->StreamTaskDef = Default_StreamTaskDef;
 		t->SecStreamTaskDef = Default_SecStreamTaskDef;
+		t->StreamAddress  = Default_StreamAddress;
+		t->SecStreamAddress  = Default_SecStreamAddress;*/
 		t->ShowLogInfo = Default_ShowLogInfo;
 		t->ShowLogWarn = Default_ShowLogWarn;
 		t->ShowLogError = Default_ShowLogError;
@@ -1550,6 +1478,7 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 			mb.IDMessage = IM_DELTASK;
 			DoMessage(&mb, true, CurrentTask, Ataskdef);
 			DELETE_FROM_LIST_STR(TaskList, Ataskdef->Task);
+			board.free(Ataskdef->Task->GetStreamAddressAsKeyboard);
 			board.free(Ataskdef->Task);
 			Ataskdef->Task = NULL;
 			TaskCount--;
@@ -1724,8 +1653,8 @@ void TXB_board::ResetInAllTaskDefaultStream()
 	TTask *t = TaskList;
 	while (t != NULL)
 	{
-		t->StreamTaskDef = Default_StreamTaskDef;
-		t->SecStreamTaskDef = Default_SecStreamTaskDef;
+/*		t->StreamTaskDef = Default_StreamTaskDef;
+		t->SecStreamTaskDef = Default_SecStreamTaskDef;*/
 		t = t->Next;
 	}
 }
@@ -2234,11 +2163,25 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStrea
 	
 	if (DoMessage(&mb, true, NULL, AStreamtaskdef))
 	{
+/*		if (AStreamtaskdef == &XB_SERIAL_DefTask)
+		{
+			if (mb.Data.StreamData.LengthResult > 0)
+			{
+				Serial1.print("\nLengthresult=" + String(mb.Data.StreamData.LengthResult) + " ; Length=" + String(mb.Data.StreamData.Length)+ " ; Data: ");
+				for (int t = 0; t < mb.Data.StreamData.LengthResult; t++)
+				{
+					Serial1.print(((uint8_t *)mb.Data.StreamData.Data)[t]);
+					Serial1.print(',');	
+				}
+			}
+		}*/
+
 		hdft = AddToTask_HandleDataFrameTransport(AStreamtaskdef, mb.Data.StreamData.FromAddress);
 		if (hdft != NULL) 
 		{
 			HandleDataFrameTransport(&mb, hdft, AStreamtaskdef);
 		}
+		
 		return mb.Data.StreamData.LengthResult;
 	}
 	
@@ -2276,6 +2219,40 @@ uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamta
 		return mb.Data.StreamData.LengthResult;
 	}
 	return 0;
+}
+// ---------------------------------------------------------------------------------------------------------
+// Poinformowanie zadania obs³uguj¹cego stream, ¿e cykliczny odczyt streamu zostanie przejêty przez inne zadanie
+// -> AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+// -> AToAddress     - Adres/Kana³/Numer urz¹dzenia którego bêdzie obs³ugiwany odczyt streamu
+void TXB_board::BeginUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress)
+{
+
+	if (AStreamtaskdef == NULL) return;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saBeginUseGet;
+	mb.Data.StreamData.ToAddress = AToAddress;
+	
+	DoMessage(&mb, true, NULL, AStreamtaskdef);
+	return;
+}
+// ---------------------------------------------------------------------------------------------------------
+// Poinformowanie zadania obs³uguj¹cego stream, ¿e cykliczny odczyt streamu ma zostaæ 
+// przekazany z powrotem do zadania obœ³ugij¹cego stream
+// -> AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+// -> AToAddress     - Adres/Kana³/Numer urz¹dzenia którego oddana ma zostaæ obs³uga zadania od straemu
+void TXB_board::EndUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress)
+{
+	if (AStreamtaskdef == NULL) return;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saEndUseGet;
+	mb.Data.StreamData.ToAddress = AToAddress;
+	
+	DoMessage(&mb, true, NULL, AStreamtaskdef);
+	return;
 }
 // ---------------------------------------------------------------------------------------------------------
 // Funkcja wywo³ywana w GetStream, s³u¿y do wyci¹gania ze streamu ramki która zaczyna siê od 4 bajtowego ACK
@@ -2872,16 +2849,296 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 	}
 	
 }
+// -----------------------------------------------------------------------------------
+// Ustalenie wskazanego task streamu jako klawiatury
+// -> AStreamDefTask - Task stream który ma byæ klawiatur¹
+// -> Aaddress - indywidualny adres streamu
+void TXB_board::AddStreamAddressAsKeyboard(TTaskDef *AStreamDefTask,uint32_t Aaddress)
+{
+	TTask *t = AStreamDefTask->Task;
+	if (t != NULL)
+	{
+		if (t->CountGetStreamAddressAsKeyboard == 0)
+		{
+			t->GetStreamAddressAsKeyboard = (uint32_t *)_malloc(sizeof(uint32_t));
+			t->GetStreamAddressAsKeyboard[0] = Aaddress;
+			t->CountGetStreamAddressAsKeyboard++;
+		}
+		else
+		{
+			for (uint32_t i = 0; i < t->CountGetStreamAddressAsKeyboard; i++)
+			{
+				if (t->GetStreamAddressAsKeyboard[i] == Aaddress)
+				{
+					return;
+				}
+			}
+			
+			for (uint32_t i = 0; i < t->CountGetStreamAddressAsKeyboard; i++)
+			{
+				if (t->GetStreamAddressAsKeyboard[i] == 0xffffffff)
+				{
+					t->GetStreamAddressAsKeyboard[i] = Aaddress;
+					return;
+				}
+			}
+
+			t->GetStreamAddressAsKeyboard = (uint32_t *)realloc((void *)t->GetStreamAddressAsKeyboard, sizeof(uint32_t)*(t->CountGetStreamAddressAsKeyboard + 1));
+			t->CountGetStreamAddressAsKeyboard++;
+
+			t->GetStreamAddressAsKeyboard[t->CountGetStreamAddressAsKeyboard-1] = Aaddress;
+			return;
+		}
+	}
+	return;
+}
+// -----------------------------------------------------------------------------------
+// Odjêcie adresu streamu wskazanego task streamu jako klawiatury
+// -> AStreamDefTask - Task stream z którego usuwany jest adres
+// -> Aaddress - indywidualny adres streamu
+void TXB_board::SubStreamAddressAsKeyboard(TTaskDef *AStreamDefTask, uint32_t Aaddress)
+{
+	TTask *t = AStreamDefTask->Task;
+	if (t != NULL)
+	{
+		if (t->CountGetStreamAddressAsKeyboard == 0)
+		{
+			return;
+		}
+		else
+		{
+			for (uint32_t i = 0; i < t->CountGetStreamAddressAsKeyboard; i++)
+			{
+				if (t->GetStreamAddressAsKeyboard[i] == Aaddress)
+				{
+					t->GetStreamAddressAsKeyboard[i] = 0xffffffff;
+					break;
+				}
+			}
+			
+			uint32_t li = 0;
+			
+			for (uint32_t i = 0; i < t->CountGetStreamAddressAsKeyboard; i++)
+			{
+				if (t->GetStreamAddressAsKeyboard[i] == 0xffffffff) li++;
+			}
+			
+			if (li == t->CountGetStreamAddressAsKeyboard)
+			{
+				t->CountGetStreamAddressAsKeyboard = 0;
+				free(t->GetStreamAddressAsKeyboard);
+				t->GetStreamAddressAsKeyboard = NULL;
+			}
+			return;
+		}
+	}
+	return;
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::AddStreamAddressAsLog(TTaskDef *AStreamDefTask, uint32_t Aaddress)
+{
+	TTask *t = AStreamDefTask->Task;
+	if (t != NULL)
+	{
+		if (t->CountPutStreamAddressAsLog == 0)
+		{
+			t->PutStreamAddressAsLog = (uint32_t *)_malloc(sizeof(uint32_t));
+			t->PutStreamAddressAsLog[0] = Aaddress;
+			t->CountPutStreamAddressAsLog++;
+		}
+		else
+		{
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)
+			{
+				if (t->PutStreamAddressAsLog[i] == Aaddress)
+				{
+					return;
+				}
+			}
+			
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)
+			{
+				if (t->PutStreamAddressAsLog[i] == 0xffffffff)
+				{
+					t->PutStreamAddressAsLog[i] = Aaddress;
+					return;
+				}
+			}
+
+			t->PutStreamAddressAsLog = (uint32_t *)realloc((void *)t->PutStreamAddressAsLog, sizeof(uint32_t)*(t->CountPutStreamAddressAsLog + 1));
+			t->CountPutStreamAddressAsLog++;
+
+			t->PutStreamAddressAsLog[t->CountPutStreamAddressAsLog-1] = Aaddress;
+			return;
+		}
+	}
+	return;
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::SubStreamAddressAsLog(TTaskDef *AStreamDefTask, uint32_t Aaddress)
+{
+	TTask *t = AStreamDefTask->Task;
+	if (t != NULL)
+	{
+		if (t->CountPutStreamAddressAsLog == 0)
+		{
+			return;
+		}
+		else
+		{
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)
+			{
+				if (t->PutStreamAddressAsLog[i] == Aaddress)
+				{
+					t->PutStreamAddressAsLog[i] = 0xffffffff;
+					break;
+				}
+			}
+			
+			uint32_t li = 0;
+			
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)
+			{
+				if (t->PutStreamAddressAsLog[i] == 0xffffffff) li++;
+			}
+			
+			if (li == t->CountPutStreamAddressAsLog)
+			{
+				t->CountPutStreamAddressAsLog = 0;
+				free(t->PutStreamAddressAsLog);
+				t->PutStreamAddressAsLog = NULL;
+			}
+			return;
+		}
+	}
+	return;
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::AddStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddress)
+{
+	TTask *t = AStreamDefTask->Task;
+	if (t != NULL)
+	{
+		if (t->CountPutStreamAddressAsGui == 0)
+		{
+			t->PutStreamAddressAsGui = (uint32_t *)_malloc(sizeof(uint32_t));
+			t->PutStreamAddressAsGui[0] = Aaddress;
+			t->CountPutStreamAddressAsGui++;
+		}
+		else
+		{
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsGui; i++)
+			{
+				if (t->PutStreamAddressAsGui[i] == Aaddress)
+				{
+					return;
+				}
+			}
+			
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsGui; i++)
+			{
+				if (t->PutStreamAddressAsGui[i] == 0xffffffff)
+				{
+					t->PutStreamAddressAsGui[i] = Aaddress;
+					return;
+				}
+			}
+
+			t->PutStreamAddressAsGui = (uint32_t *)realloc((void *)t->PutStreamAddressAsGui, sizeof(uint32_t)*(t->CountPutStreamAddressAsGui + 1));
+			t->CountPutStreamAddressAsGui++;
+
+			t->PutStreamAddressAsGui[t->CountPutStreamAddressAsGui-1] = Aaddress;
+			return;
+		}
+	}
+	return;
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::SubStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddress)
+{
+	TTask *t = AStreamDefTask->Task;
+	if (t != NULL)
+	{
+		if (t->CountPutStreamAddressAsGui == 0)
+		{
+			return;
+		}
+		else
+		{
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsGui; i++)
+			{
+				if (t->PutStreamAddressAsGui[i] == Aaddress)
+				{
+					t->PutStreamAddressAsGui[i] = 0xffffffff;
+					break;
+				}
+			}
+			
+			uint32_t li = 0;
+			
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsGui; i++)
+			{
+				if (t->PutStreamAddressAsGui[i] == 0xffffffff) li++;
+			}
+			
+			if (li == t->CountPutStreamAddressAsGui)
+			{
+				t->CountPutStreamAddressAsGui = 0;
+				free(t->PutStreamAddressAsGui);
+				t->PutStreamAddressAsGui = NULL;
+			}
+			return;
+		}
+	}
+	return;
+}
+
+
+
+
 #pragma endregion
 #pragma region FUNKCJE_KOMUNIKATOW
+
+void TXB_board::AllPutStreamGui(void *Adata, uint32_t Alength)
+{
+	TTask *t = TaskList;
+	while (t != NULL)
+	{
+		for (uint32_t i = 0; i < t->CountPutStreamAddressAsGui; i++)		
+		{
+			if (t->PutStreamAddressAsGui[i] != 0xffffffff)
+			{
+				PutStream(Adata, Alength, t->TaskDef, t->PutStreamAddressAsGui[i]);		
+			}
+		}
+		t = t->Next;
+	}
+}
+
+
+void TXB_board::AllPutStreamLog(void *Adata, uint32_t Alength)
+{
+	TTask *t = TaskList;
+	while (t != NULL)
+	{
+		for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)		
+		{
+			if (t->PutStreamAddressAsLog[i] != 0xffffffff)
+			{
+				PutStream(Adata, Alength, t->TaskDef, t->PutStreamAddressAsLog[i]);		
+			}
+		}
+		t = t->Next;
+	}
+}
+
 int TXB_board::print(String Atext)
 {
 	if (CurrentTask != NULL)
 	{
 		int len = Atext.length();	
-		uint32_t rlen1 = PutStream((void *)Atext.c_str(), len, CurrentTask->StreamTaskDef);
-		uint32_t rlen2 = PutStream((void *)Atext.c_str(), len, CurrentTask->SecStreamTaskDef);
-		return rlen1 == 0 ? rlen2 : rlen1;
+		AllPutStreamLog((void *)Atext.c_str(), len);
+		return len;
 	}
 	return 0;
 }
@@ -2913,8 +3170,9 @@ void TXB_board::Log(char Achr, TTypeLog Atl)
 		}
 	}
 	else return;
-	PutStream(&Achr, 1, CurrentTask->StreamTaskDef);
-	PutStream(&Achr, 1, CurrentTask->SecStreamTaskDef);
+	
+	AllPutStreamLog(&Achr, 1);
+
 	if (NoTxCounter == 0) TXCounter++;
 }
 
@@ -2965,8 +3223,7 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 		String txttime = "";
 		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
 		txttime = "\n[" + txttime + "] ";
-		PutStream((void *)txttime.c_str(), txttime.length(), CurrentTask->StreamTaskDef);
-		PutStream((void *)txttime.c_str(), txttime.length(), CurrentTask->SecStreamTaskDef);
+		AllPutStreamLog((void *)txttime.c_str(), txttime.length());
 	}
 
 	if (showtaskname)
@@ -2980,15 +3237,12 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 			{
 				taskname.trim();
 				taskname = '[' + taskname + "] ";
-				PutStream((void *)taskname.c_str(), taskname.length(), CurrentTask->StreamTaskDef);
-				PutStream((void *)taskname.c_str(), taskname.length(), CurrentTask->SecStreamTaskDef);
+				AllPutStreamLog((void *)taskname.c_str(), taskname.length());
 			}
 		}
-
 	}
 
-	PutStream((void *)Atxt, len, CurrentTask->StreamTaskDef);
-	PutStream((void *)Atxt, len, CurrentTask->SecStreamTaskDef);
+	AllPutStreamLog((void *)Atxt, len);
 
 	if (NoTxCounter == 0) TXCounter++;
 }
@@ -3031,6 +3285,7 @@ void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
 
 	while (Acbufserial->available()>0)
 	{
+		
 		Log((char)(Acbufserial->read()), Atl); 
 		if (NoTxCounter==0) TXCounter++;
 	}
