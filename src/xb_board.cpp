@@ -669,7 +669,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 				Am->Data.WindowData.ActionData.Create.X = -1;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
-				Am->Data.WindowData.ActionData.Create.Width = 40;
+				Am->Data.WindowData.ActionData.Create.Width = 48;
 				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 14;
 
 				res = true;
@@ -1965,6 +1965,7 @@ uint32_t TXB_board::getFreePSRAM()
 	if (r > (100 * MaximumMallocPSRAM))
 	{
 		asm("memw");
+		
 		GETFREEPSRAM_ERROR_COUNTER++;
 	}
 	else
