@@ -18,7 +18,9 @@ public:
 	bool empty();
 	int available(void) override;
 	int peek(void) override;
+#ifndef __riscv64
 	void flush(void) override;
+#endif
 	int read(void) override;
 	size_t write(uint8_t) override;
 

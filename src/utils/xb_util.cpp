@@ -14,6 +14,7 @@ extern "C" {
 	extern char *strcpy(char *strDestination,const char *strSource);
 }
 
+#include "cbufSerial.h"
 
 int32_t globalonetry=0;
 
@@ -57,7 +58,8 @@ void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt)
 {
 	uint32_t dayclock = 0;
 	int  dayno = 0;
-	int wday = 0, summertime = 0;
+	//int wday = 0;
+	//int summertime = 0;
 
 	dt->tm_year = EPOCH_YR; //=1970
 	dayclock = unix_time  % SECS_DAY;
@@ -67,7 +69,7 @@ void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt)
 	dt->tm_min = (dayclock % 3600UL) / 60;
 	dt->tm_hour = dayclock / 3600UL;
 	dt->tm_wday = (dayno + 4) % 7;      // day 0 was a thursday
-	wday = dt->tm_wday;
+	//wday = dt->tm_wday;
 
 	while (dayno >= YEARSIZE(dt->tm_year))
 	{
@@ -85,24 +87,24 @@ void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt)
 	dt->tm_mday = dayno + 1;
 
 	// Summertime
-	summertime = 1;
+	//summertime = 1;
 	if (dt->tm_mon < 3 || dt->tm_mon > 10)     // month 1, 2, 11, 12
 	{
-		summertime = 0;                          // -> Winter
+		//summertime = 0;                          // -> Winter
 	}
 
 	if ((dt->tm_mday - dt->tm_wday >= 25) && (dt->tm_wday || dt->tm_hour >= 2))
 	{                              // after last Sunday 2:00
 		if (dt->tm_mon == 10)        // October -> Winter
 		{
-			summertime = 0;
+			//summertime = 0;
 		}
 	}
 	else
 	{                              // before last Sunday 2:00
 		if (dt->tm_mon == 3)        // March -> Winter
 		{
-			summertime = 0;
+			//summertime = 0;
 		}
 	}
 }
@@ -164,7 +166,7 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 	m = m - (g * 60);
 
 	char timeindxstr[20];
-#ifdef ARDUINO_ARCH_STM32F1
+#ifdef ARDUINO_ARCH_STM32
 	sprintf(timeindxstr, FSS("%4d:%02d:%02d\0"), g, m, s);
 #endif
 
@@ -173,6 +175,10 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 #endif
 
 #if defined(ESP32)
+	sprintf(timeindxstr, FSS("%4d:%02d:%02d"), g, m, s);
+#endif
+
+#if defined(__riscv64)
 	sprintf(timeindxstr, FSS("%4d:%02d:%02d"), g, m, s);
 #endif
 
@@ -189,7 +195,7 @@ void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx)
 	m = m - (g * 60);
 
 	char timeindxstr[20];
-#ifdef ARDUINO_ARCH_STM32F1
+#ifdef ARDUINO_ARCH_STM32
 	sprintf(timeindxstr, FSS("%4d:%02d:%02d\0"), g, m, s);
 	String tmp = String(timeindxstr);
 	tmp.replace(' ', '0');
@@ -199,9 +205,16 @@ void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx)
 #if defined(ESP8266) || defined(ESP32)
 	AcbufSerial->printf(FSS("%4d:%02d:%02d"), g, m, s);
 #endif
+	
+#if defined(__riscv64)
+	sprintf(timeindxstr, FSS("%4d:%02d:%02d\0"), g, m, s);
+	String tmp = String(timeindxstr);
+	tmp.replace(' ', '0');
+	AcbufSerial->print(tmp);
+#endif
 }
 //----------------------------------------------------------------------------------------------------------------------
-uint8_t ahextoint(register uint8_t Ach)
+uint8_t ahextoint(REGISTER uint8_t Ach)
 {
 	if ((Ach >= '0') && (Ach <= '9'))  return Ach - '0';
 	if ((Ach >= 'a') && (Ach <= 'f'))  return Ach - 'a' + 10;
@@ -313,10 +326,10 @@ char* _itoa(int value, char* result, int base)
 	return result;
 }
 
-uint8_t inttoa(register int32_t value, register char* result)
+uint8_t inttoa(REGISTER int32_t value, REGISTER char* result)
 {
-	register char *ptr = result, *ptr1 = result, tmp_char;
-	register int32_t tmp_value;
+	REGISTER char *ptr = result, *ptr1 = result, tmp_char;
+	REGISTER int32_t tmp_value;
 	uint8_t s;
 
 	do {
@@ -337,10 +350,10 @@ uint8_t inttoa(register int32_t value, register char* result)
 	return s;
 }
 
-uint8_t inttoaw(register int32_t value, register  char* result, uint8_t Awidth, char Ach)
+uint8_t inttoaw(REGISTER int32_t value, REGISTER  char* result, uint8_t Awidth, char Ach)
 {
-	register char *ptr = result, *ptr1 = result, tmp_char;
-	register int32_t tmp_value;
+	REGISTER char *ptr = result, *ptr1 = result, tmp_char;
+	REGISTER int32_t tmp_value;
 	uint8_t s;
 
 	do {
@@ -365,10 +378,10 @@ uint8_t inttoaw(register int32_t value, register  char* result, uint8_t Awidth, 
 	return s;
 }
 
-uint8_t uinttoaw(register uint32_t value, register  char* result, uint8_t Awidth, char Ach)
+uint8_t uinttoaw(REGISTER uint32_t value, REGISTER  char* result, uint8_t Awidth, char Ach)
 {
-	register char *ptr = result, *ptr1 = result, tmp_char;
-	register uint32_t tmp_value;
+	REGISTER char *ptr = result, *ptr1 = result, tmp_char;
+	REGISTER uint32_t tmp_value;
 	uint8_t s;
 
 	do {
@@ -392,10 +405,10 @@ uint8_t uinttoaw(register uint32_t value, register  char* result, uint8_t Awidth
 	return s;
 }
 
-uint8_t uinttoa(register uint32_t value, register char* result)
+uint8_t uinttoa(REGISTER uint32_t value, REGISTER char* result)
 {
-	register char *ptr = result, *ptr1 = result, tmp_char;
-	register uint32_t tmp_value;
+	REGISTER char *ptr = result, *ptr1 = result, tmp_char;
+	REGISTER uint32_t tmp_value;
 	uint8_t s;
 
 	do {
@@ -438,9 +451,9 @@ bool hexstrTouint32(char *Astr, int8_t Alen, uint32_t *Aint)
 const char tab[17] = "0123456789ABCDEF";
 void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aadd)
 {
-	register uint32_t Aint    ;
-	register uint8_t c;
-	register int32_t i;
+	REGISTER uint32_t Aint    ;
+	REGISTER uint8_t c;
+	REGISTER int32_t i;
 	char result[8];
 	if (Acount > 8) Acount = 8;
 	
@@ -461,9 +474,9 @@ void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aad
 //=================================================================================================================
 void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aadd)
 {
-	register uint16_t Aint;
-	register uint8_t c;
-	register int32_t i;
+	REGISTER uint16_t Aint;
+	REGISTER uint8_t c;
+	REGISTER int32_t i;
 	char result[8];
 	if (Acount > 8) Acount = 8;
 	
@@ -484,8 +497,8 @@ void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aad
 //=================================================================================================================
 void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep,bool Aenter)
 {
-	register uint8_t Aint;
-	register int32_t i;
+	REGISTER uint8_t Aint;
+	REGISTER int32_t i;
 	char sep = 0;
 	for (i = 0; i < Acount; i++)
 	{
@@ -705,9 +718,9 @@ uint8_t StringtoIP(char *Asip, uint32_t *Aip)
 	return al;
 }
 
-uint32_t StringLength(register char *Astr,register uint8_t Acharend)
+uint32_t StringLength(REGISTER char *Astr,REGISTER uint8_t Acharend)
 {
-	for (register uint32_t i = 0;;i++)
+	for (REGISTER uint32_t i = 0;;i++)
 	{
 		if (((uint8_t *)Astr)[i] == Acharend)
 		{
@@ -716,9 +729,9 @@ uint32_t StringLength(register char *Astr,register uint8_t Acharend)
 	}
 }
 
-uint32_t StringLength(const char *Astr, register uint8_t Acharend)
+uint32_t StringLength(const char *Astr, REGISTER uint8_t Acharend)
 {
-	for (register uint32_t i = 0;; i++)
+	for (REGISTER uint32_t i = 0;; i++)
 	{
 		if (((uint8_t *)Astr)[i] == Acharend)
 		{
@@ -727,7 +740,7 @@ uint32_t StringLength(const char *Astr, register uint8_t Acharend)
 	}
 }
 
-uint32_t StringAddString(register char *Astr, register uint8_t Acharend, register char *Aaddstr, register uint8_t Aaddcharend)
+uint32_t StringAddString(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER char *Aaddstr, REGISTER uint8_t Aaddcharend)
 {
 	uint32_t indx = StringLength(Astr, Acharend);
 	uint32_t l = StringLength(Aaddstr, Aaddcharend);
@@ -737,56 +750,56 @@ uint32_t StringAddString(register char *Astr, register uint8_t Acharend, registe
 	return indx + l;
 }
 
-uint32_t StringAddUINT8(register char *Astr, register uint8_t Acharend, register uint8_t Aadduint)
+uint32_t StringAddUINT8(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint8_t Aadduint)
 {
 	char Aaddstr[16] = { 0 };
 	uinttoa(Aadduint, Aaddstr);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddUINT8w(register char *Astr, register uint8_t Acharend, register uint8_t Aadduint,uint8_t Awidth,char Achw)
+uint32_t StringAddUINT8w(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint8_t Aadduint,uint8_t Awidth,char Achw)
 {
 	char Aaddstr[16] = { 0 };
 	uinttoaw(Aadduint, Aaddstr,Awidth,Achw);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddUINT16(register char *Astr, register uint8_t Acharend, register uint16_t Aadduint)
+uint32_t StringAddUINT16(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint16_t Aadduint)
 {
 	char Aaddstr[16] = { 0 };
 	uinttoa(Aadduint, Aaddstr);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddUINT16w(register char *Astr, register uint8_t Acharend, register uint16_t Aadduint, uint8_t Awidth, char Achw)
+uint32_t StringAddUINT16w(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint16_t Aadduint, uint8_t Awidth, char Achw)
 {
 	char Aaddstr[16] = { 0 };
 	uinttoaw(Aadduint, Aaddstr, Awidth, Achw);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddUINT32(register char *Astr, register uint8_t Acharend, register uint32_t Aadduint)
+uint32_t StringAddUINT32(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint32_t Aadduint)
 {
 	char Aaddstr[16] = { 0 };
 	uinttoa(Aadduint, Aaddstr);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddUINT32w(register char *Astr, register uint8_t Acharend, register uint32_t Aadduint, uint8_t Awidth, char Achw)
+uint32_t StringAddUINT32w(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint32_t Aadduint, uint8_t Awidth, char Achw)
 {
 	char Aaddstr[16] = { 0 };
 	uinttoaw(Aadduint, Aaddstr, Awidth, Achw);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddHexUINT32(register char *Astr, register uint8_t Acharend, register uint32_t Aadduint)
+uint32_t StringAddHexUINT32(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint32_t Aadduint)
 {
 	char Aaddstr[16] = { 0 };
 	uint32tohexstr(Aaddstr, &Aadduint,1,true);
 	return StringAddString(Astr, Acharend, Aaddstr, 0);
 }
 
-uint32_t StringAddChar(register char *Astr, register uint8_t Acharend, register char Aaddchar)
+uint32_t StringAddChar(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER char Aaddchar)
 {
 	uint32_t indx = StringLength(Astr, Acharend);
 	Astr[indx]	= Aaddchar;
@@ -841,17 +854,17 @@ void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringt
 	
 }
 
-void xb_memoryfill(register void *Aadr, register uint32_t Alength, register uint8_t Avalue)
+void xb_memoryfill(REGISTER void *Aadr, REGISTER uint32_t Alength, REGISTER uint8_t Avalue)
 {
-	for (register uint32_t i = 0;i<Alength;i++) ((uint8_t *)Aadr)[i] = Avalue;
+	for (REGISTER uint32_t i = 0;i<Alength;i++) ((uint8_t *)Aadr)[i] = Avalue;
 }
 
-void xb_memorycopy(register void *Asource, register void *Adestination, register int32_t Alength)
+void xb_memorycopy(REGISTER void *Asource, REGISTER void *Adestination, REGISTER int32_t Alength)
 { 
 	if (Alength == -1)
 	{
 		uint8_t ch;
-		for (register uint32_t i = 0;; i++) 
+		for (REGISTER uint32_t i = 0;; i++) 
 		{
 			 ch = ((uint8_t *)Asource)[i];
 			if (ch == 0)
@@ -865,14 +878,14 @@ void xb_memorycopy(register void *Asource, register void *Adestination, register
 	}
 	else
 	{
-		for (register uint32_t i = 0; i < Alength; i++) ((uint8_t *)Adestination)[i] = ((uint8_t *)Asource)[i];	
+		for (REGISTER uint32_t i = 0; i < Alength; i++) ((uint8_t *)Adestination)[i] = ((uint8_t *)Asource)[i];	
 	}		
 	
 }
 
-bool xb_memorycompare(register void *Aadr1, register void *Aadr2, register uint32_t Alength)
+bool xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength)
 {
-	for (register uint32_t i = 0;i<Alength;i++)
+	for (REGISTER uint32_t i = 0;i<Alength;i++)
 	{
 		if (((uint8_t *)Aadr1)[i] != ((uint8_t *)Aadr2)[i])
 		{

@@ -38,10 +38,12 @@ int cbufSerial::peek(void)
 	return buffer->peek();
 }
 
+#ifndef __riscv64
 void cbufSerial::flush(void)
 {
 	buffer->flush();
 }
+#endif
 
 
 int cbufSerial::read(void)

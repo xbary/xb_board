@@ -66,12 +66,27 @@ void loop()
 #define FSS(str) (String(F(str)).c_str())
 #endif
 
+#ifdef __riscv64
+#include <WString.h>
+#define FSS(str) (String(F(str)).c_str())
+#endif
+
 #ifdef ARDUINO_ARCH_STM32F1
 #include <stdint.h>
 #include <WString.h>
 #define FSS(str) ((const char *)(str))
 #endif
 
+#endif
+
+#ifdef __riscv64
+#include <utils/xb_util.h>
+#include <utils/cbufSerial.h>
+#endif
+
+#ifdef ARDUINO_ARCH_STM32
+#include <utils/xb_util.h>
+#include <utils/cbufSerial.h>
 #endif
 
 #ifdef ESP32
@@ -383,8 +398,8 @@ extern TTaskDef XB_BOARD_DefTask;
 extern volatile uint32_t DateTimeUnix;
 extern volatile uint32_t DateTimeStart;
 
-#ifdef ARDUINO_ARCH_STM32F1
-#define SysTickCount systick_uptime_millis
+#ifdef ARDUINO_ARCH_STM32
+#define SysTickCount (uint32_t)(millis())
 #endif
 
 #ifdef ESP8266
@@ -397,6 +412,11 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #define SysTickCount (uint32_t)(millis())
 #endif
 
+#ifdef __riscv64
+#define SysTickCount (uint32_t)(millis())
+#endif
+
+
 #define XB_BOARD_SETUP() board.AddTask(&XB_BOARD_DefTask)
 #define XB_BOARD_LOOP() board.IterateTask()
 
@@ -404,8 +424,12 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #define BOARD_CRITICALFREEHEAP (1024*19)
 #endif
 
+#ifndef NUM_DIGITAL_PINS
+#define NUM_DIGITAL_PINS 61
+#endif
+
 #ifndef BOARD_NR_GPIO_PINS 
-#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS       
+#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS
 #endif
 
 #ifndef pin_Mode

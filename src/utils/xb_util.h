@@ -11,6 +11,14 @@
 #include <time.h>
 #include <math.h>
 
+#ifdef __riscv64
+#define REGISTER
+#endif
+
+#if defined(ESP32) || defined(ESP8266) || defined(ARDUINO_ARCH_STM32) 
+#define REGISTER register
+#endif
+
 #ifndef ICACHE_FLASH_ATTR
 #define ICACHE_FLASH_ATTR
 #endif
@@ -182,13 +190,13 @@ extern void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt);
 extern uint32_t RTC_EncodeUnixTime(struct tm *TM);
 extern void GetTimeIndx(String &Atotxt, uint32_t Atimeindx);
 extern void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx);
-extern uint8_t ahextoint(register uint8_t Ach);
+extern uint8_t ahextoint(REGISTER uint8_t Ach);
 extern uint8_t doubletostr(double v,char *buf, uint8_t prec = 2);
 extern double CutPrecision(volatile double val, uint8_t prec);
 extern char* _itoa(int value, char* result, int base);
-extern uint8_t inttoa(register int32_t value,register  char* result);
-extern uint8_t inttoaw(register int32_t value, register  char* result,uint8_t Awidth,char Ach);
-extern uint8_t uinttoa(register uint32_t value, register char* result);
+extern uint8_t inttoa(REGISTER int32_t value,REGISTER  char* result);
+extern uint8_t inttoaw(REGISTER int32_t value, REGISTER  char* result,uint8_t Awidth,char Ach);
+extern uint8_t uinttoa(REGISTER uint32_t value, REGISTER char* result);
 extern bool hexstrTouint32(char *Astr, int8_t Alen, uint32_t *Aint);
 extern void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aadd);
 extern void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aadd);
@@ -200,25 +208,25 @@ extern uint8_t IPtoString(uint32_t Aip, char *Asip);
 extern uint8_t StringToUINT(char *Astr, uint32_t *Aint);
 extern uint8_t StringHEXToUINT(char *Astr, uint32_t *Aint);
 extern uint8_t StringtoIP(char *Asip, uint32_t *Aip);
-extern uint32_t StringLength(register char *Astr, register uint8_t Acharend);
-uint32_t StringLength(const char *Astr, register uint8_t Acharend);
-extern uint32_t StringAddString(register char *Astr, register uint8_t Acharend, register char *Aaddstr, register uint8_t Aaddcharend);
-extern uint32_t StringAddUINT8(register char *Astr, register uint8_t Acharend, register uint8_t Aadduint);
-extern uint32_t StringAddUINT8w(register char *Astr, register uint8_t Acharend, register uint8_t Aadduint, uint8_t Awidth, char Achw);
-extern uint32_t StringAddUINT16(register char *Astr, register uint8_t Acharend, register uint16_t Aadduint);
-extern uint32_t StringAddUINT16w(register char *Astr, register uint8_t Acharend, register uint16_t Aadduint, uint8_t Awidth, char Achw);
-extern uint32_t StringAddUINT32(register char *Astr, register uint8_t Acharend, register uint32_t Aadduint);
-extern uint32_t StringAddUINT32w(register char *Astr, register uint8_t Acharend, register uint32_t Aadduint, uint8_t Awidth, char Achw);
-extern uint32_t StringAddHexUINT32(register char *Astr, register uint8_t Acharend, register uint32_t Aadduint);
-extern uint32_t StringAddChar(register char *Astr, register uint8_t Acharend, register char Aaddchar);
+extern uint32_t StringLength(REGISTER char *Astr, REGISTER uint8_t Acharend);
+uint32_t StringLength(const char *Astr, REGISTER uint8_t Acharend);
+extern uint32_t StringAddString(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER char *Aaddstr, REGISTER uint8_t Aaddcharend);
+extern uint32_t StringAddUINT8(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint8_t Aadduint);
+extern uint32_t StringAddUINT8w(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint8_t Aadduint, uint8_t Awidth, char Achw);
+extern uint32_t StringAddUINT16(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint16_t Aadduint);
+extern uint32_t StringAddUINT16w(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint16_t Aadduint, uint8_t Awidth, char Achw);
+extern uint32_t StringAddUINT32(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint32_t Aadduint);
+extern uint32_t StringAddUINT32w(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint32_t Aadduint, uint8_t Awidth, char Achw);
+extern uint32_t StringAddHexUINT32(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER uint32_t Aadduint);
+extern uint32_t StringAddChar(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER char Aaddchar);
 extern void uintcat(char *Astr, uint32_t Avalue);
 extern void charcat(char *Astr, char Ach);
 
 typedef enum { staLeft, staCentre, staRight } TStringTextAlignment;
 extern void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringtextalignment=staLeft, char Ach=' '); 
-extern void xb_memoryfill(register void *Aadr, register uint32_t Alength, register uint8_t Avalue);
-extern void xb_memorycopy(register void *Asource, register void *Adestination, register int32_t Alength);
-extern bool xb_memorycompare(register void *Aadr1, register void *Aadr2, register uint32_t Alength);
+extern void xb_memoryfill(REGISTER void *Aadr, REGISTER uint32_t Alength, REGISTER uint8_t Avalue);
+extern void xb_memorycopy(REGISTER void *Asource, REGISTER void *Adestination, REGISTER int32_t Alength);
+extern bool xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength);
 
 
 

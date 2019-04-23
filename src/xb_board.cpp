@@ -1,14 +1,6 @@
 #pragma region INCLUDES
 #include <xb_board.h>
 
-
-// Jeœli zdefiniowano jak¹œ szybkoœæ dla któregoœ z UARTów to obowi¹zko pod³¹czona zostanie inkluda 
-// i uruchomienie zadania odpowiedzialnego za obœ³ugê UARTów.
-/*#if defined(Serial0Board_BAUD) || defined(Serial1Board_BAUD) || defined(Serial2Board_BAUD)
-#include <xb_SERIAL.h>
-#endif*/
-
-
 // Dla ESP8266 inkludy z funkcjami jêzyka C
 #ifdef ESP8266
 extern "C" {
@@ -16,15 +8,8 @@ extern "C" {
 }
 #endif
  
-// Dla ESP32 inkludy z funkcjami jêzyka C
-//#ifdef ESP32
-//extern "C" {
-//}
-//#endif
-
-
 // Dla STM32F1 inkludy z funkcjami jêzyka C
-#ifdef ARDUINO_ARCH_STM32F1
+#ifdef ARDUINO_ARCH_STM32
 extern "C" {
 #include <string.h>
 #include <stdlib.h>
@@ -38,7 +23,6 @@ extern "C" {
 
 #pragma endregion
 #pragma region GLOBAL_VARS
-
 // Podstawowy obiekt tzw. "kernel"
 TXB_board board; 
 
@@ -115,7 +99,6 @@ void XB_BOARD_Setup(void)
 	DateTimeUnix = 0;
 	DateTimeStart = 0;
 
-	board.Log('.');
 	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e aplikacja dzia³a
 #ifdef BOARD_LED_LIFE_PIN
 	board.pinMode(BOARD_LED_LIFE_PIN, OUTPUT);
@@ -151,7 +134,6 @@ void XB_BOARD_Setup(void)
 	board.TickEnableBlink = 250;
 #endif
 #endif
-	board.Log(".OK");
 
 	// Jeœli interface uruchomiony to dodanie zadania obs³uguj¹cego interface GUI
 #ifdef XB_GUI
@@ -609,6 +591,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				if (t != NULL)
 				{
 					bool r = GUIGADGET_OpenMainMenu(t->TaskDef);
+					(void)r;
 				}
 				res = true;
 				break;
@@ -622,8 +605,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #if defined(ESP8266) || defined(ESP32)
 					ESP.restart();
 					delay(5000);
-#elif defined(ARDUINO_ARCH_STM32F1)
-					nvic_sys_reset();
+#elif defined(ARDUINO_ARCH_STM32)
+					void *x = board._malloc(128);
+					void *y = board._malloc(128);
+					board.free(x);
 #else
 					board.Log(FSS("\nReset no support!\n"));
 #endif
@@ -690,6 +675,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		{
 			if (Am->Data.WindowData.ID == 0)
 			{
+#ifdef __riscv64
+				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (Sipeed Maix), 400Mhz)");
+#endif
 #ifdef ESP8266
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP8266, 160Mhz)");
 #endif
@@ -701,8 +689,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP32, 240Mhz)");
 #endif
 #endif
-#ifdef ARDUINO_ARCH_STM32F1
-				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (STM32F1, 72Mhz)");
+#ifdef ARDUINO_ARCH_STM32
+				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (STM32)");
 #endif
 			}
 			res = true;
@@ -965,23 +953,20 @@ TUniqueID TXB_board::GetUniqueID()
 	V.ID.ID[7] = V.ID.ID[5] + V.ID.ID[6];
 #endif
 
-#ifdef ARDUINO_ARCH_STM32F1
-#define STM32_UUID ((uint32_t *) 0x1ffff7e8)
+#ifdef ARDUINO_ARCH_STM32
 
-	volatile uint32_t idpart[3];
-	idpart[0] = STM32_UUID[0];
-	idpart[1] = STM32_UUID[1];
-	idpart[2] = STM32_UUID[2];
-	uint8_t *idpart8=(uint8_t *)idpart;
+	uint8_t uid[12];
+	HAL_GetUID((uint32_t *)&uid);
+	
+	V.ID.ID[0] = uid[0];
+	V.ID.ID[1] = uid[1] + uid[7];
+	V.ID.ID[2] = uid[2] + uid[8];
+	V.ID.ID[3] = uid[3] + uid[9];
+	V.ID.ID[4] = uid[4] + uid[10];
+	V.ID.ID[5] = uid[5] + uid[11];
+	V.ID.ID[6] = uid[6];
+	V.ID.ID[7] = crc8(uid, 12);
 
-	V.ID.ID[0] = idpart8[0];
-	V.ID.ID[1] = idpart8[1];
-	V.ID.ID[2] = idpart8[2] + idpart8[8];
-	V.ID.ID[3] = idpart8[3] + idpart8[9];
-	V.ID.ID[4] = idpart8[4] + idpart8[10];
-	V.ID.ID[5] = idpart8[5] + idpart8[11];
-	V.ID.ID[6] = idpart8[6];
-	V.ID.ID[7] = idpart8[7];
 	
 #endif
 
@@ -1037,7 +1022,6 @@ void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstri
 	Adestinationstring.reserve(lensource * 2);
 	char ch = 0;
 	String varname = "";
-	uint32_t indx_startvarname;
 	varname.reserve(256);
 	String varvalue = "";
 	varvalue.reserve(256);
@@ -1054,7 +1038,6 @@ void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstri
 				if (ch == '%')
 				{
 					sf = sfGetVarName;
-					indx_startvarname = indx_s;
 					varname = "";
 					indx_s++;
 				}
@@ -1313,7 +1296,7 @@ void TXB_board::handle(void)
 	{
 		Blink_Life();
 
-#if defined(ARDUINO_ARCH_STM32F1) || defined(ESP32)
+#if defined(ARDUINO_ARCH_STM32) || defined(ESP32) || defined(__riscv64)
 		DateTimeUnix++;
 #endif
 		
@@ -1842,7 +1825,6 @@ bool TXB_board::DoMessageOnAllTask(TMessageBoard *mb, bool Arunagain, TDoMessage
 bool TXB_board::DoMessageByTaskName(String Ataskname,TMessageBoard *mb, bool Arunagain)
 {
 	TTask *t = TaskList;
-	bool res = false;
 	String tn;
 
 	while (t != NULL)
@@ -1946,6 +1928,11 @@ void TXB_board::SendMessage_FreePTR(void *Aptr)
 // -------------------------------------
 // Zwrócenie iloœci wolnej pamiêci PSRAM
 // <- Iloœæ bajtów
+#ifdef ARDUINO_ARCH_STM32
+extern "C" void * _sbrk(int);
+extern uint32_t _estack;
+#endif
+
 uint32_t TXB_board::getFreePSRAM()
 {
 #if defined(BOARD_HAS_PSRAM) && defined(ESP32)
@@ -1977,7 +1964,16 @@ uint32_t TXB_board::getFreePSRAM()
 	return freepsram;
 #endif
 #else
+#ifdef __riscv64
+	return get_free_heap_size();
+#endif
+#ifdef ARDUINO_ARCH_STM32
+	return getFreeHeap();
+#endif
+#if defined(ESP32) || defined(ESP8266)
 	return ESP.getFreeHeap();
+#endif
+	
 #endif
 }
 // -------------------------------------
@@ -1989,24 +1985,16 @@ uint32_t TXB_board::getFreeHeap()
 	return ESP.getFreeHeap();
 #endif
 
-#ifdef ARDUINO_ARCH_STM32F1
-	/*
-		volatile int32_t size = 0; 
-		volatile uint32_t ADR = 0;
-		volatile uint8_t a = 1;
+#ifdef __riscv64
+	return get_free_heap_size();
+#endif
 
-		noInterrupts();
-
-		ADRESS_STACK = (uint32_t)&a;
-		ADRESS_HEAP = (uint32_t)malloc(32);
-		board.free((void *)ADRESS_HEAP);
-
-		size = ADRESS_STACK - ADRESS_HEAP;
-		interrupts();
-
-		return size;
-		*/
-	return 20 * 1024;
+#ifdef ARDUINO_ARCH_STM32
+	{
+		uint8_t v = 0;
+		char * heap_end = (char *)_sbrk(0);
+		return ((uint32_t)&v) - ((uint32_t)heap_end);
+	}
 #endif
 }
 #if !defined(_VMICRO_INTELLISENSE)
@@ -2627,7 +2615,11 @@ bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAd
 	xb_memorycopy((void *)(ASourceTaskName.c_str()), &hdft->FT.SourceTaskName, ASourceTaskName.length());
 	xb_memorycopy((void *)(ADestTaskName.c_str()), &hdft->FT.DestTaskName, ADestTaskName.length());
 	
+#ifdef __riscv64
+	hdft->FT.size = (((uint64_t)&hdft->FT.Frame) - ((uint64_t)&hdft->FT)) + hdft->FT.LengthFrame;
+#else
 	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+#endif
 	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
 	if (ATaskDefStream != NULL)
 	{
@@ -2685,7 +2677,11 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	hdft->FT.FrameID = AFrameID;
 	hdft->FT.FrameType = AframeType;
 	
+#ifdef __riscv64
+	hdft->FT.size = (((uint64_t)&hdft->FT.Frame) - ((uint64_t)&hdft->FT)) + hdft->FT.LengthFrame;
+#else
 	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+#endif
 	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
 	if (ATaskDefStream != NULL)
 	{
@@ -2700,7 +2696,7 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	return;
 }
 
-void PrintFrameTransport(TFrameTransport *Aft)
+/*void PrintFrameTransport(TFrameTransport *Aft)
 {
 	String s;
 	s.reserve(512);
@@ -2711,7 +2707,7 @@ void PrintFrameTransport(TFrameTransport *Aft)
 	s += "\n";
 	board.Log(s.c_str());
 	
-}
+}*/
 // -----------------------------------------------------------------------------------------------------------------------
 // Sprawdzenie sumy kontrolnej wskazanej ramki, wys³anie messaga do wskazanego zadania w ramce z wskaŸnikiem na dane ramki
 // -> Aft - WskaŸnik ramki transportowej
