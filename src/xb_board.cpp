@@ -87,6 +87,8 @@ void TXB_board::DateTimeSecond_init(void)
 #pragma endregion
 #pragma region FUNKCJE_SETUP_LOOP_MESSAGES
 // -------------------------------------
+
+// -------------------------------------
 // Procedura inicjuj¹ca zadanie g³ównego
 void XB_BOARD_Setup(void)
 {
@@ -909,14 +911,13 @@ TXB_board::TXB_board()
 	TXCounter = 0;
 	doAllInterruptRC = 0;
 
-/*	Default_StreamTaskDef = NULL;
-	Default_SecStreamTaskDef = NULL;*/
 	Default_ShowLogInfo = true;
 	Default_ShowLogWarn = true;
 	Default_ShowLogError = true;
 
 	HandleFrameTransportInGetStream = true;
 	DeviceName = BOARD_DEVICE_NAME;
+	DeviceVersion = BOARD_DEVICE_VERSION;
 	DeviceID = GetUniqueID();
 	PinInfoTable = (TPinInfo *)_malloc_psram(BOARD_NR_GPIO_PINS);
 }
