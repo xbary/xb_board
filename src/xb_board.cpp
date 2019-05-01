@@ -8,12 +8,21 @@ extern "C" {
 }
 #endif
  
-// Dla STM32F1 inkludy z funkcjami jêzyka C
+// Dla STM32 inkludy z funkcjami jêzyka C
 #ifdef ARDUINO_ARCH_STM32
 extern "C" {
 #include <string.h>
 #include <stdlib.h>
 }
+#endif
+
+#ifdef XB_PREFERENCES
+#ifdef ESP32
+#include <Preferences.h>
+Preferences xbpreferences;
+#else
+#error "XB_PREFERENCES not support"
+#endif
 #endif
 
 #ifdef XB_GUI
@@ -128,8 +137,8 @@ void XB_BOARD_Setup(void)
 
 	// Ustawienie czasu jak d³ugo ma utrzymywaæ siê stan 1 na pinach informuj¹cych na zew¹trz o transmisji danych
 #if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
-#ifdef TICK_LED_BLINK
-	board.TickEnableBlink = TICK_LED_BLINK;
+#ifdef BOARD_LED_RXTX_BLINK_TICK
+	board.TickEnableBlink = BOARD_LED_RXTX_BLINK_TICK;
 #else
 	board.TickEnableBlink = 250;
 #endif
@@ -716,7 +725,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					winHandle0->PutStr(0, 1, FSS("DEVICE VERSION: "));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(FSS(DEVICE_VERSION));
+					winHandle0->PutStr(board.DeviceVersion.c_str());
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
@@ -907,7 +916,7 @@ TXB_board::TXB_board()
 	Default_ShowLogError = true;
 
 	HandleFrameTransportInGetStream = true;
-	DeviceName = DEVICE_NAME;
+	DeviceName = BOARD_DEVICE_NAME;
 	DeviceID = GetUniqueID();
 	PinInfoTable = (TPinInfo *)_malloc_psram(BOARD_NR_GPIO_PINS);
 }
@@ -3089,10 +3098,6 @@ void TXB_board::SubStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddres
 	}
 	return;
 }
-
-
-
-
 #pragma endregion
 #pragma region FUNKCJE_KOMUNIKATOW
 
@@ -3309,4 +3314,124 @@ void TXB_board::PrintTimeFromRun(void)
 	Log(&Astream);
 }
 #pragma endregion
+#pragma region PREFERENCES
+#ifdef XB_PREFERENCES
+//-----------------------------------------------------------------------------------------------------------------------
+bool TXB_board::PREFERENCES_BeginSection(String ASectionname)
+{
+#ifdef ESP32
+	if (ASectionname.length() >= 16)
+	{
+		String ts = ASectionname;
+		ASectionname = ASectionname.substring(0, 15);
+		//board.Log(String("xbpreferences section [" + ts + "] reduce to size 15 char [" + ASectionname + "]").c_str(), true, true, tlWarn);
+	}
 
+
+	return xbpreferences.begin(ASectionname.c_str());
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void TXB_board::PREFERENCES_EndSection()
+{
+#ifdef ESP32
+	xbpreferences.end();
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutBool(const char* key, const bool value)
+{
+#ifdef ESP32
+	return xbpreferences.putBool(key, value);
+#else
+	return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+bool TXB_board::PREFERENCES_GetBool(const char* key, const bool defaultvalue)
+{
+#ifdef ESP32
+	return xbpreferences.getBool(key, defaultvalue);
+#else
+	return defaultvalue;
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_GetString(const char* key, char* value, const size_t maxlen)
+{
+#ifdef ESP32
+	return xbpreferences.getString(key, value, maxlen);
+#else
+	return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+String TXB_board::PREFERENCES_GetString(const char* key, String defaultvalue)
+{
+#ifdef ESP32
+	return xbpreferences.getString(key, defaultvalue);
+#else
+	return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+uint32_t TXB_board::PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue)
+{
+#ifdef ESP32
+	return xbpreferences.getULong(key, defaultvalue);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+uint8_t TXB_board::PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue)
+{
+#ifdef ESP32
+	return xbpreferences.getUChar(key, defaultvalue);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutString(const char* key, const char* value)
+{
+#ifdef ESP32
+	return xbpreferences.putString(key, value);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutString(const char* key, String value)
+{
+#ifdef ESP32
+	return xbpreferences.putString(key, value);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutUINT32(const char* key, uint32_t value)
+{
+#ifdef ESP32
+	return xbpreferences.putULong(key, value);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
+{
+#ifdef ESP32
+	return xbpreferences.putUChar(key, value);
+#else
+	return 0;
+#endif
+}
+#endif
+#pragma endregion 

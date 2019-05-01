@@ -257,7 +257,7 @@ class TXB_board
 private:
 	bool iteratetask_procedure;
 	bool setup_procedure;
-#ifdef ARDUINO_ARCH_STM32F1
+#ifdef ARDUINO_ARCH_STM32
 	uint32_t ADRESS_HEAP;
 	uint32_t ADRESS_STACK;
 #endif
@@ -266,6 +266,7 @@ private:
 public:
 	//-----------------------------------------------------------------------------------------------------------------
 	String DeviceName;
+	String DeviceVersion;
 	TUniqueID DeviceID;
 	uint32_t Tick_ESCKey;
 	uint8_t TerminalFunction;
@@ -392,6 +393,22 @@ public:
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
 	//-----------------------------------------------------------------------------------------------------------------
+#ifdef XB_PREFERENCES
+	bool PREFERENCES_BeginSection(String ASectionname);
+	void PREFERENCES_EndSection();
+	size_t PREFERENCES_PutBool(const char* key, const bool value);
+	bool PREFERENCES_GetBool(const char* key, const bool defaultvalue);
+	size_t PREFERENCES_GetString(const char* key, char* value, const size_t maxlen);
+	String PREFERENCES_GetString(const char* key, String defaultvalue);
+	uint32_t PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue);
+	uint8_t PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue);
+	size_t PREFERENCES_PutString(const char* key, const char* value);
+	size_t PREFERENCES_PutString(const char* key, String value);
+	size_t PREFERENCES_PutUINT32(const char* key, uint32_t value);
+	size_t PREFERENCES_PutUINT8(const char* key, uint8_t value);
+#endif
+	//-----------------------------------------------------------------------------------------------------------------
+
 };
 
 extern TXB_board board;
