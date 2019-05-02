@@ -396,6 +396,8 @@ public:
 #ifdef XB_PREFERENCES
 	bool PREFERENCES_BeginSection(String ASectionname);
 	void PREFERENCES_EndSection();
+	size_t PREFERENCES_PutArrayBytes(const char* key, const void* array, size_t sizearray);
+	size_t PREFERENCES_GetArrayBytes(const char* key, void* array, size_t maxsizearray);
 	size_t PREFERENCES_PutBool(const char* key, const bool value);
 	bool PREFERENCES_GetBool(const char* key, const bool defaultvalue);
 	size_t PREFERENCES_GetString(const char* key, char* value, const size_t maxlen);

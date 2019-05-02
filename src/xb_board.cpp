@@ -3341,6 +3341,27 @@ void TXB_board::PREFERENCES_EndSection()
 }
 
 //-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutArrayBytes(const char* key, const void *array,size_t sizearray)
+{
+#ifdef ESP32
+	return xbpreferences.putBytes(key, array,sizearray);
+#else
+	return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_GetArrayBytes(const char* key, void* array, size_t maxsizearray)
+{
+#ifdef ESP32
+	return xbpreferences.getBytes(key, array, maxsizearray);
+#else
+	return 0;
+#endif
+}
+
+
+//-----------------------------------------------------------------------------------------------------------------------
 size_t TXB_board::PREFERENCES_PutBool(const char* key, const bool value)
 {
 #ifdef ESP32
