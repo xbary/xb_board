@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Globals">
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <ItemsProjectGuid>{2e60ac30-33af-4790-b489-f567125c7349}</ItemsProjectGuid>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectCapability Include="SourceItemsFromImports" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\xb_board.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\utils\cbufSerial.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\utils\xb_util.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)src\utils\_cbuf.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\xb_board.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\cbufSerial.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\xb_board_message.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\xb_util.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\_cbuf.h" />
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+</Project>
