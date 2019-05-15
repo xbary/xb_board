@@ -50,6 +50,14 @@ volatile uint32_t DateTimeStart;
 volatile uint32_t __SysTickCount;
 #endif
 
+#if defined(ESP32)
+#ifdef BOARD_HAS_PSRAM
+#ifndef XB_WIFI
+uint32_t statusdoping;
+#endif
+#endif
+#endif
+
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
 #ifdef XB_GUI
 TWindowClass *winHandle0;
@@ -1546,13 +1554,19 @@ void TXB_board::IterateTask(void)
 		BEGIN_WAITMS(GFH, 500);
 		{
 #ifdef ESP32
+#ifdef BOARD_HAS_PSRAM
+			if (statusdoping == 0)
+			{
+#endif
+				FreePSRAMInLoop = getFreePSRAM();
+#ifdef BOARD_HAS_PSRAM
+			}
+#endif
 
-			FreePSRAMInLoop = getFreePSRAM();
 			if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
 			{
 				MinimumFreePSRAMInLoop = FreePSRAMInLoop;
 			}
-
 
 			FreeHeapInLoop = getFreeHeap();
 			if (FreeHeapInLoop < MinimumFreeHeapInLoop)
@@ -1882,7 +1896,12 @@ bool TXB_board::SendMessage_GetTaskNameString(TTaskDef *ATaskDef,String &APointe
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GET_TASKNAME_STRING;
 	mb.Data.PointerString = &APointerString;
-	return DoMessage(&mb, true, CurrentTask, ATaskDef);
+	bool res = DoMessage(&mb, true, CurrentTask, ATaskDef);
+	if (APointerString.length() > BOARD_TASKNAME_MAXLENGTH)
+	{
+		APointerString = APointerString.substring(0, BOARD_TASKNAME_MAXLENGTH);
+	}
+	return res;
 }
 // -----------------------------------------------------------------------------
 // Wys³anie messaga informuj¹cego zadanie ¿e rozpocznie siê procedura OTA Update
@@ -2143,7 +2162,6 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStrea
 	mb.Data.StreamData.Length = Amaxlength;
 	mb.Data.StreamData.FromAddress = Afromaddress;
 	
-	
 	THandleDataFrameTransport *hdft = AStreamtaskdef->Task->HandleDataFrameTransportList;
 	
 	while (hdft != NULL)
@@ -2159,7 +2177,7 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStrea
 
 		hdft = hdft->Next;
 	}
-	
+	//board.Log("gs 5", true, true);
 	if (DoMessage(&mb, true, NULL, AStreamtaskdef))
 	{
 /*		if (AStreamtaskdef == &XB_SERIAL_DefTask)
@@ -2174,18 +2192,19 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStrea
 				}
 			}
 		}*/
-
+		//board.Log("gs 6", true, true);
 		hdft = AddToTask_HandleDataFrameTransport(AStreamtaskdef, mb.Data.StreamData.FromAddress);
 		if (hdft != NULL) 
 		{
+			//board.Log("gs 7", true, true);
 			HandleDataFrameTransport(&mb, hdft, AStreamtaskdef);
 		}
-		
+		//board.Log("gs 8", true, true);
 		return mb.Data.StreamData.LengthResult;
 	}
-	
+	//board.Log("gs 9", true, true);
 	CheckOld_HandleDataFrameTransport(AStreamtaskdef->Task);
-	
+	//board.Log("gs 10", true, true);
 	return 0;
 }
 // ------------------------------------------------------------
@@ -2252,6 +2271,28 @@ void TXB_board::EndUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress)
 	
 	DoMessage(&mb, true, NULL, AStreamtaskdef);
 	return;
+}
+// ---------------------------------------------------------------------------------------------------------
+// Zapytanie zadania streamu o udostêpnienie lokalnego adresu
+// -> *AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+// -> *Alocaladdress -  wskaŸnik na wartoœæ zwrócon¹ czyli lokalny adres
+bool TXB_board::GetStreamLocalAddress(TTaskDef* AStreamTaskDef, uint32_t* Alocaladdress)
+{
+	if (AStreamTaskDef == NULL) return false;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saGetLocalAddress;
+	mb.Data.StreamData.FromAddress = *Alocaladdress;
+	mb.Data.StreamData.ToAddress = *Alocaladdress;
+
+	if (DoMessage(&mb, true, NULL, AStreamTaskDef))
+	{
+		*Alocaladdress = mb.Data.StreamData.ToAddress;
+		return true;
+	}
+	
+	return false;
 }
 // ---------------------------------------------------------------------------------------------------------
 // Funkcja wywo³ywana w GetStream, s³u¿y do wyci¹gania ze streamu ramki która zaczyna siê od 4 bajtowego ACK
@@ -2637,7 +2678,11 @@ bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAd
 		reslen=PutStream(hdft, ltsize, ATaskDefStream,ADestAddress);
 		if (reslen != ltsize)
 		{
-			board.Log(String("Stream error - Send: " + String(ltsize) + " Sended:" + String(reslen) + " ...").c_str(), true, true, tlWarn);
+			*AframeID = 0;
+			if (1 == 0)
+			{
+				board.Log(String("Stream error - Send: " + String(ltsize) + " Sended: " + String(reslen) + " ...").c_str(), true, true, tlWarn);
+			}
 			return false;
 		}
 	}
@@ -2731,8 +2776,6 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 	{
 		if (Aft->FrameType == ftData)
 		{
-			
-			
 			TTaskDef *DestTaskDefReceive = GetTaskDefByName(String(Aft->DestTaskName));
 			if (DestTaskDefReceive == NULL)
 			{
@@ -2747,6 +2790,7 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 				mb.Data.FrameReceiveData.TaskDefStream = ATaskDefStream;
 				mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
 				mb.Data.FrameReceiveData.SourceTaskName = Aft->SourceTaskName;
+				mb.Data.FrameReceiveData.DestAddress = Aft->DestAddress;
 
 				bool res = DoMessage(&mb,true,NULL,DestTaskDefReceive);
 				if (res)
@@ -2821,6 +2865,7 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 			mb.Data.FrameReceiveData.TaskDefStream = NULL;
 			mb.Data.FrameReceiveData.SourceAddress = Aft->SourceAddress;
 			mb.Data.FrameReceiveData.SourceTaskName = Aft->SourceTaskName;
+			mb.Data.FrameReceiveData.DestAddress = Aft->DestAddress;
 
 			bool res = DoMessage(&mb,true,NULL,TaskDefReceive);
 			if (res)

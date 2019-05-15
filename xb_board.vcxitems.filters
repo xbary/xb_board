@@ -13,4 +13,11 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\xb_board_message.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\xb_util.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)library.properties" />
+    <None Include="$(MSBuildThisFileDirectory).gitignore" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="$(MSBuildThisFileDirectory)vs-readme.txt" />
+  </ItemGroup>
 </Project>

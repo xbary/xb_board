@@ -27,5 +27,10 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\_cbuf.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory).gitignore" />
+    <None Include="$(MSBuildThisFileDirectory)library.properties" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="$(MSBuildThisFileDirectory)vs-readme.txt" />
   </ItemGroup>
 </Project>

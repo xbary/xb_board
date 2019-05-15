@@ -104,7 +104,16 @@ extern "C" {
 #include <utils/cbufSerial.h>
 #endif
 
-typedef enum { ftData, ftResponseOK, ftResponseError, ftResponseCRCError, ftBufferIsFull, ftOKWaitForNext, ftUnrecognizedType, ftThereIsNoSuchTask } TFrameType;
+typedef enum { 
+	ftData, 
+	ftResponseOK, 
+	ftResponseError, 
+	ftResponseCRCError, 
+	ftBufferIsFull, 
+	ftOKWaitForNext, 
+	ftUnrecognizedType, 
+	ftThereIsNoSuchTask 
+} TFrameType;
 
 typedef union
 {
@@ -123,6 +132,16 @@ struct THandleDataFrameTransport;
 
 #include "xb_board_def.h"
 #include <utils\xb_board_message.h>
+
+#if defined(ESP32)
+#ifdef BOARD_HAS_PSRAM
+extern "C" uint32_t statusdoping;
+#endif
+#endif
+
+#ifndef BOARD_TASKNAME_MAXLENGTH
+#define BOARD_TASKNAME_MAXLENGTH 16
+#endif
 
 struct TTaskDef
 {
@@ -360,6 +379,7 @@ public:
 	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress = 0);
 	void BeginUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
 	void EndUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
+	bool GetStreamLocalAddress(TTaskDef* AStreamTaskDef, uint32_t* Alocaladdress);
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
 	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress);

@@ -157,7 +157,7 @@ typedef struct {
 
 //-----------------------------------------------------------------------
 typedef enum {
-	saGet, saPut, saBeginUseGet, saEndUseGet
+	saGet, saPut, saBeginUseGet, saEndUseGet, saGetLocalAddress
 } TStreamAction;
 
 typedef struct {
@@ -189,6 +189,7 @@ typedef struct {
 	TTaskDef *TaskDefStream;
 	uint32_t SourceAddress;
 	char *SourceTaskName;
+	uint32_t DestAddress;
 	TFrameReceiveResult FrameReceiveResult;
 } TFrameReceiveData;
 //-----------------------------------------------------------------------
