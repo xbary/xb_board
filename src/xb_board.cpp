@@ -50,12 +50,9 @@ volatile uint32_t DateTimeStart;
 volatile uint32_t __SysTickCount;
 #endif
 
-#if defined(ESP32)
-#ifdef BOARD_HAS_PSRAM
+
 #ifndef XB_WIFI
-uint32_t statusdoping;
-#endif
-#endif
+volatile uint32_t statusdoping;
 #endif
 
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
@@ -1300,13 +1297,17 @@ void TXB_board::handle(void)
 	// Sprawdzenie  przy pierwszym  wejsciu do pêtli loop iloœci wolnej pamiêci
 	if(MaximumFreeHeapInLoop == 0)
 	{
-		FreePSRAMInLoop = getFreePSRAM();
-		MinimumFreePSRAMInLoop = FreePSRAMInLoop;
-		MaximumFreePSRAMInLoop = FreePSRAMInLoop;
-	
-		FreeHeapInLoop = getFreeHeap();
-		MaximumFreeHeapInLoop = FreeHeapInLoop;
-		MinimumFreeHeapInLoop = FreeHeapInLoop;
+		BEGIN_TRANSACTION(statusdoping)
+		{
+			FreePSRAMInLoop = getFreePSRAM();
+			MinimumFreePSRAMInLoop = FreePSRAMInLoop;
+			MaximumFreePSRAMInLoop = FreePSRAMInLoop;
+
+			FreeHeapInLoop = getFreeHeap();
+			MaximumFreeHeapInLoop = FreeHeapInLoop;
+			MinimumFreeHeapInLoop = FreeHeapInLoop;
+		}
+		END_TRANSACTION(statusdoping)
 	}
 	
 	DEF_WAITMS_VAR(LOOPW);
@@ -1424,13 +1425,6 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 		t->TaskDef = Ataskdef;
 		t->TaskDef->Task = t;
 
-/*		t->CountGetStreamAddressAsKeyboard = 0;
-		t->GetStreamAddressAsKeyboard = NULL;
-		
-		t->StreamTaskDef = Default_StreamTaskDef;
-		t->SecStreamTaskDef = Default_SecStreamTaskDef;
-		t->StreamAddress  = Default_StreamAddress;
-		t->SecStreamAddress  = Default_SecStreamAddress;*/
 		t->ShowLogInfo = Default_ShowLogInfo;
 		t->ShowLogWarn = Default_ShowLogWarn;
 		t->ShowLogError = Default_ShowLogError;
@@ -1554,26 +1548,25 @@ void TXB_board::IterateTask(void)
 		BEGIN_WAITMS(GFH, 500);
 		{
 #ifdef ESP32
-#ifdef BOARD_HAS_PSRAM
-			if (statusdoping == 0)
+			BEGIN_TRANSACTION(statusdoping)
 			{
-#endif
 				FreePSRAMInLoop = getFreePSRAM();
-#ifdef BOARD_HAS_PSRAM
-			}
-#endif
+				if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
+				{
+					MinimumFreePSRAMInLoop = FreePSRAMInLoop;
+				}
 
-			if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
+				FreeHeapInLoop = getFreeHeap();
+				if (FreeHeapInLoop < MinimumFreeHeapInLoop)
+				{
+					MinimumFreeHeapInLoop = FreeHeapInLoop;
+				}
+			}
+			ELSE_TRANSACTION(statusdoping)
 			{
-				MinimumFreePSRAMInLoop = FreePSRAMInLoop;
-			}
 
-			FreeHeapInLoop = getFreeHeap();
-			if (FreeHeapInLoop < MinimumFreeHeapInLoop)
-			{
-				MinimumFreeHeapInLoop = FreeHeapInLoop;
 			}
-
+			END_TRANSACTION(statusdoping)
 #else
 			FreeHeapInLoop = getFreeHeap();
 			if (FreeHeapInLoop < MinimumFreeHeapInLoop)
@@ -1653,18 +1646,7 @@ void TXB_board::IterateTask(void)
 	}
 	iteratetask_procedure = false;
 }
-// ------------------------------------------------------------------------------------------------------------
-// Ustawienie we wszystkich zadaniach domyœlnych zadañ streamu który wykorzystywany jest przez funkcje .Log(...
-void TXB_board::ResetInAllTaskDefaultStream()
-{
-	TTask *t = TaskList;
-	while (t != NULL)
-	{
-/*		t->StreamTaskDef = Default_StreamTaskDef;
-		t->SecStreamTaskDef = Default_SecStreamTaskDef;*/
-		t = t->Next;
-	}
-}
+
 // -----------------------------------------------------------
 // Pobranie adresu struktury opisuj¹cej zadanie wed³ug indeksu
 // -> Aindex - indeks zadania weg³ug kolejnoœci dodania do frameworka

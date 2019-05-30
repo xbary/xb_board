@@ -133,11 +133,20 @@ struct THandleDataFrameTransport;
 #include "xb_board_def.h"
 #include <utils\xb_board_message.h>
 
-#if defined(ESP32)
-#ifdef BOARD_HAS_PSRAM
-extern "C" uint32_t statusdoping;
-#endif
-#endif
+extern "C" volatile uint32_t statusdoping;
+
+#define BEGIN_TRANSACTION(Anamevar) \
+{ \
+bool status##Anamevar=true; \
+if (Anamevar==0) { Anamevar++;
+
+#define ELSE_TRANSACTION(Anamevar) \
+} \
+else \
+{ status##Anamevar=false;
+
+#define END_TRANSACTION(Anamevar) \
+if (status##Anamevar) if (Anamevar>0) Anamevar--;} }
 
 #ifndef BOARD_TASKNAME_MAXLENGTH
 #define BOARD_TASKNAME_MAXLENGTH 16
@@ -331,7 +340,6 @@ public:
 	void handle(void);	
 	TTask *AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID = 0);
 	bool DelTask(TTaskDef *Ataskdef);
-	void ResetInAllTaskDefaultStream();		
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	TTaskDef *GetTaskDefByName(String ATaskName);
 	void IterateTask(void);

@@ -39,19 +39,6 @@
 #define offsetof(type, member) ((long) &((type *) 0)->member)
 #endif
 
-#define BEGIN_MAXMS(Aname) \
-{ \
-uint32_t Aname = SysTickCount; \
-while(1) \
-{
-
-#define END_MAXMS() break;\
-} \
-}
-
-#define	MAXMS_SKIP(Aname,Ams) if ((SysTickCount-Aname)>Ams) break;
-
-
 #define DEF_WAITMS_VAR(Aname) \
 static uint32_t Aname=0; 
 
