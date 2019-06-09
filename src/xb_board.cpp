@@ -245,8 +245,17 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		{
 			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
 			{
-				Am->Data.GpioData.ActionData.Value = !digital_Read(Am->Data.GpioData.NumPin);
+				if (board.PinInfoTable != NULL)
+				{
+					Am->Data.GpioData.ActionData.Value = !board.PinInfoTable[Am->Data.GpioData.NumPin].value;
+				}
+				else
+				{
+					Am->Data.GpioData.ActionData.Value = !digitalRead(Am->Data.GpioData.NumPin);
+				}
+
 				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
+		
 				if (board.PinInfoTable != NULL)
 				{
 					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
@@ -925,6 +934,8 @@ TXB_board::TXB_board()
 	DeviceVersion = BOARD_DEVICE_VERSION;
 	DeviceID = GetUniqueID();
 	PinInfoTable = (TPinInfo *)_malloc_psram(BOARD_NR_GPIO_PINS);
+	HDFT_ResponseItemList = NULL;
+
 }
 
 TXB_board::~TXB_board()
@@ -1326,6 +1337,27 @@ void TXB_board::handle(void)
 		CheckOld_HandleDataFrameTransport();
 	}
 	END_WAITMS(LOOPW);
+
+	DEF_WAITMS_VAR(LOOPW3);
+	BEGIN_WAITMS(LOOPW3, 100)
+	{
+		THDFT_ResponseItem* hdft_Item = HDFT_ResponseItemList;
+		while (hdft_Item != NULL)
+		{
+			uint32_t result = PutStream(&hdft_Item->hdft, hdft_Item->ltsize, hdft_Item->TaskDefStream, hdft_Item->DestAddress);
+			if (result == hdft_Item->ltsize)
+			{
+				DELETE_FROM_LIST_STR(HDFT_ResponseItemList, hdft_Item);
+				board.free(hdft_Item);
+				break;
+			}
+			hdft_Item = hdft_Item->Next;
+		}
+	}
+	END_WAITMS(LOOPW3);
+
+
+	//
 
 	//--------------------------------------
 	
@@ -2159,34 +2191,16 @@ uint32_t TXB_board::GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStrea
 
 		hdft = hdft->Next;
 	}
-	//board.Log("gs 5", true, true);
 	if (DoMessage(&mb, true, NULL, AStreamtaskdef))
 	{
-/*		if (AStreamtaskdef == &XB_SERIAL_DefTask)
-		{
-			if (mb.Data.StreamData.LengthResult > 0)
-			{
-				Serial1.print("\nLengthresult=" + String(mb.Data.StreamData.LengthResult) + " ; Length=" + String(mb.Data.StreamData.Length)+ " ; Data: ");
-				for (int t = 0; t < mb.Data.StreamData.LengthResult; t++)
-				{
-					Serial1.print(((uint8_t *)mb.Data.StreamData.Data)[t]);
-					Serial1.print(',');	
-				}
-			}
-		}*/
-		//board.Log("gs 6", true, true);
 		hdft = AddToTask_HandleDataFrameTransport(AStreamtaskdef, mb.Data.StreamData.FromAddress);
 		if (hdft != NULL) 
 		{
-			//board.Log("gs 7", true, true);
 			HandleDataFrameTransport(&mb, hdft, AStreamtaskdef);
 		}
-		//board.Log("gs 8", true, true);
 		return mb.Data.StreamData.LengthResult;
 	}
-	//board.Log("gs 9", true, true);
 	CheckOld_HandleDataFrameTransport(AStreamtaskdef->Task);
-	//board.Log("gs 10", true, true);
 	return 0;
 }
 // ------------------------------------------------------------
@@ -2661,10 +2675,9 @@ bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAd
 		if (reslen != ltsize)
 		{
 			*AframeID = 0;
-			if (1 == 0)
-			{
-				board.Log(String("Stream error - Send: " + String(ltsize) + " Sended: " + String(reslen) + " ...").c_str(), true, true, tlWarn);
-			}
+#ifdef BOARD_BETA_DEBUG
+			board.Log(String("Stream error - Send: " + String(ltsize) + " Sended: " + String(reslen) + " ...").c_str(), true, true, tlWarn);
+#endif
 			return false;
 		}
 	}
@@ -2685,55 +2698,49 @@ bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAd
 // -> ADestDeviceID  - ID urz¹dzenia do którego ramka potwierdzaj¹ca ma trafiæ. Potrzebny w celu wstêpnej segragacji przez framework
 void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t ASourceAddress, uint32_t ADestAddress, TFrameType AframeType, TUniqueID ADestDeviceID)
 {
-	static THDFT *hdft = NULL;
-	if (hdft != NULL)
-	{
-		board.free(hdft);
-		hdft = NULL;
-	}
-	hdft=(THDFT *)board._malloc(sizeof(THDFT));
-	if (hdft == NULL)
-	{
-		board.Log("Memory error in send response frame...", true, true, tlError);
-		return;
-	}
+	THDFT_ResponseItem* hdft_Item = (THDFT_ResponseItem * )board._malloc(sizeof(THDFT_ResponseItem));
 
 	if (ATaskDefStream != NULL)
 	{
-		hdft->ACK.a = FRAME_ACK_A;
-		hdft->ACK.b = FRAME_ACK_B;
-		hdft->ACK.c = FRAME_ACK_C;
-		hdft->ACK.d = FRAME_ACK_D;
+		hdft_Item->hdft.ACK.a = FRAME_ACK_A;
+		hdft_Item->hdft.ACK.b = FRAME_ACK_B;
+		hdft_Item->hdft.ACK.c = FRAME_ACK_C;
+		hdft_Item->hdft.ACK.d = FRAME_ACK_D;
 	}
 
-	hdft->FT.SourceAddress = ASourceAddress;
-	hdft->FT.SourceDeviceID = board.DeviceID;
-	hdft->FT.DestAddress = ADestAddress;
-	hdft->FT.DestDeviceID = ADestDeviceID;
-	hdft->FT.LengthFrame = 0;
-	hdft->FT.FrameID = AFrameID;
-	hdft->FT.FrameType = AframeType;
+	hdft_Item->hdft.FT.SourceAddress = ASourceAddress;
+	hdft_Item->hdft.FT.SourceDeviceID = board.DeviceID;
+	hdft_Item->hdft.FT.DestAddress = ADestAddress;
+	hdft_Item->hdft.FT.DestDeviceID = ADestDeviceID;
+	hdft_Item->hdft.FT.LengthFrame = 0;
+	hdft_Item->hdft.FT.FrameID = AFrameID;
+	hdft_Item->hdft.FT.FrameType = AframeType;
 	
 #ifdef __riscv64
-	hdft->FT.size = (((uint64_t)&hdft->FT.Frame) - ((uint64_t)&hdft->FT)) + hdft->FT.LengthFrame;
+	hdft_Item->hdft.FT.size = (((uint64_t)& hdft_Item->hdft.FT.Frame) - ((uint64_t)& hdft_Item->hdft.FT)) + hdft_Item->hdft.FT.LengthFrame;
 #else
-	hdft->FT.size = (((uint32_t)&hdft->FT.Frame) - ((uint32_t)&hdft->FT)) + hdft->FT.LengthFrame;
+	hdft_Item->hdft.FT.size = (((uint32_t)& hdft_Item->hdft.FT.Frame) - ((uint32_t)& hdft_Item->hdft.FT)) + hdft_Item->hdft.FT.LengthFrame;
 #endif
-	uint32_t ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft->FT.size);
+	hdft_Item->ltsize = sizeof(THDFT) - (sizeof(TFrameTransport) - hdft_Item->hdft.FT.size);
+	hdft_Item->TaskDefStream = ATaskDefStream;
+	hdft_Item->DestAddress = ADestAddress;
+
 	if (ATaskDefStream != NULL)
 	{
-		hdft->FT.crc8 = board.crc8((uint8_t *)&hdft->FT, hdft->FT.size);
-		PutStream(hdft, ltsize, ATaskDefStream, ADestAddress);
+		hdft_Item->hdft.FT.crc8 = board.crc8((uint8_t *)& hdft_Item->hdft.FT, hdft_Item->hdft.FT.size);
+		ADD_TO_LIST_STR(board.HDFT_ResponseItemList, THDFT_ResponseItem, hdft_Item);
 	}
 	else
 	{
-		HandleFrameLocal(&hdft->FT);
+		HandleFrameLocal(&hdft_Item->hdft.FT);
+		board.free(hdft_Item);
 	}
 	
 	return;
 }
 
-/*void PrintFrameTransport(TFrameTransport *Aft)
+#ifdef BOARD_BETA_DEBUG
+void PrintFrameTransport(TFrameTransport *Aft)
 {
 	String s;
 	s.reserve(512);
@@ -2744,7 +2751,8 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	s += "\n";
 	board.Log(s.c_str());
 	
-}*/
+}
+#endif
 // -----------------------------------------------------------------------------------------------------------------------
 // Sprawdzenie sumy kontrolnej wskazanej ramki, wys³anie messaga do wskazanego zadania w ramce z wskaŸnikiem na dane ramki
 // -> Aft - WskaŸnik ramki transportowej
@@ -2775,6 +2783,11 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 				mb.Data.FrameReceiveData.DestAddress = Aft->DestAddress;
 
 				bool res = DoMessage(&mb,true,NULL,DestTaskDefReceive);
+
+#ifdef BOARD_BETA_DEBUG
+				board.Log(String("Receive frame, HANDLESEND: " + String(Aft->FrameID,HEX)+" res:"+String(res)).c_str(), true, true);
+#endif
+
 				if (res)
 				{
 					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseOK, Aft->SourceDeviceID);
@@ -3352,7 +3365,6 @@ bool TXB_board::PREFERENCES_BeginSection(String ASectionname)
 	{
 		String ts = ASectionname;
 		ASectionname = ASectionname.substring(0, 15);
-		//board.Log(String("xbpreferences section [" + ts + "] reduce to size 15 char [" + ASectionname + "]").c_str(), true, true, tlWarn);
 	}
 
 

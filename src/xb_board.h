@@ -230,6 +230,15 @@ struct THDFT
 #ifndef TIMEOUT_HANDLEDATAFRAMETRANSPORT
 #define TIMEOUT_HANDLEDATAFRAMETRANSPORT 10000
 #endif
+struct THDFT_ResponseItem
+{
+	THDFT_ResponseItem *Next;
+	THDFT_ResponseItem *Prev;
+	THDFT hdft;
+	uint32_t ltsize;
+	TTaskDef *TaskDefStream;
+	uint32_t DestAddress;
+};
 
 struct THandleDataFrameTransport
 {
@@ -382,6 +391,7 @@ public:
 	//-----------------------------------------------------------------------------------------------------------------
 	
 	bool HandleFrameTransportInGetStream;
+	THDFT_ResponseItem *HDFT_ResponseItemList;
 
 	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t Afromaddress = 0);
 	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress = 0);
