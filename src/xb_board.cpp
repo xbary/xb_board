@@ -7,7 +7,12 @@ extern "C" {
 #include "user_interface.h"	
 }
 #endif
- 
+
+#ifdef ESP32
+#include <stddef.h>
+#endif
+
+
 // Dla STM32 inkludy z funkcjami jêzyka C
 #ifdef ARDUINO_ARCH_STM32
 extern "C" {
@@ -680,8 +685,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				Am->Data.WindowData.ActionData.Create.X = -1;
 				Am->Data.WindowData.ActionData.Create.Y = 0;
 				Am->Data.WindowData.ActionData.Create.Width = 48;
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 14;
-
+#ifdef BOARD_HAS_PSRAM
+				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 13;
+#else
+				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 11;
+#endif
 				res = true;
 			} 
 
@@ -727,82 +735,90 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 				if (winHandle0 != NULL)
 				{
+					int y = 0;
 					winHandle0->BeginDraw();
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, 0, FSS("DEVICE NAME: "));
+					winHandle0->PutStr(0, y, FSS("DEVICE NAME: "));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
 					winHandle0->PutStr(board.DeviceName.c_str());
+					y++;
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, 1, FSS("DEVICE VERSION: "));
+					winHandle0->PutStr(0, y, FSS("DEVICE VERSION: "));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
 					winHandle0->PutStr(board.DeviceVersion.c_str());
+					y++;
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, 2, FSS("TIME FROM RUN:"));
-					winHandle0->PutStr(0, 3, FSS("FREE HEAP:"));
-					winHandle0->PutStr(winHandle0->Width - 18, 3, FSS("MIN HEAP:"));
-					winHandle0->PutStr(winHandle0->Width - 18, 4, FSS("MAX HEAP:"));
+					winHandle0->PutStr(0, y, FSS("DEVICE ID: "));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(winHandle0->Width - 9,4,String(board.MaximumFreeHeapInLoop).c_str());
-
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, 4, FSS("MEM USE:"));
-
-					winHandle0->PutStr(0, 5, FSS("DEVICE ID "));
 					winHandle0->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
+					y++;
 
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, 6, FSS("FREEpsram:"));
-					winHandle0->PutStr(winHandle0->Width - 18, 6, FSS("MINpsram:"));
-					winHandle0->PutStr(winHandle0->Width - 18, 7, FSS("MAXpsram:"));
+					winHandle0->PutStr(0, y, FSS("TIME FROM RUN:"));
+					y++;
+					winHandle0->PutStr(0, y, FSS("FREE HEAP:"));
+					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MIN HEAP:"));
+					y++;
+					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MAX HEAP:"));
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
-#ifdef ESP32					
-					winHandle0->PutStr(winHandle0->Width - 9,7,String(board.MaximumFreePSRAMInLoop).c_str());
-#else
-					//winHandle0->PutStr("---");
-#endif
+					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MaximumFreeHeapInLoop).c_str());
+
 					winHandle0->SetNormalChar();
 					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, 7, FSS("MEM USE:"));
+					winHandle0->PutStr(0, y, FSS("MEM USE:"));
+					y++;
+#ifdef BOARD_HAS_PSRAM
+					winHandle0->SetNormalChar();
+					winHandle0->SetTextColor(tfcWhite);
+					winHandle0->PutStr(0, y, FSS("FREEpsram:"));
+					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MINpsram:"));
+					y++;
+					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MAXpsram:"));
+					winHandle0->SetBoldChar();
+					winHandle0->SetTextColor(tfcYellow);
+					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MaximumFreePSRAMInLoop).c_str());
 
-					winHandle0->PutStr(0, 8, FSS("OUR RESERVED BLOCK:"));
+					winHandle0->SetNormalChar();
+					winHandle0->SetTextColor(tfcWhite);
+					winHandle0->PutStr(0, y, FSS("MEM USE:"));
+					y++;
+#endif
+					winHandle0->PutStr(0, y, FSS("OUR RESERVED BLOCK:"));
+					y++;
 					//--------------
-					{
-						int y;
-						String name;
-						y = 10;
-						
-						winHandle0->PutStr(0, y, "_", winHandle0->Width, '_');
-						y++;
-						winHandle0->PutStr(0, y, FSS("TASK NAME"));
-						winHandle0->PutStr(15, y, FSS("STATUS"));
-						winHandle0->SetTextColor(tfcGreen);
-						y++;
-						for (int i = 0; i < board.TaskCount; i++)
-						{
-							TTask *t = board.GetTaskByIndex(i);
-							if (t != NULL)
-							{
 
-								if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
-								{
-									winHandle0->PutStr(0, y + i, name.c_str());
-									name = "";
-								}
+					String name;
+					winHandle0->PutStr(0, y, "_", winHandle0->Width, '_');
+					y++;
+					winHandle0->PutStr(0, y, FSS("TASK NAME"));
+					winHandle0->PutStr(15, y, FSS("STATUS"));
+					winHandle0->SetTextColor(tfcGreen);
+					y++;
+					for (int i = 0; i < board.TaskCount; i++)
+					{
+						TTask* t = board.GetTaskByIndex(i);
+						if (t != NULL)
+						{
+
+							if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
+							{
+								winHandle0->PutStr(0, y + i, name.c_str());
+								name = "";
 							}
 						}
 					}
+
 					winHandle0->EndDraw();
 				}
 			}
@@ -815,59 +831,52 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			{
 				if (winHandle0 != NULL)
 				{
+					int y = 3;
 					winHandle0->BeginDraw();
 
 					winHandle0->SetBoldChar();
 					winHandle0->SetTextColor(tfcYellow);
-					
+
 					{
 						cbufSerial cbuf(32);
 						board.PrintTimeFromRun(&cbuf);
-						winHandle0->PutStr(14, 2, cbuf.readString().c_str());
+						winHandle0->PutStr(14, y, cbuf.readString().c_str());
 					}
-
-					winHandle0->PutStr(10, 3, String(board.FreeHeapInLoop).c_str());
+					y++;
+					winHandle0->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
 					winHandle0->PutChar(' ');
-					winHandle0->PutStr(winHandle0->Width - 9, 3, String(board.MinimumFreeHeapInLoop).c_str());
+					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MinimumFreeHeapInLoop).c_str());
 					winHandle0->PutChar(' ');
-
-
-
-					winHandle0->PutStr(9, 4, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
+					y++;
+					winHandle0->PutStr(9, y, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
 					winHandle0->PutStr(FSS("% "));
-
-#ifdef ESP32
-					winHandle0->PutStr(10, 6, String(board.FreePSRAMInLoop).c_str());
-					winHandle0->PutChar(' ');
-					winHandle0->PutStr(winHandle0->Width - 9, 6, String(board.MinimumFreePSRAMInLoop).c_str());
-					winHandle0->PutChar(' ');
-
-					winHandle0->PutStr(9, 7, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
-					winHandle0->PutStr(FSS("% "));
-#else
-				
-#endif
-					winHandle0->PutStr(20,8,String(board.OurReservedBlock).c_str(),8);
+					y++;
 					
-					//---------------
+#ifdef BOARD_HAS_PSRAM
+					winHandle0->PutStr(10, y, String(board.FreePSRAMInLoop).c_str());
+					winHandle0->PutChar(' ');
+					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MinimumFreePSRAMInLoop).c_str());
+					winHandle0->PutChar(' ');
+					y++;
+					winHandle0->PutStr(9, y, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
+					winHandle0->PutStr(FSS("% "));
+					y++;
+#endif
+					winHandle0->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
+					y++;
+
+					String name;
+					y += 2;
+					for (int i = 0; i < board.TaskCount; i++)
 					{
-						String name;
-						int y;
-
-						y = 10;
-
-						y += 2;
-						for (int i = 0; i < board.TaskCount; i++)
+						TTask* t = board.GetTaskByIndex(i);
+						if (t != NULL)
 						{
-							TTask *t = board.GetTaskByIndex(i);
-							if (t != NULL)
-							{
 
-								if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
-								{
-									winHandle0->PutStr(15, y + i, name.c_str());
-									name = "";
-								}
+							if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
+							{
+								winHandle0->PutStr(15, y + i, name.c_str());
+								name = "";
 							}
 						}
 					}
@@ -1516,7 +1525,7 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 }
 // ---------------------------------------------------------------------------------------------------------------
 // G³ówna procedura uruchamiaj¹ca zadania z podzia³em na priorytety, zg³oszeñ z przerwañ i czekaj¹cych zadany czas
-void TXB_board::IterateTask(void)
+void TXB_board::IterateTask()
 {
 	TTask *t = TaskList;
 	iteratetask_procedure = true;
@@ -2342,7 +2351,7 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 					indxstartinterpret = indx; 
 		}
 		// Sprawdzenie czy nadchodz¹cy bajt to 4 pozycja i czy ma wartoœæ oczekiwan¹ SIZE
-		else if((AHandleDataFrameTransport->indx_interpret == 4) && (v <= sizeof(TFrameTransport)) && (v >= offsetof(TFrameTransport, LengthFrame)))
+		else if((AHandleDataFrameTransport->indx_interpret == 4) && (v <= sizeof(TFrameTransport)) && (v >= (offsetof(TFrameTransport, LengthFrame))))
 		{
 			AHandleDataFrameTransport->Data.buf[AHandleDataFrameTransport->indx_interpret++] = v;
 			if (!isininterpret)				
@@ -2896,6 +2905,7 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 	}
 	
 }
+
 // -----------------------------------------------------------------------------------
 // Ustalenie wskazanego task streamu jako klawiatury
 // -> AStreamDefTask - Task stream który ma byæ klawiatur¹
@@ -3139,6 +3149,7 @@ void TXB_board::SubStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddres
 	}
 	return;
 }
+
 #pragma endregion
 #pragma region FUNKCJE_KOMUNIKATOW
 

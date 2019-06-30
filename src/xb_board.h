@@ -346,12 +346,12 @@ public:
 	TTask *CurrentTask;
 	TTask *CurrentIterateTask;
 	
-	void handle(void);	
+	void handle();	
 	TTask *AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID = 0);
 	bool DelTask(TTaskDef *Ataskdef);
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	TTaskDef *GetTaskDefByName(String ATaskName);
-	void IterateTask(void);
+	void IterateTask();
 	void TriggerInterrupt(TTaskDef *Ataskdef);
 	void DoInterrupt(TTaskDef *Ataskdef);
 	//-----------------------------------------------------------------------------------------------------------------	
