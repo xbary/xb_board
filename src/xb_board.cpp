@@ -1777,6 +1777,7 @@ void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 bool TXB_board::DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, TTaskDef *Atotaskdef)
 {
 	bool res = false;
+
 	if (Atotaskdef != NULL)
 	{
 		if (Atotaskdef->Task != NULL)
@@ -1828,7 +1829,7 @@ bool TXB_board::DoMessageOnAllTask(TMessageBoard *mb, bool Arunagain, TDoMessage
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-						res += DoMessage(mb, true, Afromtask, t->TaskDef);
+						res += DoMessage(mb, Arunagain, Afromtask, t->TaskDef);
 					}
 				}
 				t = t->Next;
@@ -1851,7 +1852,7 @@ bool TXB_board::DoMessageOnAllTask(TMessageBoard *mb, bool Arunagain, TDoMessage
 				{
 					if (Aexcludetask != t->TaskDef)
 					{
-						res += DoMessage(mb, true,  Afromtask, t->TaskDef);
+						res += DoMessage(mb, Arunagain,  Afromtask, t->TaskDef);
 					}
 				}
 				t = t->Prev;

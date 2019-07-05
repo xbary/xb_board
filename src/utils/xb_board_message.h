@@ -117,6 +117,8 @@ typedef enum {
 	IM_LIVE_BLINK,
 	IM_WIFI_DISCONNECT,
 	IM_WIFI_CONNECT,
+	IM_ETH_DISCONNECT,
+	IM_ETH_CONNECT,
 	IM_INTERNET_DISCONNECT,
 	IM_INTERNET_CONNECT,
 	IM_OTA_UPDATE_STARTED,
@@ -136,9 +138,21 @@ typedef enum {
 	IM_SD_INIT,
 	IM_SD_DEINIT,
 	IM_SD_EJECT,
-
+	IM_SENSOR
 } TIDMessage;
 
+
+//-----------------------------------------------------------------------
+typedef enum {
+	saSetValue,saGetValue
+} TSensorAction;
+class TSensorClass;
+typedef struct {
+	TSensorAction SensorAction;
+	TSensorClass* Sensor;
+	void* ValueData;
+
+} TSensorData;
 //-----------------------------------------------------------------------
 typedef enum {
 	gaPinMode, gaPinWrite, gaPinRead , gaPinToggle
@@ -428,13 +442,13 @@ struct TMessageBoard
 	TTask *fromTask;
 	union
 	{
-		//TConfigData ConfigData;
 		TKeyboardData KeyboardData;
 #ifdef XB_GUI
 		TMenuData MenuData;
 		TInputDialogData InputDialogData;
 		TWindowData WindowData;
 #endif
+		TSensorData SensorData;
 		TGpioData GpioData;
 		TStreamData StreamData;
 		TBlinkData BlinkData;
