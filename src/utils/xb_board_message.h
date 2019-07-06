@@ -98,7 +98,38 @@ else \
 		_this_->Next->Prev = _this_->Prev; \
 	} \
 } \
+_this_->Prev = NULL; \
+_this_->Next = NULL; \
 }
+
+#define MOVE_STR_TO_ENDLIST(Alist,AClass,_this_) \
+{ \
+if (_this_->Next!=NULL) \
+{ \
+DELETE_FROM_LIST_STR(Alist,_this_); \
+ADD_TO_LIST_STR(Alist,AClass,_this_); \
+} \
+}
+
+#define MOVE_STR_TO_BEGINLIST(Alist,AClass,_this_) \
+{ \
+if (_this_->Prev!=NULL) \
+{ \
+DELETE_FROM_LIST_STR(Alist,_this_); \
+AClass *l=Alist; \
+if (l==NULL) \
+{ \
+	Alist=_this_;\
+} \
+else \
+{ \
+	Alist=_this_; \
+	_this_->Next=l; \
+	l->Prev=_this_; \
+} \
+} \
+}
+
 
 struct TTask;
 struct TTaskDef;
