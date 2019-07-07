@@ -1,3 +1,4 @@
+//#define BOARD_BETA_DEBUG
 #pragma region INCLUDES
 #include <xb_board.h>
 
@@ -2050,7 +2051,7 @@ uint32_t TXB_board::getFreeHeap()
 	}
 #endif
 }
-#if !defined(_VMICRO_INTELLISENSE)
+//#if !defined(_VMICRO_INTELLISENSE)
 //------------------------------------------------------------------------------------------------------------------------------
 // Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
 // -> Asize - Iloœæ rezerwowanej pamiêci PSRAM
@@ -2106,8 +2107,8 @@ void *TXB_board::_malloc_psram(size_t Asize)
 	
 	return ptr;
 }
-#endif
-#if !defined(_VMICRO_INTELLISENSE)
+//#endif
+//#if !defined(_VMICRO_INTELLISENSE)
 //---------------------------------------
 // Rezerwacja pamiêci RAM mikrokontrolera
 // -> Asize - Iloœæ rezerwowanej pamiêci 
@@ -2129,7 +2130,7 @@ void *TXB_board::_malloc(size_t size)
 	}
 	return ptr;
 }
-#endif
+//#endif
 void ___free(void *Aptr)
 {
 	free(Aptr);
