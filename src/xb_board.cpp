@@ -58,7 +58,9 @@ volatile uint32_t __SysTickCount;
 
 
 #ifndef XB_WIFI
+#ifndef XB_ETH
 volatile uint32_t statusdoping;
+#endif
 #endif
 
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
@@ -1318,7 +1320,9 @@ void TXB_board::handle(void)
 	// Sprawdzenie  przy pierwszym  wejsciu do pêtli loop iloœci wolnej pamiêci
 	if(MaximumFreeHeapInLoop == 0)
 	{
+#ifdef XB_WIFI
 		BEGIN_TRANSACTION(statusdoping)
+#endif
 		{
 			FreePSRAMInLoop = getFreePSRAM();
 			MinimumFreePSRAMInLoop = FreePSRAMInLoop;
@@ -1328,7 +1332,9 @@ void TXB_board::handle(void)
 			MaximumFreeHeapInLoop = FreeHeapInLoop;
 			MinimumFreeHeapInLoop = FreeHeapInLoop;
 		}
+#ifdef XB_WIFI
 		END_TRANSACTION(statusdoping)
+#endif
 	}
 	
 	DEF_WAITMS_VAR(LOOPW);
@@ -1590,7 +1596,9 @@ void TXB_board::IterateTask()
 		BEGIN_WAITMS(GFH, 500);
 		{
 #ifdef ESP32
+#ifdef XB_WIFI
 			BEGIN_TRANSACTION(statusdoping)
+#endif
 			{
 				FreePSRAMInLoop = getFreePSRAM();
 				if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
@@ -1602,13 +1610,15 @@ void TXB_board::IterateTask()
 				if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 				{
 					MinimumFreeHeapInLoop = FreeHeapInLoop;
-				}
+				}	
 			}
+#ifdef XB_WIFI
 			ELSE_TRANSACTION(statusdoping)
 			{
 
 			}
 			END_TRANSACTION(statusdoping)
+#endif
 #else
 			FreeHeapInLoop = getFreeHeap();
 			if (FreeHeapInLoop < MinimumFreeHeapInLoop)
@@ -1991,7 +2001,7 @@ uint32_t TXB_board::getFreePSRAM()
 {
 #if defined(BOARD_HAS_PSRAM) && defined(ESP32)
 	
-	uint32_t freepsram = ESP.getFreePsram();
+	uint32_t freepsram = ESP.getMaxAllocPsram();
 #ifdef PSRAM_BUG
 	uint32_t r = 0;
 	if (lastfreepsram == 0)
