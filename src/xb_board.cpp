@@ -1320,21 +1320,13 @@ void TXB_board::handle(void)
 	// Sprawdzenie  przy pierwszym  wejsciu do pêtli loop iloœci wolnej pamiêci
 	if(MaximumFreeHeapInLoop == 0)
 	{
-#ifdef XB_WIFI
-		BEGIN_TRANSACTION(statusdoping)
-#endif
-		{
-			FreePSRAMInLoop = getFreePSRAM();
-			MinimumFreePSRAMInLoop = FreePSRAMInLoop;
-			MaximumFreePSRAMInLoop = FreePSRAMInLoop;
+		FreePSRAMInLoop = getFreePSRAM();
+		MinimumFreePSRAMInLoop = FreePSRAMInLoop;
+		MaximumFreePSRAMInLoop = FreePSRAMInLoop;
 
-			FreeHeapInLoop = getFreeHeap();
-			MaximumFreeHeapInLoop = FreeHeapInLoop;
-			MinimumFreeHeapInLoop = FreeHeapInLoop;
-		}
-#ifdef XB_WIFI
-		END_TRANSACTION(statusdoping)
-#endif
+		FreeHeapInLoop = getFreeHeap();
+		MaximumFreeHeapInLoop = FreeHeapInLoop;
+		MinimumFreeHeapInLoop = FreeHeapInLoop;
 	}
 	
 	DEF_WAITMS_VAR(LOOPW);
@@ -1596,9 +1588,6 @@ void TXB_board::IterateTask()
 		BEGIN_WAITMS(GFH, 500);
 		{
 #ifdef ESP32
-#ifdef XB_WIFI
-			BEGIN_TRANSACTION(statusdoping)
-#endif
 			{
 				FreePSRAMInLoop = getFreePSRAM();
 				if (FreePSRAMInLoop < MinimumFreePSRAMInLoop)
@@ -1612,13 +1601,6 @@ void TXB_board::IterateTask()
 					MinimumFreeHeapInLoop = FreeHeapInLoop;
 				}	
 			}
-#ifdef XB_WIFI
-			ELSE_TRANSACTION(statusdoping)
-			{
-
-			}
-			END_TRANSACTION(statusdoping)
-#endif
 #else
 			FreeHeapInLoop = getFreeHeap();
 			if (FreeHeapInLoop < MinimumFreeHeapInLoop)

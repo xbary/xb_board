@@ -133,7 +133,7 @@ struct THandleDataFrameTransport;
 #include "xb_board_def.h"
 #include <utils\xb_board_message.h>
 
-extern "C" volatile uint32_t statusdoping;
+//extern "C" volatile uint32_t statusdoping;
 
 #define BEGIN_TRANSACTION(Anamevar) \
 { \
