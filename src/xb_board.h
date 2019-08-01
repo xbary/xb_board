@@ -307,6 +307,7 @@ public:
 	TUniqueID DeviceID;
 	uint32_t Tick_ESCKey;
 	uint8_t TerminalFunction;
+	bool CTRLKey;
 	TXB_board();
 	~TXB_board();
 		

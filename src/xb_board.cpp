@@ -65,9 +65,36 @@ volatile uint32_t statusdoping;
 
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
 #ifdef XB_GUI
-TWindowClass *winHandle0;
-TGADGETMenu *menuHandle0;
-TGADGETMenu *menuHandle1;
+
+#ifdef __riscv64
+#define WINDOW_0_CAPTION "BOARD (Sipeed Maix), 400Mhz)";
+#endif
+#ifdef ESP8266
+#define WINDOW_0_CAPTION "BOARD (ESP8266, 160Mhz)";
+#endif
+#ifdef ESP32
+#ifdef BOARD_HAS_PSRAM
+#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER, 240Mhz)";
+#else
+#define WINDOW_0_CAPTION "BOARD (ESP32, 240Mhz)";
+#endif
+#endif
+#ifdef ARDUINO_ARCH_STM32
+#define WINDOW_0_CAPTION "BOARD (STM32)";
+#endif
+
+#ifdef BOARD_HAS_PSRAM
+#define WINDOW_0_HEIGHT board.TaskCount + 13
+#else
+#define WINDOW_0_HEIGHT board.TaskCount + 11
+#endif
+
+TWindowClass * xb_board_winHandle0;
+uint8_t xb_board_currentselecttask = 0;
+uint8_t xb_board_currentYselecttask;
+bool xb_board_listtask_repaint = false;
+
+TGADGETMenu *xb_board_menuHandle1;
 #endif
 
 #pragma endregion
@@ -189,9 +216,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	case IM_FREEPTR:
 	{
 #ifdef XB_GUI
-		if (Am->Data.FreePTR == winHandle0) winHandle0 = NULL;
-		if (Am->Data.FreePTR == menuHandle0) menuHandle0 = NULL;
-		if (Am->Data.FreePTR == menuHandle1) menuHandle1 = NULL;
+		FREEPTR(xb_board_winHandle0);
+		FREEPTR(xb_board_menuHandle1);
 #endif
 		res = true;
 		break;
@@ -216,7 +242,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #endif
 				else
 					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_NOIDENT, MODEPIN_OUTPUT);
-				
+
 				res = true;
 			}
 			break;
@@ -226,11 +252,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
 			{
 				Am->Data.GpioData.ActionData.Value = digital_Read(Am->Data.GpioData.NumPin);
-				
+
 				if (board.PinInfoTable != NULL)
 				{
 					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
-				}	
+				}
 				res = true;
 			}
 			break;
@@ -244,7 +270,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				if (board.PinInfoTable != NULL)
 				{
 					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
-				}	
+				}
 				res = true;
 			}
 			break;
@@ -263,11 +289,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 
 				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
-		
+
 				if (board.PinInfoTable != NULL)
 				{
 					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
-				}	
+				}
 				res = true;
 			}
 			break;
@@ -282,616 +308,592 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 	case IM_KEYBOARD:
 	{
-			if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
+		if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
+		{
+			if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
 			{
-				if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
+				static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
+
+				if (board.TerminalFunction == 0)
 				{
-					static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
-
-					if (board.TerminalFunction == 0)
+					switch (Am->Data.KeyboardData.KeyCode)
 					{
-						switch (Am->Data.KeyboardData.KeyCode)
-						{
-						case 127:
-							{
-								board.Tick_ESCKey = 0;
-								board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0, &XB_BOARD_DefTask);
-								board.TerminalFunction = 0;
-								break;
-							}
-						case 10:
-							{
-								if (LastKeyCode != 13)
-								{
-									board.SendMessage_FunctionKeyPress(KF_ENTER, 0, &XB_BOARD_DefTask);
-									board.TerminalFunction = 0;
-								}
-								else
-								{
-									Am->Data.KeyboardData.KeyCode = 0;
-								}
-								res = true;
-								break;
-							}
-						case 13:
-							{
-								if (LastKeyCode != 10)
-								{
-									board.SendMessage_FunctionKeyPress(KF_ENTER, 0, &XB_BOARD_DefTask);
-									board.TerminalFunction = 0;
-								}
-								else
-								{
-									Am->Data.KeyboardData.KeyCode = 0;
-								}
-								res = true;
-								break;
-							}
-						case 27:
-							{
-								board.TerminalFunction = 1;
-								board.Tick_ESCKey = SysTickCount;
-								break;
-							}
-						case 7:
-							{
-								board.Tick_ESCKey = 0;
-								board.SendMessage_FunctionKeyPress(KF_ESC, 0, &XB_BOARD_DefTask);
-								board.TerminalFunction = 0;
-								break;
-							}
-						case 9:
-							{
-								board.Tick_ESCKey = 0;
-								board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0, &XB_BOARD_DefTask);
-								board.TerminalFunction = 0;
-								break;
-							}
-						case 255:
-						case 0:
-							{
-								board.Tick_ESCKey = 0;
-								board.TerminalFunction = 0;
-								break;
-							}
-
-
-						default:
-							{
-								board.Tick_ESCKey = 0;
-								break;
-							}
-						}
+					case 127:
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0);// , & XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+						break;
 					}
-					else if (board.TerminalFunction == 1)
+					case 10:
 					{
-						if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
-							{
-								board.Tick_ESCKey = 0;
-								board.TerminalFunction = 2;
-								Am->Data.KeyboardData.KeyCode = 0;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 10)
+						if (LastKeyCode != 13)
 						{
+							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
 							board.TerminalFunction = 0;
 						}
 						else
 						{
-							board.Tick_ESCKey = 0;
-							board.SendMessage_FunctionKeyPress(KF_ESC, 0, &XB_BOARD_DefTask);
-							board.TerminalFunction = 0;
+							Am->Data.KeyboardData.KeyCode = 0;
 						}
+						res = true;
+						break;
 					}
-					else if (board.TerminalFunction == 2)
+					case 13:
 					{
-						if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
-							{
-								board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0, &XB_BOARD_DefTask);
-								Am->Data.KeyboardData.KeyCode = 0;
-								board.TerminalFunction = 0;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
-							{
-								board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0, &XB_BOARD_DefTask);
-								Am->Data.KeyboardData.KeyCode = 0;
-								board.TerminalFunction = 0;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
-							{
-								board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0, &XB_BOARD_DefTask);
-								Am->Data.KeyboardData.KeyCode = 0;
-								board.TerminalFunction = 0;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
-							{
-								board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0, &XB_BOARD_DefTask);
-								Am->Data.KeyboardData.KeyCode = 0;
-								board.TerminalFunction = 0;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
-							{
-								board.SendMessage_FunctionKeyPress(KF_TABPREV, 0, &XB_BOARD_DefTask);
-								board.TerminalFunction = 0;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 49) // F1
-							{
-								KeyboardFunctionDetect = KF_F1;
-								board.TerminalFunction = 3;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 50) // F9
-							{
-								KeyboardFunctionDetect = KF_F9;
-								board.TerminalFunction = 5;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 51) 
+						if (LastKeyCode != 10)
 						{
-							KeyboardFunctionDetect = KF_DELETE;
-							board.TerminalFunction = 4;
+							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
+							board.TerminalFunction = 0;
 						}
 						else
 						{
-							board.TerminalFunction = 0;
+							Am->Data.KeyboardData.KeyCode = 0;
 						}
+						res = true;
+						break;
+					}
+					case 27:
+					{
+						board.TerminalFunction = 1;
+						board.Tick_ESCKey = SysTickCount;
+						break;
+					}
+					case 7:
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+						break;
+					}
+					case 9:
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+						break;
+					}
+					case 255:
+					case 0:
+					{
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 0;
+						break;
+					}
 
-					}
-					else if (board.TerminalFunction == 3)
-					{
-						if (Am->Data.KeyboardData.KeyCode == 49) // F1
-							{
-								KeyboardFunctionDetect = KF_F1;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 50) // F2
-							{
-								KeyboardFunctionDetect = KF_F2;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 51) // F3
-							{
-								KeyboardFunctionDetect = KF_F3;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 52) // F4
-							{
-								KeyboardFunctionDetect = KF_F4;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 53) // F5
-							{
-								KeyboardFunctionDetect = KF_F5;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 55) // F6
-							{
-								KeyboardFunctionDetect = KF_F6;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 56) // F7
-							{
-								KeyboardFunctionDetect = KF_F7;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 57) // F8
-							{
-								KeyboardFunctionDetect = KF_F8;
-								board.TerminalFunction = 4;
-							}
-						else
-						{
-							board.TerminalFunction = 0;
-						}
-					}
-					else if (board.TerminalFunction == 5)
-					{
 
-						if (Am->Data.KeyboardData.KeyCode == 48) // F9
-							{
-								KeyboardFunctionDetect = KF_F9;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 49) // F10
-							{
-								KeyboardFunctionDetect = KF_F10;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 51) // F11
-							{
-								KeyboardFunctionDetect = KF_F11;
-								board.TerminalFunction = 4;
-							}
-						else if (Am->Data.KeyboardData.KeyCode == 52) // F12
-							{
-								KeyboardFunctionDetect = KF_F12;
-								board.TerminalFunction = 4;
-							}
-						else
-						{
-							board.TerminalFunction = 0;
-						}
-
-					}
-					else if (board.TerminalFunction == 4)
+					default:
 					{
-						if (Am->Data.KeyboardData.KeyCode == 126)
-						{
-							board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
-							board.TerminalFunction = 0;
-						}
-						else
-						{
-							board.TerminalFunction = 0;
-						}
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 0;
+						break;
+					}
+					}
+				}
+				else if (board.TerminalFunction == 1)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
+					{
+						board.CTRLKey = false;
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 2;
+						Am->Data.KeyboardData.KeyCode = 0;
+					} 
+					else if (Am->Data.KeyboardData.KeyCode == 79) // Nadchodzi funkcyjny klawisz z CTRL
+					{
+						board.CTRLKey = true;
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 2;
+						Am->Data.KeyboardData.KeyCode = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 10)
+					{
+						board.TerminalFunction = 0;
+					}
+					else
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+				}
+				else if (board.TerminalFunction == 2)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORUP, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORDOWN, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORLEFT, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORRIGHT, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
+					{
+						board.SendMessage_FunctionKeyPress(KF_TABPREV, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 49) // F1
+					{
+						KeyboardFunctionDetect = KF_F1;
+						board.TerminalFunction = 3;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 50) // F9
+					{
+						KeyboardFunctionDetect = KF_F9;
+						board.TerminalFunction = 5;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 51)
+					{
+						KeyboardFunctionDetect = KF_DELETE;
+						board.TerminalFunction = 4;
 					}
 					else
 					{
 						board.TerminalFunction = 0;
 					}
 
-					res = true;
-
 				}
-				else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
+				else if (board.TerminalFunction == 3)
 				{
-#ifdef XB_GUI
-					GUI_Show();
-					winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
-					menuHandle0 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 0);
-#endif
-					res = true;
-				}
-
-			
-				LastKeyCode = Am->Data.KeyboardData.KeyCode;
-
-			}
-			break;
-		}
-#ifdef XB_GUI
-	case IM_MENU:
-	{
-		switch (Am->Data.MenuData.TypeMenuAction)
-		{
-		case tmaOPEN_MAINMENU:
-		{
-			menuHandle1 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 1);
-			res = true;
-			break;
-		}
-		case tmaGET_INIT_MENU:
-		{
-			BEGIN_MENUINIT(0);
-			{
-				Ty y=0;
-				
-				if (winHandle0 != NULL)
-				{
-					y = winHandle0->Height - board.TaskCount - 2;
-					y += winHandle0->WindowRect.Top;
-				}
-				DEF_MENUINIT(board.TaskCount, 0, 20,-1,y,true);
-				res = true;
-			}
-			END_MENUINIT();
-			BEGIN_MENUINIT(1);
-			{
-				DEF_MENUINIT(2, 0, 15,-1,0,true);
-				res = true;
-			}
-			END_MENUINIT();
-			break;
-		}
-		case tmaGET_ITEM_MENU_STRING:
-		{
-			BEGIN_MENUITEMNAME(0);
-			{
-				String n = "";
-				TTask *t = board.GetTaskByIndex(MenuItemIndex);
-				if (t != NULL)
-				{
-
-					if (board.SendMessage_GetTaskNameString(t->TaskDef, n))
+					if (Am->Data.KeyboardData.KeyCode == 49) // F1
 					{
-						n += FSS(" >>>");
+						KeyboardFunctionDetect = KF_F1;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 50) // F2
+					{
+						KeyboardFunctionDetect = KF_F2;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 51) // F3
+					{
+						KeyboardFunctionDetect = KF_F3;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 52) // F4
+					{
+						KeyboardFunctionDetect = KF_F4;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 53) // F5
+					{
+						KeyboardFunctionDetect = KF_F5;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 55) // F6
+					{
+						KeyboardFunctionDetect = KF_F6;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 56) // F7
+					{
+						KeyboardFunctionDetect = KF_F7;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 57) // F8
+					{
+						KeyboardFunctionDetect = KF_F8;
+						board.TerminalFunction = 4;
 					}
 					else
 					{
-						n = FSS("task no menu!");
+						board.TerminalFunction = 0;
+					}
+				}
+				else if (board.TerminalFunction == 5)
+				{
+
+					if (Am->Data.KeyboardData.KeyCode == 48) // F9
+					{
+						KeyboardFunctionDetect = KF_F9;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 49) // F10
+					{
+						KeyboardFunctionDetect = KF_F10;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 51) // F11
+					{
+						KeyboardFunctionDetect = KF_F11;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 52) // F12
+					{
+						KeyboardFunctionDetect = KF_F12;
+						board.TerminalFunction = 4;
+					}
+					else
+					{
+						board.TerminalFunction = 0;
+					}
+
+				}
+				else if (board.TerminalFunction == 4)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 126)
+					{
+						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+					else
+					{
+						board.TerminalFunction = 0;
 					}
 				}
 				else
 				{
-					n = FSS("task null!");
+					board.TerminalFunction = 0;
 				}
-				DEF_MENUITEMNAME(MenuItemIndex, n);
-				res = true;
-			}
-			END_MENUITEMNAME();
 
-			BEGIN_MENUITEMNAME(1);
+				res = true;
+
+			}
+#ifdef XB_GUI
+			else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
 			{
-				DEF_MENUITEMNAME(0, FSS("Restart MCU"));
-				DEF_MENUITEMNAME(1, FSS("Save All Config..."));
+				GUI_Show();
+				xb_board_winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
 				res = true;
 			}
-			END_MENUITEMNAME();
-			break;
-		}
-		case tmaCLICK_ITEM_MENU:
-		{
-			BEGIN_MENUCLICK(0)
+			else if (Am->Data.KeyboardData.KeyFunction == KF_ENTER)
 			{
-				TTask *t = board.GetTaskByIndex(MenuItemIndex);
-				if (t != NULL)
+				if (xb_board_winHandle0 != NULL)
 				{
-					bool r = GUIGADGET_OpenMainMenu(t->TaskDef);
-					(void)r;
+					if (GUI_FindWindowByActive() == xb_board_winHandle0)
+					{
+						TTask* task = board.GetTaskByIndex(xb_board_currentselecttask);
+						if (task != NULL)
+						{
+							Am->Data.KeyboardData.KeyFunction = KF_NONE;
+							GUIGADGET_OpenMainMenu(task->TaskDef, WINDOW_POS_LAST_RIGHT_ACTIVE, xb_board_winHandle0->Y+xb_board_currentYselecttask + 1);
+
+						}
+					}
 				}
 				res = true;
-				break;
 			}
-			END_MENUCLICK()
-
-			BEGIN_MENUCLICK(1)
+			else if (Am->Data.KeyboardData.KeyFunction == KF_CURSORDOWN)
 			{
-				EVENT_MENUCLICK(0)
+				if (xb_board_winHandle0 != NULL)
+				{
+					if (GUI_FindWindowByActive() == xb_board_winHandle0)
+					{
+						xb_board_currentselecttask++;
+						if (xb_board_currentselecttask >= board.TaskCount)
+						{
+							xb_board_currentselecttask = board.TaskCount - 1;
+						}
+						else
+						{
+							xb_board_listtask_repaint = true;
+							xb_board_winHandle0->RepaintDataCounter++;
+						}
+					}
+				}
+				res = true;
+			}
+			else if (Am->Data.KeyboardData.KeyFunction == KF_CURSORUP)
+			{
+				if (xb_board_winHandle0 != NULL)
+				{
+					if (GUI_FindWindowByActive() == xb_board_winHandle0)
+					{
+						if (xb_board_currentselecttask > 0)
+						{
+							xb_board_currentselecttask--;
+							xb_board_listtask_repaint = true;
+							xb_board_winHandle0->RepaintDataCounter++;
+						}
+					}
+				}
+				res = true;
+			}
+
+#endif
+			LastKeyCode = Am->Data.KeyboardData.KeyCode;
+
+		}
+		break;
+	}
+#ifdef XB_GUI
+	case IM_MENU:
+	{
+		OPEN_MAINMENU()
+		{
+			xb_board_menuHandle1 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 1, false, X,Y);
+		}
+
+		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 32, MENU_AUTOCOUNT, 0, true)
+		{
+			BEGIN_MENUITEM("SOFT RESET MCU", taLeft)
+			{
+				CLICK_MENUITEM()
 				{
 #if defined(ESP8266) || defined(ESP32)
 					ESP.restart();
 					delay(5000);
 #elif defined(ARDUINO_ARCH_STM32)
-					void *x = board._malloc(128);
-					void *y = board._malloc(128);
-					board.free(x);
+					board.Log("Reset no support!", true, true, tlError);
 #else
-					board.Log(FSS("\nReset no support!\n"));
+					board.Log("Reset no support!", true, true, tlError);
 #endif
-					res = true;
-					break;
+					return true;
 				}
-				EVENT_MENUCLICK(1)
+			}
+			END_MENUITEM()
+			BEGIN_MENUITEM("SAVE ALL CONFIGURATION", taLeft)
+			{
+				CLICK_MENUITEM()
 				{
 					board.SendMessage_ConfigSave();
 				}
 			}
-			END_MENUCLICK()
-			break;
+			END_MENUITEM()
 		}
-		case tmaGET_CAPTION_MENU_STRING:
-		{
-			BEGIN_MENUCAPTION(0)
-			{
-				DEF_MENUCAPTION("TASK LIST...");
-			}
-			END_MENUCAPTION()
-				else
-			BEGIN_MENUCAPTION(1)
-			{
-				DEF_MENUCAPTION("BOARD MAIN MENU");
-			}
-			END_MENUCAPTION()
-			
-			res = true;
-			break;
-		}
-		default: break;
-		}
+		END_MENU()
+
+
+		res = true;
 		break;
 	}
 	case IM_WINDOW:
 	{
-		switch (Am->Data.WindowData.WindowAction)
+		BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
 		{
-		case waCreate:
-		{
-			if (Am->Data.WindowData.ID == 0)
+			//--------------------------------
+			REPAINT_WINDOW()
 			{
-				Am->Data.WindowData.ActionData.Create.X = -1;
-				Am->Data.WindowData.ActionData.Create.Y = 0;
-				Am->Data.WindowData.ActionData.Create.Width = 48;
-#ifdef BOARD_HAS_PSRAM
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 13;
-#else
-				Am->Data.WindowData.ActionData.Create.Height = board.TaskCount + 11;
-#endif
-				res = true;
-			} 
+				int y = 0;
+				String name;
 
-			break;
-		}
-		case waDestroy:
-		{
-			if (Am->Data.WindowData.ID == 0)
-			{
-				winHandle0 = NULL;
-			}
-			res = true;
-			break;
-		}
-		case waGetCaptionWindow:
-		{
-			if (Am->Data.WindowData.ID == 0)
-			{
-#ifdef __riscv64
-				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (Sipeed Maix), 400Mhz)");
-#endif
-#ifdef ESP8266
-				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP8266, 160Mhz)");
-#endif
-#ifdef ESP32
-#ifdef BOARD_HAS_PSRAM
-	
-				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP32 wROVER, 240Mhz)");
-#else
-				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (ESP32, 240Mhz)");
-#endif
-#endif
-#ifdef ARDUINO_ARCH_STM32
-				*(Am->Data.WindowData.ActionData.GetCaption.PointerString) = FSS("BOARD (STM32)");
-#endif
-			}
-			res = true;
-			break;
-		}
-		case waRepaint:
-		{
-			if (Am->Data.WindowData.ID == 0)
-			{
-				if (winHandle0 != NULL)
+				WH->BeginDraw();
+				if (!xb_board_listtask_repaint)
 				{
-					int y = 0;
-					winHandle0->BeginDraw();
-
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("DEVICE NAME: "));
-					winHandle0->SetBoldChar();
-					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(board.DeviceName.c_str());
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("DEVICE NAME: "));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(board.DeviceName.c_str());
 					y++;
 
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("DEVICE VERSION: "));
-					winHandle0->SetBoldChar();
-					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(board.DeviceVersion.c_str());
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("DEVICE VERSION: "));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(board.DeviceVersion.c_str());
 					y++;
 
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("DEVICE ID: "));
-					winHandle0->SetBoldChar();
-					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("DEVICE ID: "));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
 					y++;
 
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("TIME FROM RUN:"));
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("TIME FROM RUN:"));
 					y++;
-					winHandle0->PutStr(0, y, FSS("FREE HEAP:"));
-					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MIN HEAP:"));
+					WH->PutStr(0, y, FSS("FREE HEAP:"));
+					WH->PutStr(WH->Width - 18, y, FSS("MIN HEAP:"));
 					y++;
-					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MAX HEAP:"));
-					winHandle0->SetBoldChar();
-					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MaximumFreeHeapInLoop).c_str());
+					WH->PutStr(WH->Width - 18, y, FSS("MAX HEAP:"));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreeHeapInLoop).c_str());
 
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("MEM USE:"));
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("MEM USE:"));
 					y++;
 #ifdef BOARD_HAS_PSRAM
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("FREEpsram:"));
-					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MINpsram:"));
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("FREEpsram:"));
+					WH->PutStr(WH->Width - 18, y, FSS("MINpsram:"));
 					y++;
-					winHandle0->PutStr(winHandle0->Width - 18, y, FSS("MAXpsram:"));
-					winHandle0->SetBoldChar();
-					winHandle0->SetTextColor(tfcYellow);
-					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MaximumFreePSRAMInLoop).c_str());
+					WH->PutStr(WH->Width - 18, y, FSS("MAXpsram:"));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreePSRAMInLoop).c_str());
 
-					winHandle0->SetNormalChar();
-					winHandle0->SetTextColor(tfcWhite);
-					winHandle0->PutStr(0, y, FSS("MEM USE:"));
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, FSS("MEM USE:"));
 					y++;
 #endif
-					winHandle0->PutStr(0, y, FSS("OUR RESERVED BLOCK:"));
+					WH->PutStr(0, y, FSS("OUR RESERVED BLOCK:"));
 					y++;
 					//--------------
 
-					String name;
-					winHandle0->PutStr(0, y, "_", winHandle0->Width, '_');
+					WH->PutStr(0, y, "_", WH->Width, '_');
 					y++;
-					winHandle0->PutStr(0, y, FSS("TASK NAME"));
-					winHandle0->PutStr(15, y, FSS("STATUS"));
-					winHandle0->SetTextColor(tfcGreen);
+					WH->PutStr(0, y, FSS("TASK NAME"));
+					WH->PutStr(15, y, FSS("STATUS"));
+
 					y++;
-					for (int i = 0; i < board.TaskCount; i++)
+				}
+				else
+				{
+					y += 9;
+#ifdef BOARD_HAS_PSRAM
+					y += 2;
+#endif
+				}
+
+				WH->SetTextColor(tfcGreen);
+				xb_board_listtask_repaint = false;
+				for (int i = 0; i < board.TaskCount; i++)
+				{
+
+					if (xb_board_currentselecttask == i)
 					{
-						TTask* t = board.GetTaskByIndex(i);
+						WH->SetTextColor(tfcYellow);
+						WH->SetReverseChar();
+					}
+					else
+					{
+						WH->SetTextColor(tfcGreen);
+						WH->SetNormalChar();
+					}
+
+					TTask* t = board.GetTaskByIndex(i);
+					if (t != NULL)
+					{
+
+						if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
+						{
+							WH->PutStr(0, y + i, name.c_str(), 14, ' ');
+							if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
+							else WH->PutChar(' ');
+							name = "";
+						}
+					}
+				}
+				WH->EndDraw();
+			}
+			//--------------------------------
+			REPAINTDATA_WINDOW()
+			{
+				int y = 3;
+				WH->BeginDraw();
+
+				WH->SetBoldChar();
+				WH->SetTextColor(tfcYellow);
+				{
+					cbufSerial cbuf(32);
+					board.PrintTimeFromRun(&cbuf);
+					WH->PutStr(14, y, cbuf.readString().c_str());
+				}
+				y++;
+				WH->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
+				WH->PutChar(' ');
+				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreeHeapInLoop).c_str());
+				WH->PutChar(' ');
+				y++;
+				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
+				WH->PutStr(FSS("% "));
+				y++;
+
+#ifdef BOARD_HAS_PSRAM
+				WH->PutStr(10, y, String(board.FreePSRAMInLoop).c_str());
+				WH->PutChar(' ');
+				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreePSRAMInLoop).c_str());
+				WH->PutChar(' ');
+				y++;
+				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
+				WH->PutStr(FSS("% "));
+				y++;
+#endif
+				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
+				y++;
+
+				String name;
+				y += 2;
+
+
+				for (int i = 0; i < board.TaskCount; i++)
+				{
+					if (xb_board_currentselecttask == i)
+					{
+						WH->SetTextColor(tfcYellow);
+						WH->SetReverseChar();
+						xb_board_currentYselecttask = y + i;
+					}
+					else
+					{
+						WH->SetNormalChar();
+
+					}
+					TTask* t = board.GetTaskByIndex(i);
+
+					if (xb_board_listtask_repaint)
+					{
+						if (xb_board_currentselecttask == i)
+						{
+							WH->SetTextColor(tfcYellow);
+						}
+						else
+						{
+							WH->SetTextColor(tfcGreen);
+						}
+						
 						if (t != NULL)
 						{
 
 							if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
 							{
-								winHandle0->PutStr(0, y + i, name.c_str());
+								WH->PutStr(0, y + i, name.c_str(), 14, ' ');
+								if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
+								else WH->PutChar(' ');
 								name = "";
 							}
 						}
+						WH->SetTextColor(tfcYellow);
 					}
 
-					winHandle0->EndDraw();
-				}
-			}
-			res = true;
-			break;
-		}
-		case waRepaintData:
-		{
-			if (Am->Data.WindowData.ID == 0)
-			{
-				if (winHandle0 != NULL)
-				{
-					int y = 3;
-					winHandle0->BeginDraw();
-
-					winHandle0->SetBoldChar();
-					winHandle0->SetTextColor(tfcYellow);
-
+					if (t != NULL)
 					{
-						cbufSerial cbuf(32);
-						board.PrintTimeFromRun(&cbuf);
-						winHandle0->PutStr(14, y, cbuf.readString().c_str());
-					}
-					y++;
-					winHandle0->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
-					winHandle0->PutChar(' ');
-					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MinimumFreeHeapInLoop).c_str());
-					winHandle0->PutChar(' ');
-					y++;
-					winHandle0->PutStr(9, y, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
-					winHandle0->PutStr(FSS("% "));
-					y++;
-					
-#ifdef BOARD_HAS_PSRAM
-					winHandle0->PutStr(10, y, String(board.FreePSRAMInLoop).c_str());
-					winHandle0->PutChar(' ');
-					winHandle0->PutStr(winHandle0->Width - 9, y, String(board.MinimumFreePSRAMInLoop).c_str());
-					winHandle0->PutChar(' ');
-					y++;
-					winHandle0->PutStr(9, y, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
-					winHandle0->PutStr(FSS("% "));
-					y++;
-#endif
-					winHandle0->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
-					y++;
 
-					String name;
-					y += 2;
-					for (int i = 0; i < board.TaskCount; i++)
-					{
-						TTask* t = board.GetTaskByIndex(i);
-						if (t != NULL)
+						if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
 						{
-
-							if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
-							{
-								winHandle0->PutStr(15, y + i, name.c_str());
-								name = "";
-							}
+							WH->PutStr(15, y + i, name.c_str(), 33, ' ');
+							name = "";
 						}
 					}
-					winHandle0->EndDraw();
 				}
+				xb_board_listtask_repaint = false;
+				WH->EndDraw();
 			}
-			res = true;
-			break;
 		}
+		//--------------------------------
+		END_WINDOW_DEF()
 
-		default: break;
-		}
+		res = true;
 		break;
 	}
 #endif
@@ -1339,7 +1341,7 @@ void TXB_board::handle(void)
 #endif
 		
 #ifdef XB_GUI
-		if (winHandle0 != NULL) winHandle0->RepaintDataCounter++;
+		if (xb_board_winHandle0 != NULL) xb_board_winHandle0->RepaintDataCounter++;
 #endif
 		
 		CheckOld_HandleDataFrameTransport();

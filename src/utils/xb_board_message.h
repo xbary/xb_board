@@ -134,7 +134,7 @@ else \
 struct TTask;
 struct TTaskDef;
 
-//doONLYINTERESTED
+#define FREEPTR(Aptr) if (Am->Data.FreePTR == Aptr) Aptr = NULL;
 
 typedef enum { doFORWARD, doBACKWARD } TDoMessageDirection;
 
@@ -301,6 +301,7 @@ typedef struct {
 typedef enum {
 	tmaOPEN_MAINMENU, 
 	tmaCLOSE_MAINMENU, 
+	tmaIS_MAINMENU,
 	tmaGET_INIT_MENU, 
 	tmaGET_CAPTION_MENU_STRING, 
 	tmaGET_ITEM_MENU_STRING, 
@@ -344,6 +345,18 @@ typedef struct
 	uint8_t ItemIndex;
 	bool ReInit;
 } TMenuDelData;
+
+typedef struct
+{
+	int16_t X;
+	int16_t Y;
+} TMenuOpenMainData;
+
+typedef struct
+{
+	bool is;
+} TMenuIsMainData;
+
 typedef struct
 {
 	TTypeMenuAction TypeMenuAction;
@@ -355,6 +368,8 @@ typedef struct
 		TMenuClickData MenuClickData;
 		TMenuCaptionData MenuCaptionData;
 		TMenuDelData MenuDelData;
+		TMenuOpenMainData MenuOpenMainData;
+		TMenuIsMainData MenuIsMainData;
 	} ActionData;
 } TMenuData;
 //-----------------------------------------------------------------------
@@ -436,6 +451,10 @@ typedef enum {
 	KF_CURSORDOWN,
 	KF_CURSORLEFT,
 	KF_CURSORRIGHT,
+	KF_CTRL_CURSORUP,
+	KF_CTRL_CURSORDOWN,
+	KF_CTRL_CURSORLEFT,
+	KF_CTRL_CURSORRIGHT,
 	KF_F1,
 	KF_F2,
 	KF_F3,
