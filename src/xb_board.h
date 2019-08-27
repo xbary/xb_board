@@ -182,7 +182,7 @@ struct TTask
 	bool ShowLogWarn;
 	bool ShowLogError;
 	TIDMessage LastIDMessage;
-	THandleDataFrameTransport *HandleDataFrameTransportList;
+	DEFLIST_VAR(THandleDataFrameTransport,HandleDataFrameTransportList)
 	int8_t dosetupRC;
 	int8_t doloopRC;
 	int8_t domessageRC;
@@ -274,6 +274,17 @@ typedef struct
 	uint8_t mode : 2;
 	uint8_t functionpin : 4;
 } TPinInfo;
+
+struct TGPIODrive
+{
+	TGPIODrive* Next;
+	TGPIODrive* Prev;
+	uint16_t FromPin;
+	uint16_t ToPin;
+	TTaskDef* OwnerTask;
+	String Name;
+	void* UserData;
+};
 #pragma pack(pop)
 
 #define FUNCTIONPIN_NOIDENT 0
@@ -321,6 +332,10 @@ public:
 	String DeviceIDtoString(TUniqueID Adevid);
     //-----------------------------------------------------------------------------------------------------------------
 	TPinInfo *PinInfoTable;	
+	DEFLIST_VAR(TGPIODrive,GPIODriveList)
+	//TGPIODrive* GPIODriveList;
+	uint16_t Digital_Pins_Count;
+
 #ifdef BOARD_LED_TX_PIN
 	uint32_t Tick_TX_BLINK;
 #endif
@@ -330,19 +345,29 @@ public:
 #if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
 	uint32_t TickEnableBlink;
 #endif
+	TGPIODrive* GetGPIODriveByPin(uint16_t Apin);
+	TGPIODrive* AddGPIODrive(uint16_t Acountpin, String Aname);
+	TGPIODrive* AddGPIODrive(uint16_t Acountpin, TTaskDef* Ataskdef, String Aname);
+	TGPIODrive* AddGPIODrive(uint16_t Afrompin, uint16_t Atopin, String Aname);
+	TGPIODrive* AddGPIODrive(uint16_t Afrompin, uint16_t Atopin, TTaskDef* Ataskdef, String Aname);
+	TGPIODrive* GetGPIODriveByIndex(uint8_t Aindex);
+	uint8_t GetGPIODriveCount();
 
+	bool SetDigitalPinCount(uint16_t Acount);
 	bool SetPinInfo(uint16_t Anumpin, uint8_t Afunction, uint8_t Amode, bool Alogwarn = false);
+
 	bool pinMode(uint16_t pin, WiringPinMode mode);
 	void digitalWrite(uint16_t pin, uint8_t value);
 	uint8_t digitalRead(uint16_t pin);
 	uint8_t digitalToggle(uint16_t pin);
+
 	void Blink_RX(int8_t Auserid = -1);
 	void Blink_TX(int8_t Auserid = -1);
 	void Blink_Life();
 	//-----------------------------------------------------------------------------------------------------------------
 	
 	int8_t doAllInterruptRC;
-	TTask *TaskList;
+	DEFLIST_VAR(TTask,TaskList)
 	uint8_t TaskCount;
 	TTask *CurrentTask;
 	TTask *CurrentIterateTask;
@@ -392,7 +417,7 @@ public:
 	//-----------------------------------------------------------------------------------------------------------------
 	
 	bool HandleFrameTransportInGetStream;
-	THDFT_ResponseItem *HDFT_ResponseItemList;
+	DEFLIST_VAR(THDFT_ResponseItem,HDFT_ResponseItemList)
 
 	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t Afromaddress = 0);
 	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress = 0);
@@ -448,6 +473,13 @@ public:
 	size_t PREFERENCES_PutUINT32(const char* key, uint32_t value);
 	size_t PREFERENCES_PutUINT8(const char* key, uint8_t value);
 #endif
+	void LoadConfiguration(TTaskDef* ATaskDef);
+	void LoadConfiguration(TTask* ATask);
+	void LoadConfiguration();
+	void SaveConfiguration(TTaskDef* ATaskDef);
+	void SaveConfiguration(TTask* ATask);
+	void SaveConfiguration();
+
 	//-----------------------------------------------------------------------------------------------------------------
 
 };
@@ -483,12 +515,8 @@ extern void TCPClientDestroy(WiFiClient **Awificlient);
 #define BOARD_CRITICALFREEHEAP (1024*19)
 #endif
 
-#ifndef NUM_DIGITAL_PINS
-#define NUM_DIGITAL_PINS 61
-#endif
-
-#ifndef BOARD_NR_GPIO_PINS 
-#define BOARD_NR_GPIO_PINS NUM_DIGITAL_PINS
+#ifndef BOARD_NUM_DIGITAL_PINS
+#define BOARD_NUM_DIGITAL_PINS NUM_DIGITAL_PINS
 #endif
 
 #ifndef pin_Mode

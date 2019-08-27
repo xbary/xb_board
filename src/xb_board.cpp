@@ -132,6 +132,10 @@ void TXB_board::DateTimeSecond_init(void)
 // Procedura inicjuj¹ca zadanie g³ównego
 void XB_BOARD_Setup(void)
 {
+	board.LoadConfiguration(&XB_BOARD_DefTask);
+	board.AddGPIODrive(BOARD_NUM_DIGITAL_PINS,&XB_BOARD_DefTask,"ESP32");
+	board.SetDigitalPinCount(BOARD_NUM_DIGITAL_PINS);
+
 	// Jeœli framework zosta³ uruchomiony na ESP32 z dodatkow¹ pamiêci¹ RAM SPI , rezerwacja pierwszych 2 megabajtów w celu unikniêcia b³ednej wspó³pracy ESP32 z PSRAM
 #ifdef ESP32
 #ifdef PSRAM_BUG
@@ -222,13 +226,25 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		res = true;
 		break;
 	}
+	case IM_LOAD_CONFIGURATION:
+	{
+		res = true;
+		break;
+	}
+	case IM_SAVE_CONFIGURATION:
+	{
+		res = true;
+		break;
+	}
 	case IM_GPIO:
 	{
 		switch (Am->Data.GpioData.GpioAction)
 		{
 		case gaPinMode:
 		{
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
 			{
 				pin_Mode(Am->Data.GpioData.NumPin, (WiringPinMode)Am->Data.GpioData.ActionData.Mode);
 
@@ -249,7 +265,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		}
 		case gaPinRead:
 		{
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
 			{
 				Am->Data.GpioData.ActionData.Value = digital_Read(Am->Data.GpioData.NumPin);
 
@@ -263,7 +281,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		}
 		case gaPinWrite:
 		{
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
 			{
 				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
 
@@ -277,7 +297,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		}
 		case gaPinToggle:
 		{
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < BOARD_NR_GPIO_PINS))
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
 			{
 				if (board.PinInfoTable != NULL)
 				{
@@ -413,6 +435,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					else
 					{
 						board.Tick_ESCKey = 0;
+						Am->Data.KeyboardData.KeyCode = 0;
 						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
@@ -449,21 +472,25 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						board.SendMessage_FunctionKeyPress(KF_TABPREV, 0);//, &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 49) // F1
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F1;
 						board.TerminalFunction = 3;
 					}
-					else if (Am->Data.KeyboardData.KeyCode == 50) // F9
+					else if (Am->Data.KeyboardData.KeyCode == 50) // INSERT ... F9?
 					{
-						KeyboardFunctionDetect = KF_F9;
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_INSERT;
 						board.TerminalFunction = 5;
 					}
-					else if (Am->Data.KeyboardData.KeyCode == 51)
+					else if (Am->Data.KeyboardData.KeyCode == 51) // DELETE
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_DELETE;
 						board.TerminalFunction = 4;
 					}
@@ -477,41 +504,49 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					if (Am->Data.KeyboardData.KeyCode == 49) // F1
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F1;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 50) // F2
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F2;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 51) // F3
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F3;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 52) // F4
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F4;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 53) // F5
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F5;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 55) // F6
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F6;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 56) // F7
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F7;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 57) // F8
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F8;
 						board.TerminalFunction = 4;
 					}
@@ -523,23 +558,33 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				else if (board.TerminalFunction == 5)
 				{
 
-					if (Am->Data.KeyboardData.KeyCode == 48) // F9
+					if (Am->Data.KeyboardData.KeyCode == 126) // INSERT , ...
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 48) // F9
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F9;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 49) // F10
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F10;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 51) // F11
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F11;
 						board.TerminalFunction = 4;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 52) // F12
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						KeyboardFunctionDetect = KF_F12;
 						board.TerminalFunction = 4;
 					}
@@ -553,6 +598,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					if (Am->Data.KeyboardData.KeyCode == 126)
 					{
+						Am->Data.KeyboardData.KeyCode = 0;
 						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
@@ -670,6 +716,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 			}
 			END_MENUITEM()
+			SEPARATOR_MENUITEM()
+			CONFIGURATION_MENUITEMS()
 		}
 		END_MENU()
 
@@ -938,6 +986,9 @@ TXB_board::TXB_board()
 	NoTxCounter = 0;
 	TXCounter = 0;
 	doAllInterruptRC = 0;
+	Digital_Pins_Count = 0;
+	PinInfoTable = NULL;
+	GPIODriveList = NULL;
 
 	Default_ShowLogInfo = true;
 	Default_ShowLogWarn = true;
@@ -947,7 +998,6 @@ TXB_board::TXB_board()
 	DeviceName = BOARD_DEVICE_NAME;
 	DeviceVersion = BOARD_DEVICE_VERSION;
 	DeviceID = GetUniqueID();
-	PinInfoTable = (TPinInfo *)_malloc_psram(BOARD_NR_GPIO_PINS);
 	HDFT_ResponseItemList = NULL;
 
 }
@@ -1169,6 +1219,144 @@ String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 #pragma endregion
 #pragma region FUNKCJE_GPIO
 // -----------------------------------------
+TGPIODrive* TXB_board::GetGPIODriveByPin(uint16_t Apin)
+{
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if ((GD->FromPin <= Apin) && (GD->ToPin >= Apin))
+		{
+			return GD;
+		}
+		GD = GD->Next;
+	}
+	return NULL;
+}
+// -----------------------------------------
+// Dodanie drivera od GPIO
+TGPIODrive* TXB_board::AddGPIODrive(uint16_t Acountpin,String Aname)
+{
+	if (CurrentTask != NULL)
+		if (CurrentTask->TaskDef != NULL)
+			return AddGPIODrive(Acountpin, CurrentTask->TaskDef,Aname);
+	return NULL;
+}
+TGPIODrive* TXB_board::AddGPIODrive(uint16_t Acountpin, TTaskDef* Ataskdef, String Aname)
+{
+	uint16_t frompin = 0;
+	uint16_t topin = 0;
+
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if (GD->ToPin >frompin) 
+		{
+			frompin = GD->ToPin+1;
+		}
+		GD = GD->Next;
+	}
+
+	topin=frompin+(Acountpin-1);
+
+	return AddGPIODrive(frompin,topin,Ataskdef,Aname);
+}
+TGPIODrive* TXB_board::AddGPIODrive(uint16_t Afrompin, uint16_t Atopin, String Aname)
+{
+	if (CurrentTask!=NULL)
+		if (CurrentTask->TaskDef!=NULL)
+			return AddGPIODrive(Afrompin,Atopin, CurrentTask->TaskDef,Aname);
+	return NULL;
+}
+TGPIODrive* TXB_board::AddGPIODrive(uint16_t Afrompin, uint16_t Atopin,TTaskDef *Ataskdef, String Aname)
+{
+	if (Ataskdef == NULL) return NULL;
+	if (Afrompin > Atopin)
+	{
+		uint16_t t = Atopin;
+		Atopin = Afrompin;
+		Afrompin = t;
+	}
+		
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if ((GD->FromPin == Afrompin) && (GD->ToPin == Atopin) && (GD->OwnerTask == Ataskdef))
+		{
+			return GD;
+		}
+		GD = GD->Next;
+	}
+
+	CREATE_STR_ADD_TO_LIST(GPIODriveList, TGPIODrive, GD);
+
+	if (GD != NULL)
+	{
+		GD->FromPin = Afrompin;
+		GD->ToPin = Atopin;
+		GD->OwnerTask = Ataskdef;
+		GD->UserData = NULL;
+		GD->Name = Aname;
+		return GD;
+	}
+
+	board.Log("Error add GPIO drive...", true, true, tlError);
+	return NULL;
+}
+// -----------------------------------------
+TGPIODrive* TXB_board::GetGPIODriveByIndex(uint8_t Aindex)
+{
+	TGPIODrive* GD = GPIODriveList;
+	uint8_t i = 0;
+	while (GD != NULL)
+	{
+		if (i == Aindex)
+		{
+			return GD;
+		}
+		i++;
+		GD = GD->Next;
+	}
+	return NULL;
+}
+// -----------------------------------------
+uint8_t TXB_board::GetGPIODriveCount()
+{
+	TGPIODrive* GD = GPIODriveList;
+	uint8_t i = 0;
+	while (GD != NULL)
+	{
+		i++;
+		GD = GD->Next;
+	}
+	return i;
+}
+
+// -----------------------------------------
+// Ustalenie iloœci pinów w systemie
+// -> Acount nowa iloœæ pinów
+bool TXB_board::SetDigitalPinCount(uint16_t Acount)
+{
+	if (Acount > Digital_Pins_Count)
+	{
+		board.freeandnull((void **)&PinInfoTable);
+		PinInfoTable = (TPinInfo *)_malloc_psram(sizeof(TPinInfo) * Acount);
+		Digital_Pins_Count = Acount;
+	}
+	
+	if (PinInfoTable==NULL)
+	{
+		PinInfoTable = (TPinInfo*)_malloc_psram(sizeof(TPinInfo) * Digital_Pins_Count);
+	}
+
+	if (PinInfoTable == NULL)
+	{
+		Log("ERROR create pin table info...", true, true, tlError);
+		return false;
+	}
+
+	return true;
+}
+// -----------------------------------------
 // Ustawienie informacji o ustawieniach pinu
 // Jeœli funkcja zostanie wywo³ana w funkcji setup() zadania to zostan¹ wyœwietlone komunikaty o kolizji u¿ytecznoœci pinu 
 // -> Anumpin    - Numer pinu
@@ -1180,7 +1368,7 @@ String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 //               = false - b³¹d, pin nie obs³ugiwany
 bool TXB_board::SetPinInfo(uint16_t Anumpin, uint8_t Afunction, uint8_t Amode, bool Alogwarn)
 {
-	if ((Anumpin >= 0) && (Anumpin < BOARD_NR_GPIO_PINS))
+	if ((Anumpin >= 0) && (Anumpin < Digital_Pins_Count))
 	{
 		if (PinInfoTable != NULL)
 		{
@@ -1212,13 +1400,43 @@ bool TXB_board::SetPinInfo(uint16_t Anumpin, uint8_t Afunction, uint8_t Amode, b
 //	
 bool TXB_board::pinMode(uint16_t pin, WiringPinMode mode)
 {
+
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinMode;
 	mb.Data.GpioData.NumPin = pin;
 	mb.Data.GpioData.ActionData.Mode = mode;
 
-	return DoMessageOnAllTask(&mb,true, doFORWARD);
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if ((GD->FromPin <= pin) && (GD->ToPin >= pin))
+		{
+			mb.Data.GpioData.GPIODrive = GD;
+			DoMessage(&mb, true,CurrentTask,GD->OwnerTask);
+			break;
+		}
+		GD = GD->Next;
+	}
+
+	if (GD == NULL)
+	{
+		board.Log("GPIO Drive not find...", true, true, tlError);
+		return false;
+	}
+
+	mb.Data.GpioData.GpioAction = gaPinModeEvent;
+	TTask* t = TaskList;
+	while (t != NULL)
+	{
+		if (t->TaskDef != GD->OwnerTask)
+		{
+			DoMessage(&mb, true, CurrentTask, t->TaskDef);
+		}
+		t = t->Next;
+	}
+
+	return true;
 }
 
 //----------------------
@@ -1233,7 +1451,36 @@ void TXB_board::digitalWrite(uint16_t pin, uint8_t value)
 	mb.Data.GpioData.NumPin = pin;
 	mb.Data.GpioData.ActionData.Value = value;
 
-	DoMessageOnAllTask(&mb, true, doFORWARD);
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if ((GD->FromPin <= pin) && (GD->ToPin >= pin))
+		{
+			mb.Data.GpioData.GPIODrive = GD;
+			DoMessage(&mb, true, CurrentTask, GD->OwnerTask);
+			break;
+		}
+		GD = GD->Next;
+	}
+
+	if (GD == NULL)
+	{
+		board.Log("GPIO Drive not find...", true, true, tlError);
+		return;
+	}
+
+	mb.Data.GpioData.GpioAction = gaPinWriteEvent;
+
+	TTask* t = TaskList;
+	while (t != NULL)
+	{
+		if (t->TaskDef != GD->OwnerTask)
+		{
+			DoMessage(&mb, true, CurrentTask, t->TaskDef);
+		}
+		t = t->Next;
+	}
+
 }
 //------------------
 // Odczyt stanu pinu
@@ -1245,8 +1492,41 @@ uint8_t TXB_board::digitalRead(uint16_t pin)
 	mb.IDMessage = IM_GPIO;
 	mb.Data.GpioData.GpioAction = gaPinRead;
 	mb.Data.GpioData.NumPin = pin;
-	DoMessageOnAllTask(&mb, true, doFORWARD);
-	return mb.Data.GpioData.ActionData.Value;
+
+	uint8_t result = 0;
+
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if ((GD->FromPin <= pin) && (GD->ToPin >= pin))
+		{
+			mb.Data.GpioData.GPIODrive = GD;
+			DoMessage(&mb, true, CurrentTask, GD->OwnerTask);
+			result = mb.Data.GpioData.ActionData.Value;
+			break;
+		}
+		GD = GD->Next;
+	}
+
+	if (GD == NULL)
+	{
+		board.Log("GPIO Drive not find...", true, true, tlError);
+		return result;
+	}
+
+	mb.Data.GpioData.GpioAction = gaPinReadEvent;
+	TTask* t = TaskList;
+	while (t != NULL)
+	{
+		if (t->TaskDef != GD->OwnerTask)
+		{
+			mb.Data.GpioData.ActionData.Value = result;
+			DoMessage(&mb, true, CurrentTask, t->TaskDef);
+		}
+		t = t->Next;
+	}
+
+	return result;
 }
 //------------------------------
 // Wykonanie toggle bit na pinie
@@ -1259,8 +1539,40 @@ uint8_t TXB_board::digitalToggle(uint16_t pin)
 	mb.Data.GpioData.GpioAction = gaPinToggle;
 	mb.Data.GpioData.NumPin = pin;
 
-	DoMessageOnAllTask(&mb, true, doFORWARD);
-	return mb.Data.GpioData.ActionData.Value;
+	uint8_t result = 0;
+
+	TGPIODrive* GD = GPIODriveList;
+	while (GD != NULL)
+	{
+		if ((GD->FromPin <= pin) && (GD->ToPin >= pin))
+		{
+			mb.Data.GpioData.GPIODrive = GD;
+			DoMessage(&mb, true, CurrentTask, GD->OwnerTask);
+			result = mb.Data.GpioData.ActionData.Value;
+			break;
+		}
+		GD = GD->Next;
+	}
+
+	if (GD == NULL)
+	{
+		board.Log("GPIO Drive not find...", true, true, tlError);
+		return result;
+	}
+
+	mb.Data.GpioData.GpioAction = gaPinToggleEvent;
+	TTask* t = TaskList;
+	while (t != NULL)
+	{
+		if (t->TaskDef != GD->OwnerTask)
+		{
+			mb.Data.GpioData.ActionData.Value = result;
+			DoMessage(&mb, true, CurrentTask, t->TaskDef);
+		}
+		t = t->Next;
+	}
+
+	return result;
 }
 // ----------------------------------------------------------------------
 // Wys³anie messaga informuj¹cego ¿e urz¹dzenie odczyta³o dane z zewn¹trz
@@ -1416,7 +1728,12 @@ void TXB_board::handle(void)
 					res = GetStream(bufkey, 7, t->TaskDef, t->GetStreamAddressAsKeyboard[l]);
 					if (res > 0)
 					{
-						for (uint32_t i = 0; i < res; i++) SendMessage_KeyPress((char)bufkey[i]);
+						for (uint32_t i = 0; i < res; i++)
+						{
+							//String s = "Code:" + String(bufkey[i], HEX) + " , " + String(bufkey[i], DEC);
+							//board.Log(s.c_str(), true, true);
+							SendMessage_KeyPress((char)bufkey[i]);
+						}
 						break;
 					}
 				}
@@ -1901,7 +2218,9 @@ bool TXB_board::SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String &APoi
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GET_TASKSTATUS_STRING;
 	mb.Data.PointerString = &APointerString;
-	return DoMessage(&mb, true, CurrentTask, ATaskDef);
+	bool res = DoMessage(&mb, true, CurrentTask, ATaskDef);
+	*mb.Data.PointerString += "                   ";
+	return res;
 }
 // --------------------------------------------------------------------
 // Wys³anie messaga do zadania w celu uzyskania stringu z nazw¹ zadania
@@ -3502,4 +3821,43 @@ size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
 #endif
 }
 #endif
+
+void TXB_board::LoadConfiguration(TTaskDef* ATaskDef)
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_LOAD_CONFIGURATION;
+	DoMessage(&mb, true, CurrentTask, ATaskDef);
+}
+
+void TXB_board::LoadConfiguration(TTask* ATask)
+{
+	if (ATask!=NULL)
+		LoadConfiguration(ATask->TaskDef);
+}
+
+void TXB_board::LoadConfiguration()
+{
+	LoadConfiguration(CurrentTask);
+}
+
+void TXB_board::SaveConfiguration(TTaskDef* ATaskDef)
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_SAVE_CONFIGURATION;
+	DoMessage(&mb, true, CurrentTask, ATaskDef);
+}
+
+void TXB_board::SaveConfiguration(TTask* ATask)
+{
+	if (ATask != NULL)
+		SaveConfiguration(ATask->TaskDef);
+}
+
+void TXB_board::SaveConfiguration()
+{
+	SaveConfiguration(CurrentTask);
+}
+
+
+
 #pragma endregion 

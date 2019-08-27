@@ -6,34 +6,79 @@
 #include <ESP8266WiFi.h>
 #endif
 
+// Makro definiuj¹ce zmienne listy struktur klas
+#define DEFLIST_VAR(AClass,Alist) \
+AClass *Alist; \
+AClass *Alist##_last;\
+uint32_t Alist##_count;
+
+
 // Makra zwi¹zane z listami struktur, u¿ywane wewn¹trz klas przewa¿nie w kontruktorach i destruktorach
 #define ADD_TO_LIST(Alist,AClass) \
 { \
-AClass *lm = Alist;\
-Next = NULL;\
-Prev = NULL;\
-if (lm == NULL)\
+this->Next = NULL;\
+this->Prev = NULL;\
+if (Alist == NULL)\
 {\
-	Alist = this;\
-}\
-else\
-{\
-	while (lm != NULL) { \
-		if (lm->Next == NULL) \
-		{ \
-			lm->Next = this; \
-			Prev = lm; \
-			Next = NULL; \
-			break; \
-		} \
-		else \
-		{ \
-			lm = lm->Next; \
-		} \
-	} \
+	Alist = this; \
+	Alist##_last= this; \
+	Alist##_count = 1; \
+} \
+else \
+{ \
+	Alist##_last->Next = this; \
+	this->Prev = Alist##_last; \
+	Alist##_last = this; \
+	Alist##_count++; \
 } \
 }
+
+/*
+AClass* lm = Alist; \
+while (lm != NULL) \
+{ \
+if (lm->Next == NULL) \
+{ \
+lm->Next = this; \
+Prev = lm; \
+Next = NULL; \
+break; \
+} \
+else \
+{ \
+lm = lm->Next; \
+} \
+} \
+*/
 #define DELETE_FROM_LIST(Alist) \
+{ \
+	Alist##_count--; \
+	if (this == Alist##_last) \
+	{ \
+		Alist##_last = this->Prev; \
+	} \
+	if (this == Alist) \
+	{ \
+		Alist = this->Next; \
+		if (this->Next != NULL) \
+		{ \
+			this->Next->Prev = NULL; \
+		} \
+	} \
+	else \
+	{ \
+		if (this->Prev!=NULL) \
+		{ \
+			this->Prev->Next = this->Next; \
+			if (this->Next != NULL) \
+			{ \
+				this->Next->Prev = this->Prev; \
+			} \
+		} \
+	} \
+}
+
+/*
 { \
 if (Prev == NULL) \
 { \
@@ -52,9 +97,29 @@ else \
 	} \
 } \
 }
+*/
 
 // Makra zwi¹zane z listami struktur, u¿ywane na zewn¹trz klas z mo¿liwoœci¹ wskazania 
 #define ADD_TO_LIST_STR(Alist,AClass,_this_) \
+{ \
+_this_->Next = NULL;\
+_this_->Prev = NULL;\
+if (Alist == NULL)\
+{\
+	Alist = _this_; \
+	Alist##_last= _this_; \
+	Alist##_count = 1; \
+} \
+else \
+{ \
+	Alist##_last->Next = _this_; \
+	_this_->Prev = Alist##_last; \
+	Alist##_last = _this_; \
+	Alist##_count++; \
+} \
+}
+
+/*
 { \
 AClass *lm = Alist;\
 _this_->Next = NULL;\
@@ -80,7 +145,36 @@ else\
 	} \
 } \
 }
+*/
 #define DELETE_FROM_LIST_STR(Alist,_this_) \
+{ \
+	Alist##_count--; \
+	if (_this_ == Alist##_last) \
+	{ \
+		Alist##_last = _this_->Prev; \
+	} \
+	if (_this_ == Alist) \
+	{ \
+		Alist = _this_->Next; \
+		if (_this_->Next != NULL) \
+		{ \
+			_this_->Next->Prev = NULL; \
+		} \
+	} \
+	else \
+	{ \
+		if (_this_->Prev!=NULL) \
+		{ \
+			_this_->Prev->Next = _this_->Next; \
+			if (_this_->Next != NULL) \
+			{ \
+				_this_->Next->Prev = _this_->Prev; \
+			} \
+		} \
+	} \
+}
+
+/*
 { \
 if (_this_->Prev == NULL) \
 { \
@@ -101,6 +195,7 @@ else \
 _this_->Prev = NULL; \
 _this_->Next = NULL; \
 }
+*/
 
 #define MOVE_STR_TO_ENDLIST(Alist,AClass,_this_) \
 { \
@@ -130,11 +225,30 @@ else \
 } \
 }
 
+#define CREATE_STR_ADD_TO_LIST(Alist,Astr,Aptr) \
+{ \
+	Aptr=(Astr *)board._malloc_psram(sizeof(Astr)); \
+	if (Aptr!=NULL) \
+	{ \
+		ADD_TO_LIST_STR(Alist,Astr,Aptr); \
+	} \
+}
+
+#define DESTROY_STR_DEL_FROM_LIST(Alist,Aptr) \
+{ \
+	if (Aptr!=NULL) \
+	{ \
+		DELETE_FROM_LIST_STR(Alist,Aptr); \
+		board.freeandnull((void **)&Aptr); \
+	} \
+} 
 
 struct TTask;
 struct TTaskDef;
+struct TGPIODrive;
 
 #define FREEPTR(Aptr) if (Am->Data.FreePTR == Aptr) Aptr = NULL;
+#define GET_TASKSTATUS(enumstatus,cutbeginch) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus); Am->Data.PointerString->remove(0,cutbeginch); break;}
 
 typedef enum { doFORWARD, doBACKWARD } TDoMessageDirection;
 
@@ -160,6 +274,8 @@ typedef enum {
 	IM_STREAM,
 	IM_KEYBOARD,
 	IM_CONFIG_SAVE,
+	IM_LOAD_CONFIGURATION,
+	IM_SAVE_CONFIGURATION,
 	IM_GET_VAR_VALUE,
 #ifdef XB_GUI
 	IM_MENU,
@@ -186,7 +302,8 @@ typedef struct {
 } TSensorData;
 //-----------------------------------------------------------------------
 typedef enum {
-	gaPinMode, gaPinWrite, gaPinRead , gaPinToggle
+	gaPinMode, gaPinWrite, gaPinRead , gaPinToggle,
+	gaPinModeEvent, gaPinWriteEvent, gaPinReadEvent, gaPinToggleEvent
 } TGpioAction;
 
 typedef struct {
@@ -197,6 +314,7 @@ typedef struct {
 		uint8_t Mode;
 	}
 	ActionData;
+	TGPIODrive* GPIODrive;
 
 } TGpioData;
 
@@ -306,6 +424,8 @@ typedef enum {
 	tmaGET_CAPTION_MENU_STRING, 
 	tmaGET_ITEM_MENU_STRING, 
 	tmaCLICK_ITEM_MENU,
+	tmaCLICKLEFT_ITEM_MENU,
+	tmaCLICKRIGHT_ITEM_MENU,
 	tmaESCAPE_MENU,
 	tmaDEL_ITEM_MENU
 } TTypeMenuAction;
@@ -343,6 +463,11 @@ typedef struct
 typedef struct
 {
 	uint8_t ItemIndex;
+} TMenuClickLeftRightData;
+
+typedef struct
+{
+	uint8_t ItemIndex;
 	bool ReInit;
 } TMenuDelData;
 
@@ -366,6 +491,7 @@ typedef struct
 		TMenuInitData MenuInitData;
 		TMenuItemData MenuItemData;
 		TMenuClickData MenuClickData;
+		TMenuClickLeftRightData MenuClickLeftRightData;
 		TMenuCaptionData MenuCaptionData;
 		TMenuDelData MenuDelData;
 		TMenuOpenMainData MenuOpenMainData;
@@ -445,6 +571,7 @@ typedef enum {
 	KF_ENTER,
 	KF_BACKSPACE,
 	KF_DELETE,
+	KF_INSERT,
 	KF_TABNEXT,
 	KF_TABPREV,
 	KF_CURSORUP,
