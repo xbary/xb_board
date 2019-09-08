@@ -1,6 +1,13 @@
-// Szablon projektu .INO z oparty na bibliotece xb_board
 /*
- #include <xb_board.h>
+
+*** Uruchamianie projektu .INO opartego na bibliotece XB_BOARD ***
+
+ -------------------------------------
+ KROK 1. Dodajemy bibliotekê XB_BOARD.
+
+Tak powinien wygl¹daæ g³ówny plik projektu, nale¿y dopisa dwa makra których kod odwo³uje siê do funkcji biblioteki.
+
+#include <xb_board.h>
  
  void setup()
 {
@@ -11,43 +18,104 @@ void loop()
 {
 	XB_BOARD_LOOP();
 }
- */
+- eof -
 
-// we w³aœciwoœciach projektu dodajemy w 
-// Extra flags: -I{build.path}
+-----------------------------------------------------------------------------
+KROK 2. Dodanie flagi dla kompilatora aby szuka³ inkludy w katalogu projektu.
+
+We w³aœciwoœciach projektu dodajemy w pozycji Extra flags: taki wpis -I{build.path}
 
 
-// Obowi¹zkowa inkluda z parametrami wstêpnymi projektu
-/*
+-----------------------------------------------------
+KROK 3. Dodanie pliku inkludy o nazwie xb_board_def.h
+
 #ifndef XB_BOARD_DEF_H
 #define XB_BOARD_DEF_H
 
+#endif
+
+
+------------------------------------------------------------------------------------------------
+KROK 4. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: ESP32 Dev module, 
+        ESP32 wRover module.
+
+
+
+
+
+
+*** MAKRA KONFIGURACJI ORAZ URUCHAMIAJ¥CE FUNKCJE BIBLIOTEKI ***
+
+
 #define DEVICE_NAME "..."
+// Nazwa urzadzenia
+
+
 #define DEVICE_VERSION "?.? (2019.01.1)"
+// Tekst opisuj¹cy wersje urz¹dzenia
 
-// Standardowe ustawienia dla UART
-#define SerialBoard			Serial
-#define SerialBoard_BAUD	115200
-// Wskazanie GPIO na których ma zostaæ uruchomiony podstawowy UART
-//#define SerialBoard_RX_PIN  ?
-//#define SerialBoard_TX_PIN  ?
 
-//#define BOARD_LED_TX_PIN ?
-//#define BOARD_LED_RX_PIN ?
-//#define BOARD_LED_TX_STATUS_OFF LOW
-//#define BOARD_LED_RX_STATUS_OFF LOW
-//#define TICK_LED_BLINK 250
-
-// Definicje powoduj¹ce wstawienie standardowego GUI z GADGETAMI na terminalach VT100(?)
-//#define SCREENTEXT_TYPE_BOARDLOG
-//#define XB_GUI
-
-// GPIO do którego pod³¹czony jest np LED informuj¹cy u¿ytkownika czy urz¹dzenie siê nie zawiesi³o
 #define BOARD_LED_LIFE_PIN 5
+// GPIO (np 5 dla WEMOS LOLIN D32 PRO) do którego pod³¹czony jest np LED blikuj¹cy co sekundê.
+// Równoczeœnie co sekundê jest wysy³any message IM_LIVE_BLINK do wszystkich zadañ bez wzglêdu 
+// czy zdefiniowany pin BOARD_LED_LIFE_PIN.
 
 
+#define BOARD_LED_TX_PIN ?
+#define BOARD_LED_RX_PIN ?
+// GPIO do którego pod³¹czone s¹ ledy informuj¹ce ¿e coœ jest odbierane oraz wysy³ane z urz¹dzenia.
+// Mo¿na pomin¹æ lub te¿ zdefiniowaæ tylko  BOARD_LED_TX_PIN  lub  BOARD_LED_RX_PIN.
+// Za wyzwolenie tej funkcjonalnoœci odpowiadaj¹ funkcje Blink_RX() oraz Blink_TX(), funkcje oprócz
+// zapalaniu LEDów wczeœniej  zdefiniowanych wysy³aj¹ messaga IM_RX_BLINK, IM_TX_BLINK do wszystkich 
+// zadañ. Mo¿na podaæ w argumencie ID w celu rozpoznania w messagu o które RX TX nam chodzi.
 
-#endif 
+#define BOARD_LED_TX_STATUS_OFF LOW
+#define BOARD_LED_RX_STATUS_OFF LOW
+// Definiowanie czy wygaszenie LEDów jest przy stanie LOW czy HIGH pinów wczeœniej zdefiniowanych.
+
+#define TICK_LED_BLINK 250
+// Ustalenie czasu jak d³ugo ma LED_TX LED_RX œwieciæ po wyzwoleniu funkcjami Blink_RX() oraz Blink_TX()
+
+
+#define XB_GUI
+// Jeœ³i zdefiniowano to ca³y system zacznie korzystaæ z biblioteki xb_gui.h
+
+
+#define XB_PREFERENCES
+// Jeœli zdefiniowano to biblioteka zacznie korzystaæ do obs³ugi konfiguracji w pamiêci flash z 
+// biblioteki Preferences.h (ESP32) .
+
+
+// Jeœli chcemy aby funkcja Log() biblioteki wysy³a³a na UART jakieœ komunikaty oraz ¿eby 
+// biblioteka pobiera³a kody z RX jako wciskanie klawiszy, nale¿y najpierw dodaæ do projektu
+// biblioteke XB_SERIAL. Podstawowa konfiguracja XB_SERIAL polega na ustawieniu takich makr:
+
+#define Serial0Board_BAUD 115200
+// Okreœla szybkoœæ pierwszego UARTa w urz¹dzeniu, oraz równoczeœnie go uruchamia
+
+#define SERIAL0_SizeRXBuffer 1024
+// Definicja wielkoœci bufora odbiorczego
+
+#define Serial0Board_UseKeyboard
+// Jeœli zdefiniujemy to zostanie dodany stream z którego korzystaæ bêdzie klawiatura jako kody 
+// klawiszy nadchodz¹ce w RX
+
+#define Serial0Board_UseLog
+// Jeœli zdefiniowane to biblioteka XB_BOARD a konkretnie funkcja Log() zacznie korzystaæ poprzez
+// stream do wysy³ania komunikatów na TX uarta pierwszego
+
+#define Serial0Board_UseGui
+// Jeœli zdefiniowane to na pierwszy uart bêdzie rysowane GUI
+
+#define Serial0Board_RX_PIN ?
+#define Serial0Board_TX_PIN ?
+// Dla ESP32 mo¿emy zdefiniowaæ na których pinach zostanie uruchomiony pierwszy UART.
+// Jeœli nie podamy tych definicji to u¿yte zostan¹ standardowe przyporz¹dkowania pinów.
+
+#define Serial0Board_UseDebugOutPut
+// Jeœli zdefiniujemy to na pierwszy UART zostan¹ skierowane komunikaty diagnostyczne frameworku 
+// arduino dla ESP32.
+
  */
 
 #ifndef __XB_BOARD_H

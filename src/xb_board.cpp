@@ -56,13 +56,6 @@ volatile uint32_t DateTimeStart;
 volatile uint32_t __SysTickCount;
 #endif
 
-
-#ifndef XB_WIFI
-#ifndef XB_ETH
-volatile uint32_t statusdoping;
-#endif
-#endif
-
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
 #ifdef XB_GUI
 
@@ -995,11 +988,18 @@ TXB_board::TXB_board()
 	Default_ShowLogError = true;
 
 	HandleFrameTransportInGetStream = true;
+	#ifdef BOARD_DEVICE_NAME
 	DeviceName = BOARD_DEVICE_NAME;
+#else
+	DeviceName = "NoName";
+#endif
+#ifdef BOARD_DEVICE_VERSION
 	DeviceVersion = BOARD_DEVICE_VERSION;
+#else
+	DeviceVersion = "0.0";
+#endif
 	DeviceID = GetUniqueID();
 	HDFT_ResponseItemList = NULL;
-
 }
 
 TXB_board::~TXB_board()
