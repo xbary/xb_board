@@ -375,6 +375,7 @@ typedef enum {
 	// same litery i cyfry
    tivInt8,
 	tivIP,
+	tivIP_U32,
 	tivInt16,
 	tivInt32,
 	tivInt64,
