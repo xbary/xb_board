@@ -630,10 +630,10 @@ uint8_t StringToUINT(char *Astr, uint32_t *Aint)
 {
 	uint8_t l = 0;
 	*Aint = 0;
-	while (*Astr == ' ') {
+	while (*Astr == ' ') 
+	{
 		Astr++; l++;
 	}
-	;
 
 	while (1)
 	{
@@ -646,6 +646,28 @@ uint8_t StringToUINT(char *Astr, uint32_t *Aint)
 	}
 	return l;
 }
+
+uint8_t StringToUINT(const char* Astr, uint32_t* Aint)
+{
+	uint8_t l = 0;
+	*Aint = 0;
+	while (*Astr == ' ')
+	{
+		Astr++; l++;
+	}
+
+	while (1)
+	{
+		if ((*Astr >= '0') && (*Astr <= '9'))
+		{
+			*Aint = ((*Aint * 10) + (*Astr - '0'));
+		}
+		else break;
+		Astr++; l++;
+	}
+	return l;
+}
+
 
 uint8_t StringHEXToUINT(char *Astr, uint32_t *Aint)
 {

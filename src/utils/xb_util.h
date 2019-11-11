@@ -193,6 +193,7 @@ extern uint32_t StringPos(const char *Astr,const char *Asubstr, uint32_t *Aposin
 extern bool StringTrim(char *Astr);
 extern uint8_t IPtoString(uint32_t Aip, char *Asip);
 extern uint8_t StringToUINT(char *Astr, uint32_t *Aint);
+extern uint8_t StringToUINT(const char* Astr, uint32_t* Aint);
 extern uint8_t StringHEXToUINT(char *Astr, uint32_t *Aint);
 extern uint8_t StringtoIP(char *Asip, uint32_t *Aip);
 extern uint32_t StringLength(REGISTER char *Astr, REGISTER uint8_t Acharend);
