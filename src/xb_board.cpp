@@ -952,6 +952,15 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #endif
 		res = true;
 	}
+	case IM_GET_VAR_VALUE:
+	{
+		if (*Am->Data.VarValueData.VarName == "devicename")
+		{
+			*Am->Data.VarValueData.VarValue = board.DeviceName;
+			res = true;
+		}
+		break;
+	}
 	default:;
 	}
 	
