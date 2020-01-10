@@ -47,11 +47,11 @@ KROK 4. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 *** MAKRA KONFIGURACJI ORAZ URUCHAMIAJ¥CE FUNKCJE BIBLIOTEKI ***
 
 
-#define DEVICE_NAME "..."
+#define BOARD_DEVICE_NAME "..."
 // Nazwa urzadzenia
 
 
-#define DEVICE_VERSION "?.? (2019.01.1)"
+#define BOARD_DEVICE_VERSION "?.? (2019.01.1)"
 // Tekst opisuj¹cy wersje urz¹dzenia
 
 
