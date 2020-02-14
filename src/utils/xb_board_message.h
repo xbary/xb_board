@@ -243,6 +243,27 @@ else \
 	} \
 } 
 
+#define CREATE_CLASS_ADD_TO_LIST(Alist,Aclass,Aptr) \
+{ \
+	Aptr= new Aclass; \
+	if (Aptr!=NULL) \
+	{ \
+		ADD_TO_LIST_STR(Alist,Astr,Aptr); \
+	} \
+}
+
+#define DESTROY_CLASS_DEL_FROM_LIST(Alist,Aptr) \
+{ \
+	if (Aptr!=NULL) \
+	{ \
+		delete(Aptr); \
+		DELETE_FROM_LIST_STR(Alist,Aptr); \
+		Aptr=NULL; \
+	} \
+} 
+
+
+
 struct TTask;
 struct TTaskDef;
 struct TGPIODrive;
@@ -251,6 +272,7 @@ struct TGPIODrive;
 #define GET_TASKSTATUS(enumstatus,cutbeginch) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus); Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKSTATUS_OTHER(enumstatus,cutbeginch,other) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus)+other; Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKNAME(name) *(Am->Data.PointerString) = String(name);
+#define GET_ENUMSTRING(enumstatus,cutbeginch) case enumstatus: {String s=#enumstatus; s.remove(0,cutbeginch); s.replace('_',' '); return s;}
 
 typedef enum { doFORWARD, doBACKWARD } TDoMessageDirection;
 
@@ -382,9 +404,12 @@ typedef enum {
 	tivInt32,
 	tivInt64,
 	tivUInt8,
+	tivUInt8_HEX,
 	tivUInt16,
 	tivUInt32,
 	tivUInt64,
+	tiv_double,
+	tiv_udouble,
 
 } TTypeInputVar;
 
@@ -455,6 +480,7 @@ typedef struct
 	String *PointerString;
 	uint8_t ItemIndex;
 	TTextAlignment TextAlignment;
+	bool NMenu;
 } TMenuItemData;
 
 typedef struct

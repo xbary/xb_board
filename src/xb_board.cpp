@@ -3829,6 +3829,25 @@ size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
 	return 0;
 #endif
 }
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutDouble(const char* key, double value)
+{
+#ifdef ESP32
+	return xbpreferences.putDouble(key, value);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+double TXB_board::PREFERENCES_GetDouble(const char* key, double defaultvalue)
+{
+#ifdef ESP32
+	return xbpreferences.getDouble(key, defaultvalue);
+#else
+	return 0;
+#endif
+}
+
 #endif
 
 void TXB_board::LoadConfiguration(TTaskDef* ATaskDef)

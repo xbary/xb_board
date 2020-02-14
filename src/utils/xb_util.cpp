@@ -222,6 +222,17 @@ uint8_t ahextoint(REGISTER uint8_t Ach)
 	return 0xff;
 }
 
+#include <bits/basic_string.h>
+
+double strtodouble(String Astrdouble)
+{
+	//std::string s();
+	double result = 0;
+	result = std::strtod(Astrdouble.c_str(),NULL);
+	
+	return result;
+}
+
 uint8_t doubletostr(double v,char *buf,uint8_t prec)
 {
 	String s = String(v,prec);
@@ -574,13 +585,13 @@ uint32_t StringPos(const char *Astr,const char *Asubstr,uint32_t *Aposindx)
 	return 0;
 }
 
-bool StringTrim(char *Astr)
+bool StringTrim(char *Astr, char Achtrim)
 {
 	uint32_t i, ci = 0;
 	
 	for (i = 0;Astr[i] != 0;i++)
 	{
-		if (Astr[i] != ' ')
+		if (Astr[i] != Achtrim)
 		{
 			ci = i;
 			break;
@@ -594,7 +605,7 @@ bool StringTrim(char *Astr)
 	
 	for (i = 0;Astr[i] != 0;i++)
 	{
-		if (Astr[i] != ' ')
+		if (Astr[i] != Achtrim)
 		{
 			ci = i;
 		}
@@ -603,7 +614,68 @@ bool StringTrim(char *Astr)
 	Astr[ci + 1] = 0;
 	return true;
 	
+
 }
+
+bool StringTrimRight(char* Astr,char Achtrim)
+{
+	uint32_t i, ci = 0;
+
+	for (i = 0; Astr[i] != 0; i++)
+	{
+		if (Astr[i] != Achtrim)
+		{
+			ci = i;
+		}
+	}
+
+	Astr[ci + 1] = 0;
+	return true;
+
+
+}
+
+bool StringTrimRight(String *Astr, char Achtrim)
+{
+	uint32_t i, ci = 0;
+
+	for (i = 0; Astr->charAt(i) != 0; i++)
+	{
+		if (Astr->charAt(i) != Achtrim)
+		{
+			ci = i;
+		}
+	}
+
+	*Astr = Astr->substring(0,ci+1);
+	return true;
+
+
+}
+
+bool StringTrimLeft(char* Astr, char Achtrim)
+{
+	uint32_t i, ci = 0;
+
+	for (i = 0; Astr[i] != 0; i++)
+	{
+		if (Astr[i] != Achtrim)
+		{
+			ci = i;
+			break;
+		}
+	}
+
+	if (ci != 0)
+	{
+		strcpy(&Astr[0], &Astr[ci]);
+	}
+
+	return true;
+
+
+}
+
 
 uint8_t IPtoString(uint32_t Aip, char *Asip)
 {
@@ -874,6 +946,28 @@ void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringt
 		
 	}
 	
+}
+
+int round(float value) {
+	float val1;
+	if (value < 0.0f)
+		val1 = value - 0.5f;
+	else
+		val1 = value + 0.5f;
+	int intPart = int(val1);
+	return intPart;
+}
+
+float _CutPrecision(float liczba,uint8_t digprecis)
+{
+	switch (digprecis)
+	{
+	default:
+	case 2:
+		return round(liczba * 100.0f) / 100.0f;
+	case 1:
+		return round(liczba * 10.0f) / 10.0f;
+	}
 }
 
 void xb_memoryfill(REGISTER void *Aadr, REGISTER uint32_t Alength, REGISTER uint8_t Avalue)

@@ -178,6 +178,7 @@ extern uint32_t RTC_EncodeUnixTime(struct tm *TM);
 extern void GetTimeIndx(String &Atotxt, uint32_t Atimeindx);
 extern void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx);
 extern uint8_t ahextoint(REGISTER uint8_t Ach);
+extern double strtodouble(String Astrdouble);
 extern uint8_t doubletostr(double v,char *buf, uint8_t prec = 2);
 extern double CutPrecision(volatile double val, uint8_t prec);
 extern char* _itoa(int value, char* result, int base);
@@ -190,7 +191,10 @@ extern void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, b
 extern void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep = 0,bool Aenter=false);
 extern int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench);
 extern uint32_t StringPos(const char *Astr,const char *Asubstr, uint32_t *Aposindx);
-extern bool StringTrim(char *Astr);
+extern bool StringTrim(char *Astr, char Achtrim = ' ');
+extern bool StringTrimRight(char* Astr, char Achtrim = ' ');
+extern bool StringTrimRight(String* Astr, char Achtrim = ' ');
+extern bool StringTrimLeft(char* Astr, char Achtrim = ' ');
 extern uint8_t IPtoString(uint32_t Aip, char *Asip);
 extern uint8_t StringToUINT(char *Astr, uint32_t *Aint);
 extern uint8_t StringToUINT(const char* Astr, uint32_t* Aint);
@@ -212,6 +216,8 @@ extern void charcat(char *Astr, char Ach);
 
 typedef enum { staLeft, staCentre, staRight } TStringTextAlignment;
 extern void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringtextalignment=staLeft, char Ach=' '); 
+extern int round(float value);
+extern float _CutPrecision(float liczba, uint8_t digprecis=2);
 extern void xb_memoryfill(REGISTER void *Aadr, REGISTER uint32_t Alength, REGISTER uint8_t Avalue);
 extern void xb_memorycopy(REGISTER void *Asource, REGISTER void *Adestination, REGISTER int32_t Alength);
 extern bool xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength);

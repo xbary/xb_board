@@ -540,6 +540,8 @@ public:
 	size_t PREFERENCES_PutString(const char* key, String value);
 	size_t PREFERENCES_PutUINT32(const char* key, uint32_t value);
 	size_t PREFERENCES_PutUINT8(const char* key, uint8_t value);
+	size_t PREFERENCES_PutDouble(const char* key, double value);
+	double PREFERENCES_GetDouble(const char* key, double defaultvalue);
 #endif
 	void LoadConfiguration(TTaskDef* ATaskDef);
 	void LoadConfiguration(TTask* ATask);
