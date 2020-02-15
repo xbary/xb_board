@@ -429,6 +429,8 @@ public:
 	uint8_t digitalRead(uint16_t pin);
 	uint8_t digitalToggle(uint16_t pin);
 
+	void SoftResetMCU(bool Asendmessage = true);
+
 	void Blink_RX(int8_t Auserid = -1);
 	void Blink_TX(int8_t Auserid = -1);
 	void Blink_Life();
@@ -458,7 +460,6 @@ public:
 	void SendMessage_OTAUpdateStarted();
 	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL);
 	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL);
-	void SendMessage_ConfigSave(void);
 	void SendMessage_FreePTR(void *Aptr);
 	
 	//-----------------------------------------------------------------------------------------------------------------
@@ -549,6 +550,7 @@ public:
 	void SaveConfiguration(TTaskDef* ATaskDef);
 	void SaveConfiguration(TTask* ATask);
 	void SaveConfiguration();
+	void AllSaveConfiguration(void);
 
 	//-----------------------------------------------------------------------------------------------------------------
 

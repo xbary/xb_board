@@ -56,6 +56,9 @@ volatile uint32_t DateTimeStart;
 volatile uint32_t __SysTickCount;
 #endif
 
+// Konfiguracja ---------------------------------------------------------------------
+bool xb_board_ShowGuiOnStart = false;
+
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
 #ifdef XB_GUI
 
@@ -120,6 +123,44 @@ void TXB_board::DateTimeSecond_init(void)
 #pragma endregion
 #pragma region FUNKCJE_SETUP_LOOP_MESSAGES
 // -------------------------------------
+bool XB_BOARD_LoadConfiguration()
+{
+#ifdef XB_PREFERENCES
+	if (board.PREFERENCES_BeginSection("XBBOARD"))
+	{
+		xb_board_ShowGuiOnStart = board.PREFERENCES_GetBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
+		board.PREFERENCES_EndSection();
+	}
+	else
+	{
+		return false;
+	}
+	return true;
+#else
+	return false
+#endif
+
+}
+
+bool XB_BOARD_SaveConfiguration()
+{
+#ifdef XB_PREFERENCES
+	if (board.PREFERENCES_BeginSection("XBBOARD"))
+	{
+		board.PREFERENCES_PutBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
+		board.PREFERENCES_EndSection();
+	}
+	else
+	{
+		return false;
+	}
+	return true;
+#else
+	return false
+#endif
+
+}
+
 
 // -------------------------------------
 // Procedura inicjuj¹ca zadanie g³ównego
@@ -221,11 +262,13 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	case IM_LOAD_CONFIGURATION:
 	{
+		XB_BOARD_LoadConfiguration();
 		res = true;
 		break;
 	}
 	case IM_SAVE_CONFIGURATION:
 	{
+		XB_BOARD_SaveConfiguration();
 		res = true;
 		break;
 	}
@@ -611,8 +654,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #ifdef XB_GUI
 			else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
 			{
+			    xb_board_winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
 				GUI_Show();
-				xb_board_winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
+				
 				res = true;
 			}
 			else if (Am->Data.KeyboardData.KeyFunction == KF_ENTER)
@@ -685,32 +729,35 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 32, MENU_AUTOCOUNT, 0, true)
 		{
-			BEGIN_MENUITEM("SOFT RESET MCU", taLeft)
+			BEGIN_MENUITEM_CHECKED("Show GUI on start", taLeft,xb_board_ShowGuiOnStart)
 			{
 				CLICK_MENUITEM()
 				{
-#if defined(ESP8266) || defined(ESP32)
-					ESP.restart();
-					delay(5000);
-#elif defined(ARDUINO_ARCH_STM32)
-					board.Log("Reset no support!", true, true, tlError);
-#else
-					board.Log("Reset no support!", true, true, tlError);
-#endif
-					return true;
-				}
-			}
-			END_MENUITEM()
-			BEGIN_MENUITEM("SAVE ALL CONFIGURATION", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.SendMessage_ConfigSave();
+					xb_board_ShowGuiOnStart = !xb_board_ShowGuiOnStart;
 				}
 			}
 			END_MENUITEM()
 			SEPARATOR_MENUITEM()
 			CONFIGURATION_MENUITEMS()
+			BEGIN_MENUITEM("Save all configuration", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllSaveConfiguration();
+				}
+			}
+			END_MENUITEM()
+			SEPARATOR_MENUITEM()
+			BEGIN_MENUITEM("SOFT RESET MCU", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.SoftResetMCU(true);
+					return true;
+				}
+			}
+			END_MENUITEM()
+
 		}
 		END_MENU()
 
@@ -1023,6 +1070,25 @@ TXB_board::~TXB_board()
 }
 #pragma endregion
 #pragma region FUNKCJE_NARZEDZIOWE
+void TXB_board::SoftResetMCU(bool Asendmessage)
+{
+	if (Asendmessage)
+	{
+		TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+		mb.IDMessage = IM_BEFORE_RESET;
+		DoMessageOnAllTask(&mb, true, doBACKWARD);
+	}
+
+#if defined(ESP8266) || defined(ESP32)
+	ESP.restart();
+	delay(5000);
+#elif defined(ARDUINO_ARCH_STM32)
+	board.Log("Reset no support!", true, true, tlError);
+#else
+	board.Log("Reset no support!", true, true, tlError);
+#endif
+}
+
 TUniqueID TXB_board::GetUniqueID()
 {
 	TUniqueID V;
@@ -1662,7 +1728,17 @@ void TXB_board::handle(void)
 #endif
 		
 #ifdef XB_GUI
-		if (xb_board_winHandle0 != NULL) xb_board_winHandle0->RepaintDataCounter++;
+		if (xb_board_winHandle0 != NULL)
+		{
+			xb_board_winHandle0->RepaintDataCounter++;
+		}
+		else
+		{
+			if (xb_board_ShowGuiOnStart)
+			{
+				SendMessage_FunctionKeyPress(KF_F1, 0);
+			}
+		}
 #endif
 		
 		CheckOld_HandleDataFrameTransport();
@@ -2278,13 +2354,6 @@ void TXB_board::SendMessage_KeyPress(char Akey,TTaskDef *Aexcludetask)
 	mb.Data.KeyboardData.KeyFunction = KF_CODE;
 	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
 	DoMessageOnAllTask(&mb, true, doFORWARD, NULL, Aexcludetask);  
-}
-
-void TXB_board::SendMessage_ConfigSave(void)
-{
-	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-	mb.IDMessage = IM_CONFIG_SAVE;
-	DoMessageOnAllTask(&mb, true, doFORWARD);  
 }
 
 void TXB_board::SendMessage_FreePTR(void *Aptr)
@@ -3886,6 +3955,15 @@ void TXB_board::SaveConfiguration()
 	SaveConfiguration(CurrentTask);
 }
 
+void TXB_board::AllSaveConfiguration(void)
+{
+	TTask* task = TaskList;
+	while (task != NULL)
+	{
+		SaveConfiguration(task);
+		task = task->Next;
+	}
+}
 
 
 #pragma endregion 
