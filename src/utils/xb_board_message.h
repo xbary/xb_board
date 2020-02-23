@@ -271,6 +271,7 @@ struct TGPIODrive;
 #define FREEPTR(Aptr) if (Am->Data.FreePTR == Aptr) Aptr = NULL;
 #define GET_TASKSTATUS(enumstatus,cutbeginch) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus); Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKSTATUS_OTHER(enumstatus,cutbeginch,other) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus)+other; Am->Data.PointerString->remove(0,cutbeginch); break;}
+#define GET_TASKSTATUS_ADDSTR(Astr) {*(Am->Data.PointerString) += String(Astr); }
 #define GET_TASKNAME(name) *(Am->Data.PointerString) = String(name);
 #define GET_ENUMSTRING(enumstatus,cutbeginch) case enumstatus: {String s=#enumstatus; s.remove(0,cutbeginch); s.replace('_',' '); return s;}
 
