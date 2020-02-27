@@ -80,9 +80,18 @@ bool xb_board_ShowGuiOnStart = false;
 #endif
 
 #ifdef BOARD_HAS_PSRAM
+#ifdef XB_PREFERENCES
+#define WINDOW_0_HEIGHT board.TaskCount + 14
+#else
 #define WINDOW_0_HEIGHT board.TaskCount + 13
+#endif
+
+#else
+#ifdef XB_PREFERENCES
+#define WINDOW_0_HEIGHT board.TaskCount + 12
 #else
 #define WINDOW_0_HEIGHT board.TaskCount + 11
+#endif
 #endif
 
 TWindowClass * xb_board_winHandle0;
@@ -91,6 +100,7 @@ uint8_t xb_board_currentYselecttask;
 bool xb_board_listtask_repaint = false;
 
 TGADGETMenu *xb_board_menuHandle1;
+TGADGETInputDialog *xb_board_inputdialog0;
 #endif
 
 #pragma endregion
@@ -128,6 +138,7 @@ bool XB_BOARD_LoadConfiguration()
 #ifdef XB_PREFERENCES
 	if (board.PREFERENCES_BeginSection("XBBOARD"))
 	{
+		board.DeviceName = board.PREFERENCES_GetString("DeviceName", board.DeviceName);
 		xb_board_ShowGuiOnStart = board.PREFERENCES_GetBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
 		board.PREFERENCES_EndSection();
 	}
@@ -148,6 +159,7 @@ bool XB_BOARD_SaveConfiguration()
 	if (board.PREFERENCES_BeginSection("XBBOARD"))
 	{
 		board.PREFERENCES_PutBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
+		board.PREFERENCES_PutString("DeviceName", board.DeviceName);
 		board.PREFERENCES_EndSection();
 	}
 	else
@@ -256,6 +268,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #ifdef XB_GUI
 		FREEPTR(xb_board_winHandle0);
 		FREEPTR(xb_board_menuHandle1);
+		FREEPTR(xb_board_inputdialog0);
 #endif
 		res = true;
 		break;
@@ -737,6 +750,14 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 			}
 			END_MENUITEM()
+			BEGIN_MENUITEM("Device Name ["+board.DeviceName+"]", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_inputdialog0 = GUIGADGET_CreateInputDialog(&XB_BOARD_DefTask, 0, true);
+				}
+			}
+			END_MENUITEM()
 			SEPARATOR_MENUITEM()
 			CONFIGURATION_MENUITEMS()
 			BEGIN_MENUITEM("Save all configuration", taLeft)
@@ -765,6 +786,16 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 		res = true;
 		break;
 	}
+	case IM_INPUTDIALOG:
+	{
+		BEGIN_DIALOG(0, "Device name", "input device name", tivString, 32, &board.DeviceName)
+		{
+		}
+		END_DIALOG()
+
+		res = true;
+		break;
+	}
 	case IM_WINDOW:
 	{
 		BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
@@ -780,7 +811,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("DEVICE NAME: "));
+					WH->PutStr(0, y, ("DEVICE NAME: "));
 					WH->SetBoldChar();
 					WH->SetTextColor(tfcYellow);
 					WH->PutStr(board.DeviceName.c_str());
@@ -788,7 +819,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("DEVICE VERSION: "));
+					WH->PutStr(0, y, ("DEVICE VERSION: "));
 					WH->SetBoldChar();
 					WH->SetTextColor(tfcYellow);
 					WH->PutStr(board.DeviceVersion.c_str());
@@ -796,7 +827,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("DEVICE ID: "));
+					WH->PutStr(0, y, ("DEVICE ID: "));
 					WH->SetBoldChar();
 					WH->SetTextColor(tfcYellow);
 					WH->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
@@ -804,44 +835,50 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("TIME FROM RUN:"));
+					WH->PutStr(0, y, ("TIME FROM RUN:"));
 					y++;
-					WH->PutStr(0, y, FSS("FREE HEAP:"));
-					WH->PutStr(WH->Width - 18, y, FSS("MIN HEAP:"));
+					WH->PutStr(0, y, ("FREE HEAP:"));
+					WH->PutStr(WH->Width - 18, y, ("MIN HEAP:"));
 					y++;
-					WH->PutStr(WH->Width - 18, y, FSS("MAX HEAP:"));
+					WH->PutStr(WH->Width - 18, y, ("MAX HEAP:"));
 					WH->SetBoldChar();
 					WH->SetTextColor(tfcYellow);
 					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreeHeapInLoop).c_str());
 
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("MEM USE:"));
+					WH->PutStr(0, y, ("MEM USE:"));
 					y++;
 #ifdef BOARD_HAS_PSRAM
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("FREEpsram:"));
-					WH->PutStr(WH->Width - 18, y, FSS("MINpsram:"));
+					WH->PutStr(0, y, ("FREEpsram:"));
+					WH->PutStr(WH->Width - 18, y, ("MINpsram:"));
 					y++;
-					WH->PutStr(WH->Width - 18, y, FSS("MAXpsram:"));
+					WH->PutStr(WH->Width - 18, y, ("MAXpsram:"));
 					WH->SetBoldChar();
 					WH->SetTextColor(tfcYellow);
 					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreePSRAMInLoop).c_str());
 
 					WH->SetNormalChar();
 					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, FSS("MEM USE:"));
+					WH->PutStr(0, y, ("MEM USE:"));
 					y++;
 #endif
-					WH->PutStr(0, y, FSS("OUR RESERVED BLOCK:"));
+#ifdef XB_PREFERENCES
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, "PREFERENCES FREE ENTRIES: ");
+					y++;
+#endif
+					WH->PutStr(0, y, ("OUR RESERVED BLOCK:"));
 					y++;
 					//--------------
 
 					WH->PutStr(0, y, "_", WH->Width, '_');
 					y++;
-					WH->PutStr(0, y, FSS("TASK NAME"));
-					WH->PutStr(15, y, FSS("STATUS"));
+					WH->PutStr(0, y, ("TASK NAME"));
+					WH->PutStr(15, y, ("STATUS"));
 
 					y++;
 				}
@@ -904,7 +941,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				WH->PutChar(' ');
 				y++;
 				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
-				WH->PutStr(FSS("% "));
+				WH->PutStr(("% "));
 				y++;
 
 #ifdef BOARD_HAS_PSRAM
@@ -914,7 +951,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				WH->PutChar(' ');
 				y++;
 				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
-				WH->PutStr(FSS("% "));
+				WH->PutStr(("% "));
+				y++;
+#endif
+#ifdef XB_PREFERENCES
+				WH->PutStr(26, y, String(xbpreferences.freeEntries()).c_str(), 8);
 				y++;
 #endif
 				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
@@ -987,7 +1028,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #endif
 	case IM_GET_TASKNAME_STRING:
 	{
-		*(Am->Data.PointerString) = FSS("BOARD");
+		*(Am->Data.PointerString) = ("BOARD");
 		res = true;
 		break;
 	}
@@ -3748,15 +3789,15 @@ void TXB_board::PrintTimeFromRun(cbufSerial *Astream)
 {
 	Astream->print('[');
 	GetTimeIndx(Astream, DateTimeUnix - DateTimeStart);
-	Astream->print(FSS("] "));
+	Astream->print(("] "));
 }
 
 void TXB_board::PrintTimeFromRun(void)
 {
 	cbufSerial Astream(32);
-	Astream.print(FSS("["));
+	Astream.print(("["));
 	GetTimeIndx(&Astream, DateTimeUnix - DateTimeStart);
-	Astream.print(FSS("] "));
+	Astream.print(("] "));
 	Log(&Astream);
 }
 #pragma endregion
