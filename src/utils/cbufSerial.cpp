@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <Arduino.h>
 #include <utils/cbufSerial.h>
+#include <utils/xb_util.h>
 
 void clearbuf(cbufSerial *Abuf)
 {
@@ -13,6 +14,7 @@ void clearbuf(cbufSerial *Abuf)
 cbufSerial::cbufSerial(int Asizebuf)
 {
 	buffer = new cbuf(Asizebuf);
+	//xb_memoryfill(buffer, Asizebuf, 0);
 	setTimeout(0);
 }
 

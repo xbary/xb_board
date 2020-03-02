@@ -200,6 +200,9 @@ struct THandleDataFrameTransport;
 
 #include "xb_board_def.h"
 #include <utils\xb_board_message.h>
+#ifdef XB_PREFERENCES
+#include <Preferences.h>
+#endif
 
 //extern "C" volatile uint32_t statusdoping;
 
@@ -366,6 +369,44 @@ struct TGPIODrive
 #define MODEPIN_ANALOG 3
 
 typedef enum { tlInfo = 0, tlWarn, tlError } TTypeLog;
+#ifndef CONSOLE_WIDTH_DEFAULT
+#define CONSOLE_WIDTH_DEFAULT 80
+#endif
+#ifndef CONSOLE_HEIGHT_DEFAULT
+#define CONSOLE_HEIGHT_DEFAULT 25
+#endif
+
+typedef struct {
+	uint8_t Color0 : 2;
+	uint8_t Color1 : 2;
+	uint8_t Color2 : 2;
+	uint8_t Color3 : 2;
+} TConsoleColor;
+
+class TConsoleScreen 
+{
+public:
+	TConsoleScreen();
+	~TConsoleScreen();
+
+	void Set_ColorBuf(uint32_t Aindx, uint8_t Acolor);
+	uint8_t Get_ColorBuf(uint32_t Aindx);
+
+	void CreateConsoleInWindow();
+	void DestroyConsoleInWindow();
+	void ScrollUPConsole();
+	void PutCharConsole(uint8_t Ach);
+	void PutConsole(uint8_t* Adata, uint32_t Alength);
+
+	uint8_t Color;
+	uint8_t *Buf;
+	TConsoleColor *ColorBuf;
+	uint8_t Currsor_X;
+	uint8_t Currsor_Y;
+	uint8_t Width;
+	uint8_t Height;
+	uint8_t Repaint_All;
+};
 
 class TXB_board
 {
@@ -525,10 +566,19 @@ public:
 	void Log_TimeStamp();
 	void PrintTimeFromRun(cbufSerial *Astream);
 	void PrintTimeFromRun(void);
+
+
+	TConsoleScreen *ConsoleScreen;
+	
 	//-----------------------------------------------------------------------------------------------------------------
 #ifdef XB_PREFERENCES
+	size_t preferences_freeEntries;
+	Preferences *xbpreferences;
+
 	bool PREFERENCES_BeginSection(String ASectionname);
 	void PREFERENCES_EndSection();
+	void PREFERENCES_CLEAR();
+	void PREFERENCES_CLEAR(String Akey);
 	size_t PREFERENCES_PutArrayBytes(const char* key, const void* array, size_t sizearray);
 	size_t PREFERENCES_GetArrayBytes(const char* key, void* array, size_t maxsizearray);
 	size_t PREFERENCES_PutBool(const char* key, const bool value);
@@ -541,6 +591,8 @@ public:
 	size_t PREFERENCES_PutString(const char* key, String value);
 	size_t PREFERENCES_PutUINT32(const char* key, uint32_t value);
 	size_t PREFERENCES_PutUINT8(const char* key, uint8_t value);
+	size_t PREFERENCES_PutINT16(const char* key, int16_t value);
+	int16_t PREFERENCES_GetINT16(const char* key, int16_t defaultvalue);
 	size_t PREFERENCES_PutDouble(const char* key, double value);
 	double PREFERENCES_GetDouble(const char* key, double defaultvalue);
 #endif
@@ -550,7 +602,11 @@ public:
 	void SaveConfiguration(TTaskDef* ATaskDef);
 	void SaveConfiguration(TTask* ATask);
 	void SaveConfiguration();
+	void ResetConfiguration(TTaskDef* ATaskDef);
+	void ResetConfiguration(TTask* ATask);
+	void ResetConfiguration();
 	void AllSaveConfiguration(void);
+	void AllResetConfiguration(void);
 
 	//-----------------------------------------------------------------------------------------------------------------
 

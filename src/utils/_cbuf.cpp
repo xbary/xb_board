@@ -24,8 +24,10 @@
 #include <stdlib.h>
 #include <stddef.h>
 
+
 cbuf::cbuf(size_t size) :
     next(NULL), _size(size), _buf(new char[size]), _bufend(_buf + size), _begin(_buf), _end(_begin) {
+    for (int i = 0; i < size; i++) _buf[i] = 0;
 }
 
 cbuf::~cbuf() {

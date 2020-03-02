@@ -25,7 +25,6 @@ extern "C" {
 #ifdef XB_PREFERENCES
 #ifdef ESP32
 #include <Preferences.h>
-Preferences xbpreferences;
 #else
 #error "XB_PREFERENCES not support"
 #endif
@@ -58,6 +57,9 @@ volatile uint32_t __SysTickCount;
 
 // Konfiguracja ---------------------------------------------------------------------
 bool xb_board_ShowGuiOnStart = false;
+bool xb_board_ConsoleInWindow = false;
+uint8_t xb_board_ConsoleWidth = CONSOLE_WIDTH_DEFAULT;
+uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
 
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
 #ifdef XB_GUI
@@ -95,6 +97,7 @@ bool xb_board_ShowGuiOnStart = false;
 #endif
 
 TWindowClass * xb_board_winHandle0;
+TWindowClass* xb_board_winHandle1;
 uint8_t xb_board_currentselecttask = 0;
 uint8_t xb_board_currentYselecttask;
 bool xb_board_listtask_repaint = false;
@@ -140,6 +143,9 @@ bool XB_BOARD_LoadConfiguration()
 	{
 		board.DeviceName = board.PREFERENCES_GetString("DeviceName", board.DeviceName);
 		xb_board_ShowGuiOnStart = board.PREFERENCES_GetBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
+		xb_board_ConsoleInWindow = board.PREFERENCES_GetBool("ConInWin", xb_board_ConsoleInWindow);
+		xb_board_ConsoleWidth = board.PREFERENCES_GetUINT8("ConWidth", xb_board_ConsoleWidth);
+		xb_board_ConsoleHeight = board.PREFERENCES_GetUINT8("ConHeight", xb_board_ConsoleHeight);
 		board.PREFERENCES_EndSection();
 	}
 	else
@@ -158,8 +164,12 @@ bool XB_BOARD_SaveConfiguration()
 #ifdef XB_PREFERENCES
 	if (board.PREFERENCES_BeginSection("XBBOARD"))
 	{
+		board.PREFERENCES_PutBool("ConInWin", xb_board_ConsoleInWindow);
 		board.PREFERENCES_PutBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
 		board.PREFERENCES_PutString("DeviceName", board.DeviceName);
+		board.PREFERENCES_PutUINT8("ConWidth", xb_board_ConsoleWidth);
+		board.PREFERENCES_PutUINT8("ConHeight", xb_board_ConsoleHeight);
+
 		board.PREFERENCES_EndSection();
 	}
 	else
@@ -173,6 +183,24 @@ bool XB_BOARD_SaveConfiguration()
 
 }
 
+bool XB_BOARD_ResetConfiguration()
+{
+#ifdef XB_PREFERENCES
+	if (board.PREFERENCES_BeginSection("XBBOARD"))
+	{
+		board.PREFERENCES_CLEAR();
+		board.PREFERENCES_EndSection();
+	}
+	else
+	{
+		return false;
+	}
+	return true;
+#else
+	return false
+#endif
+
+}
 
 // -------------------------------------
 // Procedura inicjuj¹ca zadanie g³ównego
@@ -267,6 +295,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	{
 #ifdef XB_GUI
 		FREEPTR(xb_board_winHandle0);
+		FREEPTR(xb_board_winHandle1);
 		FREEPTR(xb_board_menuHandle1);
 		FREEPTR(xb_board_inputdialog0);
 #endif
@@ -282,6 +311,12 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	case IM_SAVE_CONFIGURATION:
 	{
 		XB_BOARD_SaveConfiguration();
+		res = true;
+		break;
+	}
+	case IM_RESET_CONFIGURATION:
+	{
+		XB_BOARD_ResetConfiguration();
 		res = true;
 		break;
 	}
@@ -740,8 +775,19 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 			xb_board_menuHandle1 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 1, false, X,Y);
 		}
 
-		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 32, MENU_AUTOCOUNT, 0, true)
+		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 48, MENU_AUTOCOUNT, 0, true)
 		{
+			/*BEGIN_MENUITEM("Dupa", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.Log("DUPA", true, true,tlInfo);
+					board.Log("WARN", true, true, tlWarn);
+					board.Log("ERROR", true, true, tlError);
+				}
+			}
+			END_MENUITEM()*/
+
 			BEGIN_MENUITEM_CHECKED("Show GUI on start", taLeft,xb_board_ShowGuiOnStart)
 			{
 				CLICK_MENUITEM()
@@ -750,6 +796,42 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 			}
 			END_MENUITEM()
+			SEPARATOR_MENUITEM()
+			BEGIN_MENUITEM_CHECKED("CONSOLE IN WINDOW", taLeft, xb_board_ConsoleInWindow)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_ConsoleInWindow = !xb_board_ConsoleInWindow;
+				}
+			}
+			END_MENUITEM()
+
+			BEGIN_MENUITEM("CONSOLE WIDTH ["+String(xb_board_ConsoleWidth)+"]", taLeft)
+			{
+				CLICKRIGHT_MENUITEM()
+				{
+					xb_board_ConsoleWidth = xb_board_ConsoleWidth >= 160 ? 160 : xb_board_ConsoleWidth + 1;
+				}
+				CLICKLEFT_MENUITEM()
+				{
+					xb_board_ConsoleWidth = xb_board_ConsoleWidth >80 ? xb_board_ConsoleWidth - 1:80;
+				}
+			}
+			END_MENUITEM()
+
+			BEGIN_MENUITEM("CONSOLE HEIGHT [" + String(xb_board_ConsoleHeight) + "]", taLeft)
+			{
+				CLICKRIGHT_MENUITEM()
+				{
+					xb_board_ConsoleHeight = xb_board_ConsoleHeight >= 50 ? 50 : xb_board_ConsoleHeight + 1;
+				}
+				CLICKLEFT_MENUITEM()
+				{
+					xb_board_ConsoleHeight = xb_board_ConsoleHeight > 25 ? xb_board_ConsoleHeight - 1 : 25;
+				}
+			}
+			END_MENUITEM()
+			SEPARATOR_MENUITEM()
 			BEGIN_MENUITEM("Device Name ["+board.DeviceName+"]", taLeft)
 			{
 				CLICK_MENUITEM()
@@ -768,7 +850,33 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 			}
 			END_MENUITEM()
-			SEPARATOR_MENUITEM()
+			BEGIN_MENUITEM("Save all configuration & Soft RESET", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllSaveConfiguration();
+					board.SoftResetMCU(true);
+				}
+			}
+			END_MENUITEM()
+			BEGIN_MENUITEM("Reset all configuration", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllResetConfiguration();
+				}
+			}
+			END_MENUITEM()
+			BEGIN_MENUITEM("Reset all configuration & Soft RESET" , taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllResetConfiguration();
+					board.SoftResetMCU(true);
+				}
+			}
+			END_MENUITEM()
+				SEPARATOR_MENUITEM()
 			BEGIN_MENUITEM("SOFT RESET MCU", taLeft)
 			{
 				CLICK_MENUITEM()
@@ -798,6 +906,45 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	case IM_WINDOW:
 	{
+		BEGIN_WINDOW_DEF(1, "CONSOLE", 49, 0, xb_board_ConsoleWidth+2, xb_board_ConsoleHeight+2, xb_board_winHandle1)
+		{
+			REPAINT_WINDOW()
+			{
+			}
+			REPAINTDATA_WINDOW()
+			{
+				if (board.ConsoleScreen != NULL)
+				{
+					uint8_t ch,c,lc = 5;
+					WH->BeginDraw();
+					WH->GoToXY(0, 0);
+					WH->TextWordWrap = true;
+					for (uint32_t i = 0; i < (board.ConsoleScreen->Width * board.ConsoleScreen->Height); i++)
+					{
+						c = board.ConsoleScreen->Get_ColorBuf(i);
+						if (c != lc)
+						{
+							lc = c;
+							switch (c)
+							{
+							case 0: WH->SetTextColor(tfcWhite); break;
+							case 1: WH->SetTextColor(tfcYellow); break;
+							case 2: WH->SetTextColor(tfcRed); break;
+							default: WH->SetTextColor(tfcWhite); break;
+							}
+						}
+						ch = board.ConsoleScreen->Buf[i];
+						if (ch == 0) ch = 32;
+						WH->PutChar(ch);
+					}
+					
+					WH->EndDraw(false);
+				}
+			}
+
+		}
+		END_WINDOW_DEF()
+
 		BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
 		{
 			//--------------------------------
@@ -955,7 +1102,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				y++;
 #endif
 #ifdef XB_PREFERENCES
-				WH->PutStr(26, y, String(xbpreferences.freeEntries()).c_str(), 8);
+				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 8);
 				y++;
 #endif
 				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
@@ -1063,6 +1210,8 @@ TXB_board::TXB_board()
 	board.TerminalFunction = 0;
 	TaskList = NULL;
 	TaskCount = 0;
+	ConsoleScreen = NULL;
+	xbpreferences = NULL;
 #ifdef PSRAM_BUG
 	lastfreepsram = 0;
 	GETFREEPSRAM_ERROR_COUNTER = 0;
@@ -1760,6 +1909,27 @@ void TXB_board::handle(void)
 		MinimumFreeHeapInLoop = FreeHeapInLoop;
 	}
 	
+#ifdef XB_GUI
+
+	if (xb_board_ConsoleInWindow)
+	{
+		if (ConsoleScreen == NULL)
+		{
+			ConsoleScreen = new TConsoleScreen();
+			
+		}
+	}
+	else
+	{
+		if (ConsoleScreen != NULL)
+		{
+			delete (ConsoleScreen);
+			ConsoleScreen = NULL;
+		}
+	}
+
+#endif
+
 	DEF_WAITMS_VAR(LOOPW);
 	BEGIN_WAITMS(LOOPW, 1000)
 	{
@@ -3588,6 +3758,202 @@ void TXB_board::SubStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddres
 #pragma endregion
 #pragma region FUNKCJE_KOMUNIKATOW
 
+
+TConsoleScreen::TConsoleScreen()
+{
+	Buf = NULL;
+	ColorBuf = NULL;
+	Currsor_X = 0;
+	Currsor_Y = 0;
+	Color = 0;
+	Width = xb_board_ConsoleWidth;
+	Height = xb_board_ConsoleHeight;
+	Repaint_All = 1;
+	CreateConsoleInWindow();
+}
+
+TConsoleScreen::~TConsoleScreen()
+{
+	DestroyConsoleInWindow();
+}
+
+void TConsoleScreen::CreateConsoleInWindow()
+{
+	if (Buf != NULL)
+	{
+		board.freeandnull((void**)&Buf);
+	}
+	if (ColorBuf != NULL)
+	{
+		board.freeandnull((void**)&ColorBuf);
+	}
+
+	Buf = (uint8_t*)board._malloc_psram(Width * Height);
+	if (Buf != NULL)
+	{
+		ColorBuf = (TConsoleColor *)board._malloc_psram((Width * Height)/4);
+#ifdef XB_GUI
+		xb_board_winHandle1 = GUI_WindowCreate(&XB_BOARD_DefTask, 1);
+#endif
+	}
+}
+
+void TConsoleScreen::DestroyConsoleInWindow()
+{
+#ifdef XB_GUI
+	if (xb_board_winHandle1 != NULL)
+	{
+		xb_board_winHandle1->Close();
+	}
+#endif
+
+	if (Buf != NULL)
+	{
+		board.freeandnull((void**)&Buf);
+	}
+	if (ColorBuf != NULL)
+	{
+		board.freeandnull((void**)&ColorBuf);
+	}
+}
+
+void TConsoleScreen::Set_ColorBuf(uint32_t Aindx,uint8_t Acolor)
+{
+	if (ColorBuf != NULL)
+	{
+		uint32_t indx = Aindx / 4;
+		switch (Aindx % 4)
+		{
+		case 0: ColorBuf[indx].Color0 = Acolor; break;
+		case 1: ColorBuf[indx].Color1 = Acolor; break;
+		case 2: ColorBuf[indx].Color2 = Acolor; break;
+		case 3: ColorBuf[indx].Color3 = Acolor; break;
+		default: break;
+		}
+	}
+}
+
+uint8_t TConsoleScreen::Get_ColorBuf(uint32_t Aindx)
+{
+	uint8_t _Color = 0;
+	if (ColorBuf != NULL)
+	{
+		if (ColorBuf != NULL)
+		{
+			uint32_t indx = Aindx / 4;
+			switch (Aindx % 4)
+			{
+			case 0: _Color = ColorBuf[indx].Color0; break;
+			case 1: _Color = ColorBuf[indx].Color1; break;
+			case 2: _Color = ColorBuf[indx].Color2; break;
+			case 3: _Color = ColorBuf[indx].Color3; break;
+			default: break;
+			}
+		}
+	}
+	return _Color;
+}
+
+
+void TConsoleScreen::ScrollUPConsole()
+{
+	if (Buf != NULL)
+	{
+		for (uint32_t y = 0; y < Height - 1; y++)
+		{
+			for (uint32_t x = 0; x < Width; x++)
+			{
+				uint32_t indx_s = ((y + 1) * Width) + x;
+				uint32_t indx_d = ((y)*Width) + x;
+				Buf[indx_d] = Buf[indx_s];
+				Set_ColorBuf(indx_d, Get_ColorBuf(indx_s));
+			}
+		}
+		for (uint32_t x = 0; x < Width; x++)
+		{
+			uint32_t indx = ((Height - 1) * Width) + x;
+			Buf[indx] = 32;
+			Set_ColorBuf(indx,Color);
+
+		}
+
+		Repaint_All++;
+	}
+}
+
+void TConsoleScreen::PutCharConsole(uint8_t Ach)
+{
+	switch (Ach)
+	{
+	case 10:
+	{
+		Currsor_X = 0;
+
+		Currsor_Y++;
+		if (Currsor_Y >= Height)
+		{
+			Currsor_Y--;
+			ScrollUPConsole();
+		}
+		break;
+	}
+	case 13:
+	{
+		Currsor_X = 0;
+
+		Currsor_Y++;
+		if (Currsor_Y >= Height)
+		{
+			Currsor_Y--;
+			ScrollUPConsole();
+		}
+
+		break;
+	}
+	default:
+	{
+		uint32_t indx = Currsor_X + (Currsor_Y * Width);
+		if (Buf != NULL)
+		{
+			Buf[indx] = Ach;
+			Set_ColorBuf(indx,Color);
+		}
+		Repaint_All++;
+
+		Currsor_X++;
+		if (Currsor_X >= Width)
+		{
+			Currsor_X = 0;
+			Currsor_Y++;
+			if (Currsor_Y >= Height)
+			{
+				Currsor_Y--;
+				ScrollUPConsole();
+			}
+		}
+		break;
+	}
+	}
+
+	if (xb_board_winHandle1 != NULL)
+	{
+		xb_board_winHandle1->RepaintDataCounter++;
+	}
+
+}
+
+void TConsoleScreen::PutConsole(uint8_t* Adata, uint32_t Alength)
+{
+	uint32_t i = 0;
+	while (Alength > 0) 
+	{
+		PutCharConsole(Adata[i]);
+		i++;
+		Alength--;
+	}
+}
+
+
 void TXB_board::AllPutStreamGui(void *Adata, uint32_t Alength)
 {
 	TTask *t = TaskList;
@@ -3607,17 +3973,24 @@ void TXB_board::AllPutStreamGui(void *Adata, uint32_t Alength)
 
 void TXB_board::AllPutStreamLog(void *Adata, uint32_t Alength)
 {
-	TTask *t = TaskList;
-	while (t != NULL)
+	if ((xb_board_ConsoleInWindow == true) && (ConsoleScreen != NULL))
 	{
-		for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)		
+		ConsoleScreen->PutConsole((uint8_t *)Adata, Alength);
+	}
+	else
+	{
+		TTask* t = TaskList;
+		while (t != NULL)
 		{
-			if (t->PutStreamAddressAsLog[i] != 0xffffffff)
+			for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)
 			{
-				PutStream(Adata, Alength, t->TaskDef, t->PutStreamAddressAsLog[i]);		
+				if (t->PutStreamAddressAsLog[i] != 0xffffffff)
+				{
+					PutStream(Adata, Alength, t->TaskDef, t->PutStreamAddressAsLog[i]);
+				}
 			}
+			t = t->Next;
 		}
-		t = t->Next;
 	}
 }
 
@@ -3660,8 +4033,19 @@ void TXB_board::Log(char Achr, TTypeLog Atl)
 	}
 	else return;
 	
-	AllPutStreamLog(&Achr, 1);
+	if ((xb_board_ConsoleInWindow == true) && (ConsoleScreen != NULL))
+	{
+		switch (Atl)
+		{
+		case tlInfo: ConsoleScreen->Color = 0; break;
+		case tlWarn: ConsoleScreen->Color = 1; break;
+		case tlError: ConsoleScreen->Color = 2; break;
+		}
+	}
 
+	AllPutStreamLog(&Achr, 1);
+	
+	if (!xb_board_ConsoleInWindow)
 	if (NoTxCounter == 0) TXCounter++;
 }
 
@@ -3703,7 +4087,18 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 		}
 	}
 	else return;
-	
+
+	if ((xb_board_ConsoleInWindow == true) && (ConsoleScreen != NULL))
+	{
+		switch (Atl)
+		{
+		case tlInfo: ConsoleScreen->Color = 0; break;
+		case tlWarn: ConsoleScreen->Color = 1; break;
+		case tlError: ConsoleScreen->Color = 2; break;
+		}
+	}
+
+
 	int len = StringLength((char *)Atxt, 0);
 	if (len == 0) return;
 
@@ -3733,7 +4128,8 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 
 	AllPutStreamLog((void *)Atxt, len);
 
-	if (NoTxCounter == 0) TXCounter++;
+	if (!xb_board_ConsoleInWindow)
+		if (NoTxCounter == 0) TXCounter++;
 }
 
 void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
@@ -3770,13 +4166,13 @@ void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
 		clearbuf(Acbufserial);
 		return;
 	}
-		
 
 	while (Acbufserial->available()>0)
 	{
 		
 		Log((char)(Acbufserial->read()), Atl); 
-		if (NoTxCounter==0) TXCounter++;
+		if (!xb_board_ConsoleInWindow)
+		 if (NoTxCounter==0) TXCounter++;
 	}
 }
 
@@ -3812,16 +4208,37 @@ bool TXB_board::PREFERENCES_BeginSection(String ASectionname)
 		String ts = ASectionname;
 		ASectionname = ASectionname.substring(0, 15);
 	}
+	if (xbpreferences == NULL)
+	{
+		xbpreferences = new Preferences();
+	}
 
-
-	return xbpreferences.begin(ASectionname.c_str());
+	return xbpreferences->begin(ASectionname.c_str());
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void TXB_board::PREFERENCES_EndSection()
 {
 #ifdef ESP32
-	xbpreferences.end();
+	preferences_freeEntries = xbpreferences->freeEntries();
+	delete(xbpreferences);
+	xbpreferences = NULL;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void TXB_board::PREFERENCES_CLEAR()
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return;
+	xbpreferences->clear();
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void TXB_board::PREFERENCES_CLEAR(String Akey)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return;
+	xbpreferences->remove(Akey.c_str());
 #endif
 }
 
@@ -3829,7 +4246,8 @@ void TXB_board::PREFERENCES_EndSection()
 size_t TXB_board::PREFERENCES_PutArrayBytes(const char* key, const void *array,size_t sizearray)
 {
 #ifdef ESP32
-	return xbpreferences.putBytes(key, array,sizearray);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putBytes(key, array,sizearray);
 #else
 	return 0;
 #endif
@@ -3839,7 +4257,8 @@ size_t TXB_board::PREFERENCES_PutArrayBytes(const char* key, const void *array,s
 size_t TXB_board::PREFERENCES_GetArrayBytes(const char* key, void* array, size_t maxsizearray)
 {
 #ifdef ESP32
-	return xbpreferences.getBytes(key, array, maxsizearray);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->getBytes(key, array, maxsizearray);
 #else
 	return 0;
 #endif
@@ -3850,7 +4269,8 @@ size_t TXB_board::PREFERENCES_GetArrayBytes(const char* key, void* array, size_t
 size_t TXB_board::PREFERENCES_PutBool(const char* key, const bool value)
 {
 #ifdef ESP32
-	return xbpreferences.putBool(key, value);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putBool(key, value);
 #else
 	return 0;
 #endif
@@ -3860,7 +4280,8 @@ size_t TXB_board::PREFERENCES_PutBool(const char* key, const bool value)
 bool TXB_board::PREFERENCES_GetBool(const char* key, const bool defaultvalue)
 {
 #ifdef ESP32
-	return xbpreferences.getBool(key, defaultvalue);
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getBool(key, defaultvalue);
 #else
 	return defaultvalue;
 #endif
@@ -3870,7 +4291,8 @@ bool TXB_board::PREFERENCES_GetBool(const char* key, const bool defaultvalue)
 size_t TXB_board::PREFERENCES_GetString(const char* key, char* value, const size_t maxlen)
 {
 #ifdef ESP32
-	return xbpreferences.getString(key, value, maxlen);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->getString(key, value, maxlen);
 #else
 	return 0;
 #endif
@@ -3880,7 +4302,8 @@ size_t TXB_board::PREFERENCES_GetString(const char* key, char* value, const size
 String TXB_board::PREFERENCES_GetString(const char* key, String defaultvalue)
 {
 #ifdef ESP32
-	return xbpreferences.getString(key, defaultvalue);
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getString(key, defaultvalue);
 #else
 	return 0;
 #endif
@@ -3890,7 +4313,8 @@ String TXB_board::PREFERENCES_GetString(const char* key, String defaultvalue)
 uint32_t TXB_board::PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue)
 {
 #ifdef ESP32
-	return xbpreferences.getULong(key, defaultvalue);
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getULong(key, defaultvalue);
 #else
 	return 0;
 #endif
@@ -3899,7 +4323,8 @@ uint32_t TXB_board::PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue
 uint8_t TXB_board::PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue)
 {
 #ifdef ESP32
-	return xbpreferences.getUChar(key, defaultvalue);
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getUChar(key, defaultvalue);
 #else
 	return 0;
 #endif
@@ -3908,7 +4333,8 @@ uint8_t TXB_board::PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue)
 size_t TXB_board::PREFERENCES_PutString(const char* key, const char* value)
 {
 #ifdef ESP32
-	return xbpreferences.putString(key, value);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putString(key, value);
 #else
 	return 0;
 #endif
@@ -3917,7 +4343,8 @@ size_t TXB_board::PREFERENCES_PutString(const char* key, const char* value)
 size_t TXB_board::PREFERENCES_PutString(const char* key, String value)
 {
 #ifdef ESP32
-	return xbpreferences.putString(key, value);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putString(key, value);
 #else
 	return 0;
 #endif
@@ -3926,7 +4353,8 @@ size_t TXB_board::PREFERENCES_PutString(const char* key, String value)
 size_t TXB_board::PREFERENCES_PutUINT32(const char* key, uint32_t value)
 {
 #ifdef ESP32
-	return xbpreferences.putULong(key, value);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putULong(key, value);
 #else
 	return 0;
 #endif
@@ -3935,7 +4363,28 @@ size_t TXB_board::PREFERENCES_PutUINT32(const char* key, uint32_t value)
 size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
 {
 #ifdef ESP32
-	return xbpreferences.putUChar(key, value);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putUChar(key, value);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+int16_t TXB_board::PREFERENCES_GetINT16(const char* key, int16_t defaultvalue)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getShort(key, defaultvalue);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutINT16(const char* key, int16_t value)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putShort(key, value);
 #else
 	return 0;
 #endif
@@ -3944,7 +4393,8 @@ size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
 size_t TXB_board::PREFERENCES_PutDouble(const char* key, double value)
 {
 #ifdef ESP32
-	return xbpreferences.putDouble(key, value);
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putDouble(key, value);
 #else
 	return 0;
 #endif
@@ -3953,7 +4403,8 @@ size_t TXB_board::PREFERENCES_PutDouble(const char* key, double value)
 double TXB_board::PREFERENCES_GetDouble(const char* key, double defaultvalue)
 {
 #ifdef ESP32
-	return xbpreferences.getDouble(key, defaultvalue);
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getDouble(key, defaultvalue);
 #else
 	return 0;
 #endif
@@ -3965,7 +4416,14 @@ void TXB_board::LoadConfiguration(TTaskDef* ATaskDef)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_LOAD_CONFIGURATION;
-	DoMessage(&mb, true, CurrentTask, ATaskDef);
+	if (!DoMessage(&mb, true, CurrentTask, ATaskDef))
+	{
+		String tn;
+		if (SendMessage_GetTaskNameString(ATaskDef, tn));
+		{
+			Log(String("Task [" + tn + "] not support load configuration.").c_str(), true, true, tlWarn);
+		}
+	}
 }
 
 void TXB_board::LoadConfiguration(TTask* ATask)
@@ -3983,7 +4441,15 @@ void TXB_board::SaveConfiguration(TTaskDef* ATaskDef)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_SAVE_CONFIGURATION;
-	DoMessage(&mb, true, CurrentTask, ATaskDef);
+	if (!DoMessage(&mb, true, CurrentTask, ATaskDef))
+	{
+		String tn;
+		if (SendMessage_GetTaskNameString(ATaskDef, tn));
+		{
+			Log(String("Task [" + tn + "] not support save configuration.").c_str(), true, true, tlWarn);
+		}
+	}
+
 }
 
 void TXB_board::SaveConfiguration(TTask* ATask)
@@ -3997,6 +4463,32 @@ void TXB_board::SaveConfiguration()
 	SaveConfiguration(CurrentTask);
 }
 
+void TXB_board::ResetConfiguration(TTaskDef* ATaskDef)
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_RESET_CONFIGURATION;
+	if (!DoMessage(&mb, true, CurrentTask, ATaskDef))
+	{
+		String tn;
+		if (SendMessage_GetTaskNameString(ATaskDef,tn));
+		{
+			Log(String("Task ["+tn+"] not support reset configuration.").c_str(), true, true, tlWarn);
+		}
+	}
+}
+
+void TXB_board::ResetConfiguration(TTask* ATask)
+{
+	if (ATask != NULL)
+		ResetConfiguration(ATask->TaskDef);
+}
+
+void TXB_board::ResetConfiguration()
+{
+	ResetConfiguration(CurrentTask);
+}
+
+
 void TXB_board::AllSaveConfiguration(void)
 {
 	TTask* task = TaskList;
@@ -4007,5 +4499,14 @@ void TXB_board::AllSaveConfiguration(void)
 	}
 }
 
+void TXB_board::AllResetConfiguration(void)
+{
+	TTask* task = TaskList;
+	while (task != NULL)
+	{
+		ResetConfiguration(task);
+		task = task->Next;
+	}
+}
 
 #pragma endregion 
