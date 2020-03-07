@@ -489,6 +489,7 @@ typedef struct
 {
 	uint8_t ItemIndex;
 	bool Close;
+	bool Repaint;
 } TMenuClickData;
 
 typedef struct
@@ -566,6 +567,13 @@ typedef struct
 	uint8_t Min;
 	uint8_t Max;
 } Tuint8MinMax;
+
+typedef struct
+{
+	int16_t Min;
+	int16_t Max;
+} Tint16MinMax;
+
 typedef struct
 {
 	TTypeInputVar TypeInputVar;
@@ -575,6 +583,7 @@ typedef struct
 	{
 		Tuint32MinMax uint32MinMax;
 		Tuint16MinMax uint16MinMax;
+		Tint16MinMax int16MinMax;
 		Tuint8MinMax uint8MinMax;
 	} MinMax;
 	

@@ -616,6 +616,9 @@ extern TXB_board board;
 extern TTaskDef XB_BOARD_DefTask;
 extern volatile uint32_t DateTimeUnix;
 extern volatile uint32_t DateTimeStart;
+extern uint8_t xb_board_currentselecttask;
+extern uint8_t xb_board_currentYselecttask;
+
 
 #ifdef ARDUINO_ARCH_STM32
 #define SysTickCount (uint32_t)(millis())
