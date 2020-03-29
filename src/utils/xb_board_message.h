@@ -8,9 +8,9 @@
 
 // Makro definiuj¹ce zmienne listy struktur klas
 #define DEFLIST_VAR(AClass,Alist) \
-AClass *Alist; \
-AClass *Alist##_last;\
-uint32_t Alist##_count;
+AClass *Alist=NULL; \
+AClass *Alist##_last=NULL;\
+uint32_t Alist##_count=0;
 
 
 // Makra zwi¹zane z listami struktur, u¿ywane wewn¹trz klas przewa¿nie w kontruktorach i destruktorach
@@ -33,23 +33,6 @@ else \
 } \
 }
 
-/*
-AClass* lm = Alist; \
-while (lm != NULL) \
-{ \
-if (lm->Next == NULL) \
-{ \
-lm->Next = this; \
-Prev = lm; \
-Next = NULL; \
-break; \
-} \
-else \
-{ \
-lm = lm->Next; \
-} \
-} \
-*/
 #define DELETE_FROM_LIST(Alist) \
 { \
 	Alist##_count--; \
@@ -78,27 +61,6 @@ lm = lm->Next; \
 	} \
 }
 
-/*
-{ \
-if (Prev == NULL) \
-{ \
-	Alist = Next; \
-	if (Next != NULL) \
-	{ \
-		Next->Prev = NULL; \
-	} \
-} \
-else \
-{ \
-	Prev->Next = Next; \
-	if (Next != NULL) \
-	{ \
-		Next->Prev = Prev; \
-	} \
-} \
-}
-*/
-
 // Makra zwi¹zane z listami struktur, u¿ywane na zewn¹trz klas z mo¿liwoœci¹ wskazania 
 #define ADD_TO_LIST_STR(Alist,AClass,_this_) \
 { \
@@ -119,33 +81,6 @@ else \
 } \
 }
 
-/*
-{ \
-AClass *lm = Alist;\
-_this_->Next = NULL;\
-_this_->Prev = NULL;\
-if (lm == NULL)\
-{\
-	Alist = _this_;\
-}\
-else\
-{\
-	while (lm != NULL) { \
-		if (lm->Next == NULL) \
-		{ \
-			lm->Next = _this_; \
-			_this_->Prev = lm; \
-			_this_->Next = NULL; \
-			break; \
-		} \
-		else \
-		{ \
-			lm = lm->Next; \
-		} \
-	} \
-} \
-}
-*/
 #define DELETE_FROM_LIST_STR(Alist,_this_) \
 { \
 	Alist##_count--; \
@@ -173,29 +108,6 @@ else\
 		} \
 	} \
 }
-
-/*
-{ \
-if (_this_->Prev == NULL) \
-{ \
-	Alist = _this_->Next; \
-	if (_this_->Next != NULL) \
-	{ \
-		_this_->Next->Prev = NULL; \
-	} \
-} \
-else \
-{ \
-	_this_->Prev->Next = _this_->Next; \
-	if (_this_->Next != NULL) \
-	{ \
-		_this_->Next->Prev = _this_->Prev; \
-	} \
-} \
-_this_->Prev = NULL; \
-_this_->Next = NULL; \
-}
-*/
 
 #define MOVE_STR_TO_ENDLIST(Alist,AClass,_this_) \
 { \
@@ -261,8 +173,6 @@ else \
 		Aptr=NULL; \
 	} \
 } 
-
-
 
 struct TTask;
 struct TTaskDef;

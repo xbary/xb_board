@@ -55,6 +55,11 @@ volatile uint32_t DateTimeStart;
 volatile uint32_t __SysTickCount;
 #endif
 
+#ifdef XB_BOARD_MEMDEBUG
+DEFLIST_VAR(TXBMemDebug, MemDebugList);
+#endif
+
+
 // Konfiguracja ---------------------------------------------------------------------
 bool xb_board_ShowGuiOnStart = false;
 bool xb_board_ConsoleInWindow = false;
@@ -65,34 +70,34 @@ uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
 #ifdef XB_GUI
 
 #ifdef __riscv64
-#define WINDOW_0_CAPTION "BOARD (Sipeed Maix), 400Mhz)";
+#define WINDOW_0_CAPTION "BOARD (Sipeed Maix), 400Mhz)"
 #endif
 #ifdef ESP8266
-#define WINDOW_0_CAPTION "BOARD (ESP8266, 160Mhz)";
+#define WINDOW_0_CAPTION "BOARD (ESP8266, 160Mhz)"
 #endif
 #ifdef ESP32
 #ifdef BOARD_HAS_PSRAM
-#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER, 240Mhz)";
+#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER, 240Mhz)"
 #else
-#define WINDOW_0_CAPTION "BOARD (ESP32, 240Mhz)";
+#define WINDOW_0_CAPTION "BOARD (ESP32, 240Mhz)"
 #endif
 #endif
 #ifdef ARDUINO_ARCH_STM32
-#define WINDOW_0_CAPTION "BOARD (STM32)";
+#define WINDOW_0_CAPTION "BOARD (STM32)"
 #endif
 
 #ifdef BOARD_HAS_PSRAM
 #ifdef XB_PREFERENCES
-#define WINDOW_0_HEIGHT board.TaskCount + 14
+#define WINDOW_0_HEIGHT board.TaskList_count + 14
 #else
-#define WINDOW_0_HEIGHT board.TaskCount + 13
+#define WINDOW_0_HEIGHT board.TaskList_count + 13
 #endif
 
 #else
 #ifdef XB_PREFERENCES
-#define WINDOW_0_HEIGHT board.TaskCount + 12
+#define WINDOW_0_HEIGHT board.TaskList_count + 12
 #else
-#define WINDOW_0_HEIGHT board.TaskCount + 11
+#define WINDOW_0_HEIGHT board.TaskList_count + 11
 #endif
 #endif
 
@@ -731,9 +736,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					if (GUI_FindWindowByActive() == xb_board_winHandle0)
 					{
 						xb_board_currentselecttask++;
-						if (xb_board_currentselecttask >= board.TaskCount)
+						if (xb_board_currentselecttask >= board.TaskList_count)
 						{
-							xb_board_currentselecttask = board.TaskCount - 1;
+							xb_board_currentselecttask = board.TaskList_count - 1;
 						}
 						else
 						{
@@ -942,6 +947,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				}
 			}
 
+			DESTROY_WINDOW()
+			{
+				xb_board_ConsoleInWindow = false;
+			}
+
 		}
 		END_WINDOW_DEF()
 
@@ -1039,7 +1049,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 
 				WH->SetTextColor(tfcGreen);
 				xb_board_listtask_repaint = false;
-				for (int i = 0; i < board.TaskCount; i++)
+				for (int i = 0; i < board.TaskList_count; i++)
 				{
 
 					if (xb_board_currentselecttask == i)
@@ -1077,9 +1087,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				WH->SetBoldChar();
 				WH->SetTextColor(tfcYellow);
 				{
-					cbufSerial cbuf(32);
-					board.PrintTimeFromRun(&cbuf);
-					WH->PutStr(14, y, cbuf.readString().c_str());
+					String txttime = "";
+					GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
+					WH->PutStr(14, y, txttime.c_str());
 				}
 				y++;
 				WH->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
@@ -1105,14 +1115,19 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 8);
 				y++;
 #endif
+
+#ifdef XB_BOARD_MEMDEBUG
+				WH->PutStr(20, y, String(MemDebugList_count).c_str(), 8);
+#else
 				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
+#endif
 				y++;
 
 				String name;
 				y += 2;
 
 
-				for (int i = 0; i < board.TaskCount; i++)
+				for (int i = 0; i < board.TaskList_count; i++)
 				{
 					if (xb_board_currentselecttask == i)
 					{
@@ -1165,6 +1180,11 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				xb_board_listtask_repaint = false;
 				WH->EndDraw();
 			}
+			//--------------------------------
+			DESTROY_WINDOW()
+			{
+				xb_board_ShowGuiOnStart = false;
+			}
 		}
 		//--------------------------------
 		END_WINDOW_DEF()
@@ -1181,7 +1201,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 	}
 	case IM_GET_TASKSTATUS_STRING:
 	{
-		*(Am->Data.PointerString) = String("TC:" + String(board.TaskCount));
+		*(Am->Data.PointerString) = String("TC:" + String(board.TaskList_count));
 #ifdef PSRAM_BUG
 		*(Am->Data.PointerString) += String(" / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER));
 #endif
@@ -1209,7 +1229,8 @@ TXB_board::TXB_board()
 	Tick_ESCKey = 0;
 	board.TerminalFunction = 0;
 	TaskList = NULL;
-	TaskCount = 0;
+	TaskList_count = 0;
+	TaskList_last = NULL;
 	ConsoleScreen = NULL;
 	xbpreferences = NULL;
 #ifdef PSRAM_BUG
@@ -2094,7 +2115,7 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 		}
 
 
-		TaskCount++;
+		//TaskCount++;
 
 		if (Ataskdef->dosetup != NULL)
 		{
@@ -2132,7 +2153,7 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 			board.free(Ataskdef->Task->GetStreamAddressAsKeyboard);
 			board.free(Ataskdef->Task);
 			Ataskdef->Task = NULL;
-			TaskCount--;
+			//TaskCount--;
 			return true;
 		}
 	}
@@ -2330,6 +2351,29 @@ TTaskDef *TXB_board::GetTaskDefByName(String ATaskName)
 			if (SendMessage_GetTaskNameString(t->TaskDef, tmpstr))
 			{
 				if (tmpstr == ATaskName) return t->TaskDef;
+			}
+		}
+		t = t->Next;
+	}
+	return NULL;
+}
+// ---------------------------------------------------------
+// Pobranie adresu struktura zadania wed³ug nazwy
+// -> ATaskName - Nazwa zadania 
+// <- wskaŸnik definicji zadania
+TTask* TXB_board::GetTaskByName(String ATaskName)
+{
+	TTask* t = TaskList;
+	String tmpstr;
+	tmpstr.reserve(32);
+
+	while (t != NULL)
+	{
+		if (t->TaskDef != NULL)
+		{
+			if (SendMessage_GetTaskNameString(t->TaskDef, tmpstr))
+			{
+				if (tmpstr == ATaskName) return t;
 			}
 		}
 		t = t->Next;
@@ -2654,6 +2698,57 @@ uint32_t TXB_board::getFreeHeap()
 	}
 #endif
 }
+
+
+void ___free(void* Aptr)
+{
+#ifdef XB_BOARD_MEMDEBUG
+	Aptr = (void*)((uint32_t)Aptr - 16);
+	TXBMemDebug* md = (TXBMemDebug*)Aptr;
+
+	size_t Asize = md->Size + (((md->Size / 8) * 8) + 8) + 16;
+
+	uint8_t* bptr = (uint8_t*)md;
+	for (uint32_t i = 16 + md->Size; i < Asize; i++)
+	{
+		if (bptr[i] != 0xff)
+		{
+			board.Log("Mem corrupt....", true, true, tlError);
+			break;
+		}
+	}
+
+	DELETE_FROM_LIST_STR(MemDebugList, md);
+
+#endif
+	free(Aptr);
+	delay(0);
+}
+
+void* ___malloc(size_t Asize)
+{
+#ifdef XB_BOARD_MEMDEBUG
+	size_t size = Asize + (((Asize / 8) * 8) + 8) + 16;
+	void* ptr = malloc(size);
+	if (ptr == NULL) return NULL;
+	TXBMemDebug* md = (TXBMemDebug * )ptr;
+	md->Next = NULL;
+	md->Prev = NULL;
+	md->Size = Asize;
+	md->OwnerTask = board.CurrentTask;
+	ADD_TO_LIST_STR(MemDebugList, TXBMemDebug, md);
+
+	uint8_t *bptr = (uint8_t*)md;
+	for (uint32_t i = 16 + Asize; i < size; i++) bptr[i] = 0xff;
+
+	ptr = (void*)((uint32_t)ptr + 16);
+
+#else
+	void* ptr = malloc(Asize);
+#endif
+	delay(0);
+	return ptr;
+}
 //#if !defined(_VMICRO_INTELLISENSE)
 //------------------------------------------------------------------------------------------------------------------------------
 // Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
@@ -2674,6 +2769,7 @@ void *TXB_board::_malloc_psram(size_t Asize)
 	size = size << 4;
 	size += 4;
 	void *ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+	delay(0);
 #ifdef LOG_MALLOC_FREE
 	board.Log(String("inbug _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
 #endif
@@ -2684,7 +2780,7 @@ void *TXB_board::_malloc_psram(size_t Asize)
 #endif
 #endif 
 #else
-	void *ptr = malloc(Asize);
+	void* ptr = ___malloc(Asize);
 #ifdef LOG_MALLOC_FREE
 	board.Log(String("nopsram _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
 #endif
@@ -2718,7 +2814,7 @@ void *TXB_board::_malloc_psram(size_t Asize)
 // <- WskaŸnik zarezerwowanego bloku pamiêci 
 void *TXB_board::_malloc(size_t size)
 {
-	void *ptr = malloc(size);
+	void* ptr = ___malloc(size);
 #ifdef LOG_MALLOC_FREE
 	board.Log(String("_malloc, size: [" + String(size) + "] adress:"+String((uint32_t)ptr, HEX)).c_str(), true, true);
 #endif
@@ -2734,10 +2830,6 @@ void *TXB_board::_malloc(size_t size)
 	return ptr;
 }
 //#endif
-void ___free(void *Aptr)
-{
-	free(Aptr);
-}
 // ------------------
 // Zwolnienie pamiêci
 // -> Aptr wskaŸnik na blok pamiêci zwalnianej
@@ -4131,71 +4223,6 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 	if (!xb_board_ConsoleInWindow)
 		if (NoTxCounter == 0) TXCounter++;
 }
-
-void TXB_board::Log(cbufSerial *Acbufserial, TTypeLog Atl)
-{
-	if (CurrentTask != NULL)
-	{
-		if (Atl == tlInfo)
-		{
-			if (CurrentTask->ShowLogInfo == false)
-			{
-				clearbuf(Acbufserial);
-				return;
-			}
-		}
-		else if (Atl == tlWarn)
-		{
-			if (CurrentTask->ShowLogWarn == false)
-			{
-				clearbuf(Acbufserial);
-				return;
-			}
-		}
-		else if (Atl == tlError)
-		{
-			if (CurrentTask->ShowLogError == false)
-			{
-				clearbuf(Acbufserial);
-				return;
-			}
-		}
-	}
-	else 
-	{
-		clearbuf(Acbufserial);
-		return;
-	}
-
-	while (Acbufserial->available()>0)
-	{
-		
-		Log((char)(Acbufserial->read()), Atl); 
-		if (!xb_board_ConsoleInWindow)
-		 if (NoTxCounter==0) TXCounter++;
-	}
-}
-
-void TXB_board::Log_TimeStamp()
-{
-	PrintTimeFromRun();
-}
-
-void TXB_board::PrintTimeFromRun(cbufSerial *Astream)
-{
-	Astream->print('[');
-	GetTimeIndx(Astream, DateTimeUnix - DateTimeStart);
-	Astream->print(("] "));
-}
-
-void TXB_board::PrintTimeFromRun(void)
-{
-	cbufSerial Astream(32);
-	Astream.print(("["));
-	GetTimeIndx(&Astream, DateTimeUnix - DateTimeStart);
-	Astream.print(("] "));
-	Log(&Astream);
-}
 #pragma endregion
 #pragma region PREFERENCES
 #ifdef XB_PREFERENCES
@@ -4282,6 +4309,27 @@ bool TXB_board::PREFERENCES_GetBool(const char* key, const bool defaultvalue)
 #ifdef ESP32
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getBool(key, defaultvalue);
+#else
+	return defaultvalue;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutINT8(const char* key, const int8_t value)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putChar(key, (char)value);
+#else
+	return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
+int8_t TXB_board::PREFERENCES_GetINT8(const char* key, const int8_t defaultvalue)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return defaultvalue;
+	return (int8_t)xbpreferences->getChar(key,(char) defaultvalue);
 #else
 	return defaultvalue;
 #endif

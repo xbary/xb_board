@@ -150,17 +150,14 @@ KROK 4. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 
 #ifdef __riscv64
 #include <utils/xb_util.h>
-#include <utils/cbufSerial.h>
 #endif
 
 #ifdef ARDUINO_ARCH_STM32
 #include <utils/xb_util.h>
-#include <utils/cbufSerial.h>
 #endif
 
 #ifdef ESP32
 #include <utils/xb_util.h>
-#include <utils/cbufSerial.h>
 #endif
 
 #ifdef ESP8266
@@ -169,7 +166,6 @@ extern "C" {
 }
 #include <Ticker.h>
 #include <utils/xb_util.h>
-#include <utils/cbufSerial.h>
 #endif
 
 typedef enum { 
@@ -408,6 +404,16 @@ public:
 	uint8_t Repaint_All;
 };
 
+#ifdef XB_BOARD_MEMDEBUG
+struct TXBMemDebug
+{
+	TXBMemDebug* Next;
+	TXBMemDebug* Prev;
+	uint32_t Size;
+	TTask* OwnerTask;
+};
+#endif
+
 class TXB_board
 {
 	//-----------------------------------------------------------------------------------------------------------------
@@ -442,7 +448,6 @@ public:
     //-----------------------------------------------------------------------------------------------------------------
 	TPinInfo *PinInfoTable;	
 	DEFLIST_VAR(TGPIODrive,GPIODriveList)
-	//TGPIODrive* GPIODriveList;
 	uint16_t Digital_Pins_Count;
 
 #ifdef BOARD_LED_TX_PIN
@@ -479,7 +484,6 @@ public:
 	
 	int8_t doAllInterruptRC;
 	DEFLIST_VAR(TTask,TaskList)
-	uint8_t TaskCount;
 	TTask *CurrentTask;
 	TTask *CurrentIterateTask;
 	
@@ -488,6 +492,7 @@ public:
 	bool DelTask(TTaskDef *Ataskdef);
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	TTaskDef *GetTaskDefByName(String ATaskName);
+	TTask* GetTaskByName(String ATaskName);
 	void IterateTask();
 	void TriggerInterrupt(TTaskDef *Ataskdef);
 	void DoInterrupt(TTaskDef *Ataskdef);
@@ -562,11 +567,6 @@ public:
 	int print(String Atext);
 	void Log(char Achr, TTypeLog Atl = tlInfo);
 	void Log(const char *Atxt, bool puttime = false, bool showtaskname = false, TTypeLog Atl = tlInfo);
-	void Log(cbufSerial *Acbufserial, TTypeLog Atl = tlInfo);
-	void Log_TimeStamp();
-	void PrintTimeFromRun(cbufSerial *Astream);
-	void PrintTimeFromRun(void);
-
 
 	TConsoleScreen *ConsoleScreen;
 	
@@ -583,6 +583,8 @@ public:
 	size_t PREFERENCES_GetArrayBytes(const char* key, void* array, size_t maxsizearray);
 	size_t PREFERENCES_PutBool(const char* key, const bool value);
 	bool PREFERENCES_GetBool(const char* key, const bool defaultvalue);
+	size_t PREFERENCES_PutINT8(const char* key, const int8_t value);
+	int8_t PREFERENCES_GetINT8(const char* key, const int8_t defaultvalue);
 	size_t PREFERENCES_GetString(const char* key, char* value, const size_t maxlen);
 	String PREFERENCES_GetString(const char* key, String defaultvalue);
 	uint32_t PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue);

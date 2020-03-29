@@ -14,7 +14,7 @@ extern "C" {
 	extern char *strcpy(char *strDestination,const char *strSource);
 }
 
-#include "cbufSerial.h"
+//#include "cbufSerial.h"
 
 int32_t globalonetry=0;
 
@@ -165,7 +165,6 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 	uint32_t g = m / 60;
 	m = m - (g * 60);
 
-	char timeindxstr[20];
 #ifdef ARDUINO_ARCH_STM32
 	sprintf(timeindxstr, FSS("%4d:%02d:%02d\0"), g, m, s);
 #endif
@@ -175,43 +174,21 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 #endif
 
 #if defined(ESP32)
-	sprintf(timeindxstr, FSS("%4d:%02d:%02d"), g, m, s);
+//	sprintf(timeindxstr, FSS("%4d:%02d:%02d"), g, m, s);
+	char timeindxstr[40]; xb_memoryfill(timeindxstr, 40, 0);
+	uint8_t i = 0;
+	i += uinttoaw(g, &timeindxstr[i], 4, '0');
+	timeindxstr[i++] = ':';
+	i += uinttoaw(m, &timeindxstr[i], 2, '0');
+	timeindxstr[i++] = ':';
+	i += uinttoaw(s, &timeindxstr[i], 2, '0');
 #endif
 
 #if defined(__riscv64)
 	sprintf(timeindxstr, FSS("%4d:%02d:%02d"), g, m, s);
 #endif
-
-	String tmp = String(timeindxstr);
-	tmp.replace(' ', '0');
-	Atotxt += tmp;
-}
-
-void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx)
-{
-	uint32_t m = Atimeindx / 60;
-	uint32_t s = Atimeindx - (m * 60);
-	uint32_t g = m / 60;
-	m = m - (g * 60);
-
-	char timeindxstr[20];
-#ifdef ARDUINO_ARCH_STM32
-	sprintf(timeindxstr, FSS("%4d:%02d:%02d\0"), g, m, s);
-	String tmp = String(timeindxstr);
-	tmp.replace(' ', '0');
-	AcbufSerial->print(tmp);
-#endif
-
-#if defined(ESP8266) || defined(ESP32)
-	AcbufSerial->printf(FSS("%4d:%02d:%02d"), g, m, s);
-#endif
+	Atotxt += String(timeindxstr);
 	
-#if defined(__riscv64)
-	sprintf(timeindxstr, FSS("%4d:%02d:%02d\0"), g, m, s);
-	String tmp = String(timeindxstr);
-	tmp.replace(' ', '0');
-	AcbufSerial->print(tmp);
-#endif
 }
 //----------------------------------------------------------------------------------------------------------------------
 uint8_t ahextoint(REGISTER uint8_t Ach)

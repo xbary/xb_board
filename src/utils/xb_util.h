@@ -2,7 +2,7 @@
 #define __XB_UTIL_H__
 
 #include <xb_board.h>
-#include <utils\cbufSerial.h>
+//#include <utils\cbufSerial.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -176,7 +176,6 @@ extern int32_t globalonetry;
 extern void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt);	
 extern uint32_t RTC_EncodeUnixTime(struct tm *TM);
 extern void GetTimeIndx(String &Atotxt, uint32_t Atimeindx);
-extern void GetTimeIndx(cbufSerial *AcbufSerial, uint32_t Atimeindx);
 extern uint8_t ahextoint(REGISTER uint8_t Ach);
 extern double strtodouble(String Astrdouble);
 extern uint8_t doubletostr(double v,char *buf, uint8_t prec = 2);
@@ -184,6 +183,7 @@ extern double CutPrecision(volatile double val, uint8_t prec);
 extern char* _itoa(int value, char* result, int base);
 extern uint8_t inttoa(REGISTER int32_t value,REGISTER  char* result);
 extern uint8_t inttoaw(REGISTER int32_t value, REGISTER  char* result,uint8_t Awidth,char Ach);
+extern uint8_t uinttoaw(REGISTER uint32_t value, REGISTER  char* result, uint8_t Awidth, char Ach);
 extern uint8_t uinttoa(REGISTER uint32_t value, REGISTER char* result);
 extern bool hexstrTouint32(char *Astr, int8_t Alen, uint32_t *Aint);
 extern void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aadd);
