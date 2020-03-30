@@ -256,6 +256,13 @@ struct TTask
 	int32_t dointerruptRC;
 	uint32_t TickReturn;
 	uint32_t TickWaitLoop;
+
+#ifdef XB_GUI
+	uint32_t LastSumTaskStatusText;
+	bool LastBoldTaskStatus;
+#endif 
+
+	
 };
 
 #pragma pack(push, 1)
@@ -496,6 +503,8 @@ public:
 	void IterateTask();
 	void TriggerInterrupt(TTaskDef *Ataskdef);
 	void DoInterrupt(TTaskDef *Ataskdef);
+	void CancelWaitTask(TTask* ATask);
+	void CancelWaitTask();
 	//-----------------------------------------------------------------------------------------------------------------	
 	
 	bool DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, TTaskDef *Atotaskdef);
@@ -507,7 +516,7 @@ public:
 	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL);
 	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL);
 	void SendMessage_FreePTR(void *Aptr);
-	
+	void SendMessage_RTCSYNC();
 	//-----------------------------------------------------------------------------------------------------------------
 #ifdef PSRAM_BUG
 	void *psram2m;

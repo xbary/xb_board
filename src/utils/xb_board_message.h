@@ -221,7 +221,8 @@ typedef enum {
 	IM_SD_DEINIT,
 	IM_SD_EJECT,
 	IM_SENSOR,
-	IM_BEFORE_RESET
+	IM_BEFORE_RESET,
+	IM_RTCSYNC
 } TIDMessage;
 
 

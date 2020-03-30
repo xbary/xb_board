@@ -77,9 +77,9 @@ uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
 #endif
 #ifdef ESP32
 #ifdef BOARD_HAS_PSRAM
-#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER, 240Mhz)"
+#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER)"
 #else
-#define WINDOW_0_CAPTION "BOARD (ESP32, 240Mhz)"
+#define WINDOW_0_CAPTION "BOARD (ESP32)"
 #endif
 #endif
 #ifdef ARDUINO_ARCH_STM32
@@ -735,6 +735,7 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					if (GUI_FindWindowByActive() == xb_board_winHandle0)
 					{
+						uint8_t l = xb_board_currentselecttask;
 						xb_board_currentselecttask++;
 						if (xb_board_currentselecttask >= board.TaskList_count)
 						{
@@ -745,6 +746,10 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 							xb_board_listtask_repaint = true;
 							xb_board_winHandle0->RepaintDataCounter++;
 						}
+						TTask* t = board.GetTaskByIndex(l);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+						t = board.GetTaskByIndex(xb_board_currentselecttask);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
 					}
 				}
 				res = true;
@@ -755,12 +760,20 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				{
 					if (GUI_FindWindowByActive() == xb_board_winHandle0)
 					{
+						uint8_t l = xb_board_currentselecttask;
+
 						if (xb_board_currentselecttask > 0)
 						{
 							xb_board_currentselecttask--;
 							xb_board_listtask_repaint = true;
 							xb_board_winHandle0->RepaintDataCounter++;
 						}
+
+						TTask* t = board.GetTaskByIndex(l);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+						t = board.GetTaskByIndex(xb_board_currentselecttask);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+
 					}
 				}
 				res = true;
@@ -1007,8 +1020,6 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					WH->PutStr(0, y, ("MEM USE:"));
 					y++;
 #ifdef BOARD_HAS_PSRAM
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
 					WH->PutStr(0, y, ("FREEpsram:"));
 					WH->PutStr(WH->Width - 18, y, ("MINpsram:"));
 					y++;
@@ -1023,12 +1034,13 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 					y++;
 #endif
 #ifdef XB_PREFERENCES
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, "PREFERENCES FREE ENTRIES: ");
-					y++;
+					WH->PutStr(0, y, "PREFERENCES FREE ENTRIES:");
 #endif
+					WH->PutStr(32, y, "CPU CLK:");
+					y++;
+
 					WH->PutStr(0, y, ("OUR RESERVED BLOCK:"));
+					WH->PutStr(29, y, "CPU Temp.:");
 					y++;
 					//--------------
 
@@ -1074,6 +1086,8 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 							else WH->PutChar(' ');
 							name = "";
 						}
+						t->LastSumTaskStatusText = 0;
+						t->LastBoldTaskStatus = false;
 					}
 				}
 				WH->EndDraw();
@@ -1112,7 +1126,9 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 				y++;
 #endif
 #ifdef XB_PREFERENCES
-				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 8);
+				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 6);
+				WH->PutStr(40, y, String(String(ESP.getCpuFreqMHz())+"Mhz").c_str());
+
 				y++;
 #endif
 
@@ -1121,9 +1137,12 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 #else
 				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
 #endif
+				
+				WH->PutStr(39, y, String(String(temperatureRead(),2)+"C").c_str());
 				y++;
 
 				String name;
+				name.reserve(80);
 				y += 2;
 
 
@@ -1163,16 +1182,53 @@ bool XB_BOARD_DoMessage(TMessageBoard *Am)
 								else WH->PutChar(' ');
 								name = "";
 							}
+							//t->LastSumTaskStatusText = 0;
 						}
 						WH->SetTextColor(tfcYellow);
 					}
 
 					if (t != NULL)
 					{
-
 						if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
 						{
-							WH->PutStr(15, y + i, name.c_str(), 33, ' ');
+							uint32_t sum = 0;
+							uint32_t l = name.length();
+							for (uint32_t t = 0; t < l; t++) sum += (uint32_t)name[t];
+							if (t->LastSumTaskStatusText != sum)
+							{
+								t->LastSumTaskStatusText = sum;
+								t->LastBoldTaskStatus = true;
+								
+								
+								if (xb_board_currentselecttask == i)
+								{
+									WH->SetTextColor(tfcYellow);
+									WH->SetReverseChar();
+								}
+								else
+								{
+									WH->SetNormalChar();
+								}
+								WH->SetBoldChar();
+								WH->PutStr(15, y + i, name.c_str(), 33, ' ');
+							}
+							else
+							{
+								if (t->LastBoldTaskStatus)
+								{
+									t->LastBoldTaskStatus = false;
+									if (xb_board_currentselecttask == i)
+									{
+										WH->SetTextColor(tfcYellow);
+										WH->SetReverseChar();
+									}
+									else
+									{
+										WH->SetNormalChar();
+									}
+									WH->PutStr(15, y + i, name.c_str(), 33, ' ');
+								}
+							}
 							name = "";
 						}
 					}
@@ -2417,6 +2473,26 @@ void TXB_board::DoInterrupt(TTaskDef *Ataskdef)
 		}
 	}
 }
+// ---------------------------------------------------------
+// Anulowanie pozosta³ego czasu postoju zadania
+void TXB_board::CancelWaitTask()
+{
+	CancelWaitTask(CurrentTask);
+}
+// ---------------------------------------------------------
+// Anulowanie pozosta³ego czasu postoju zadania
+// -> Wskazanie zadania do anulowania czasu postoju
+void TXB_board::CancelWaitTask(TTask* ATask)
+{
+	if (ATask != NULL)
+	{
+		ATask->TickWaitLoop = 0;
+		ATask->TickReturn = 0;
+	}
+
+}
+
+
 #pragma endregion
 #pragma region FUNKCJE_MESSAGOW
 // -----------------------------------------------------
@@ -2621,6 +2697,13 @@ void TXB_board::SendMessage_FreePTR(void *Aptr)
 		mb.Data.FreePTR = Aptr;
 		DoMessageOnAllTask(&mb, true, doBACKWARD);
 	}
+}
+
+void TXB_board::SendMessage_RTCSYNC()
+{
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_RTCSYNC;
+	DoMessageOnAllTask(&mb, true, doFORWARD);
 }
 
 
