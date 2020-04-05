@@ -180,7 +180,7 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 	i += uinttoaw(g, &timeindxstr[i], 4, '0');
 	timeindxstr[i++] = ':';
 	i += uinttoaw(m, &timeindxstr[i], 2, '0');
-	timeindxstr[i++] = ':';
+	timeindxstr[i++] = '.';
 	i += uinttoaw(s, &timeindxstr[i], 2, '0');
 #endif
 
@@ -190,6 +190,42 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 	Atotxt += String(timeindxstr);
 	
 }
+
+void GetTime(String& Atotxt, uint32_t Adatetimeunix,bool Ayear, bool Amonth, bool Aday )
+{
+	tm dt;
+	RTC_DecodeUnixTime(Adatetimeunix, &dt);
+#if defined(ESP32)
+	char timeindxstr[40]; xb_memoryfill(timeindxstr, 32, 0);
+	uint8_t i = 0;
+	if (Ayear)
+	{
+		i += uinttoaw(dt.tm_year, &timeindxstr[i], 4, '0');
+		if ((!Amonth) && (!Aday)) timeindxstr[i++] = ' ';
+	}
+	if (Amonth)
+	{
+		if (Ayear) timeindxstr[i++] = '-';
+		i += uinttoaw(dt.tm_mon, &timeindxstr[i], 2, '0');
+		if (!Aday) timeindxstr[i++] = ' ';
+	}
+	if (Aday)
+	{
+		if ((Amonth) || (Ayear)) timeindxstr[i++] = '-';
+		i += uinttoaw(dt.tm_mday, &timeindxstr[i], 2, '0');
+		timeindxstr[i++] = ' ';
+	}
+	i += uinttoaw(dt.tm_hour, &timeindxstr[i], 2, '0');
+	timeindxstr[i++] = ':';
+	i += uinttoaw(dt.tm_min, &timeindxstr[i], 2, '0');
+	timeindxstr[i++] = '.';
+	i += uinttoaw(dt.tm_sec, &timeindxstr[i], 2, '0');
+#endif
+
+	Atotxt += String(timeindxstr);
+
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 uint8_t ahextoint(REGISTER uint8_t Ach)
 {

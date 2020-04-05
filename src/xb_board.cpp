@@ -4279,8 +4279,8 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 
 	if (puttime)
 	{
-		String txttime = "";
-		GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
+		String txttime = ""; txttime.reserve(40);
+		GetTime(txttime, DateTimeUnix,false,false,true);
 		txttime = "\n[" + txttime + "] ";
 		AllPutStreamLog((void *)txttime.c_str(), txttime.length());
 	}

@@ -176,6 +176,7 @@ extern int32_t globalonetry;
 extern void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt);	
 extern uint32_t RTC_EncodeUnixTime(struct tm *TM);
 extern void GetTimeIndx(String &Atotxt, uint32_t Atimeindx);
+extern void GetTime(String& Atotxt, uint32_t Adatetimeunix, bool Ayear = false, bool Amonth = false, bool Aday = false);
 extern uint8_t ahextoint(REGISTER uint8_t Ach);
 extern double strtodouble(String Astrdouble);
 extern uint8_t doubletostr(double v,char *buf, uint8_t prec = 2);
