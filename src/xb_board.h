@@ -524,6 +524,10 @@ public:
 	uint32_t lastfreepsram;
 	uint32_t MaximumMallocPSRAM;
 #endif
+#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
+	void PrintOnSerial0StatusTask();
+#endif
+
 	uint32_t FreePSRAMInLoop;
 	uint32_t MinimumFreePSRAMInLoop;
 	uint32_t MaximumFreePSRAMInLoop;
@@ -535,6 +539,7 @@ public:
 	uint32_t getFreePSRAM();
 	uint32_t getFreeHeap();
 	void *_malloc_psram(size_t size);
+	void *_realloc_psram(void* Aptr, size_t Asize);
 	void *_malloc(size_t size);
 	void free(void *Aptr);
 	void freeandnull(void **Aptr);

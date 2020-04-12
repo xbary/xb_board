@@ -1,4 +1,6 @@
 //#define BOARD_BETA_DEBUG
+//#define BOARD_BETA_DEBUG_FREEMINHEAP
+//#define XB_BOARD_MEMDEBUG
 #pragma region INCLUDES
 #include <xb_board.h>
 
@@ -35,6 +37,9 @@ extern "C" {
 #include <xb_GUI_Gadget.h>
 #endif
 
+#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
+#include <WiFi.h>
+#endif
 #pragma endregion
 #pragma region GLOBAL_VARS
 // Podstawowy obiekt tzw. "kernel"
@@ -2216,6 +2221,35 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 	return false;
 }
 // ---------------------------------------------------------------------------------------------------------------
+// Wyœwietlenie statusów zadañ w momencie zg³oszenia kolejnej minimalnej wolnej pamiêci na stercie
+#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
+void TXB_board::PrintOnSerial0StatusTask()
+{
+	TTask* t = TaskList;
+	String s; s.reserve(256);
+	Serial.print("\n");
+	GetTime(s, DateTimeUnix, true, true, true);
+	Serial.print("Alert minimum free heap! [" + String(MinimumFreeHeapInLoop) + "] at time: "+s+"\n");
+	while (t != NULL)
+	{
+		s = "";
+		SendMessage_GetTaskNameString(t->TaskDef, s);
+		s = s + " [";
+		Serial.print(s);
+		s = "";
+		SendMessage_GetTaskStatusString(t->TaskDef, s);
+		s.trim();
+		s = s + "]\n";
+		Serial.print(s);
+		t = t->Next;
+	}
+	Serial.print("\nWIFI DIAG:\n");
+	WiFi.printDiag(Serial);
+	
+	Serial.println("---------------------------------\n");
+}
+#endif
+// ---------------------------------------------------------------------------------------------------------------
 // G³ówna procedura uruchamiaj¹ca zadania z podzia³em na priorytety, zg³oszeñ z przerwañ i czekaj¹cych zadany czas
 void TXB_board::IterateTask()
 {
@@ -2292,6 +2326,9 @@ void TXB_board::IterateTask()
 				if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 				{
 					MinimumFreeHeapInLoop = FreeHeapInLoop;
+#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
+					PrintOnSerial0StatusTask();
+#endif
 				}	
 			}
 #else
@@ -2887,6 +2924,51 @@ void *TXB_board::_malloc_psram(size_t Asize)
 		board.Log("Out of memory.", true, true, tlError);
 	}
 	
+	return ptr;
+}
+//#endif
+//#if !defined(_VMICRO_INTELLISENSE)
+//------------------------------------------------------------------------------------------------------------------------------
+// Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
+// -> Asize - Iloœæ rezerwowanej pamiêci PSRAM
+// <- WskaŸnik zarezerwowanego bloku pamiêci PSRAM
+void* TXB_board::_realloc_psram(void *Aptr,size_t Asize)
+{
+#ifdef PSRAM_BUG
+	size_t size = Asize;
+	MaximumMallocPSRAM = (Asize > MaximumMallocPSRAM) ? Asize : MaximumMallocPSRAM;
+#endif
+
+
+#ifdef BOARD_HAS_PSRAM
+#ifdef PSRAM_BUG
+	size = size >> 4;
+	size = size + 1;
+	size = size << 4;
+	size += 4;
+	void* ptr = heap_caps_realloc(Aptr,size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+	delay(0);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("inbug _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
+#else
+	void* ptr = heap_caps_realloc(Aptr, Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("_malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
+#endif 
+#else
+	void* ptr = ___malloc(Asize);
+#ifdef LOG_MALLOC_FREE
+	board.Log(String("nopsram _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
+#endif
+#endif
+
+	if (ptr == NULL)
+	{
+		board.Log("Out of memory error in realloc(...).", true, true, tlError);
+	}
+
 	return ptr;
 }
 //#endif

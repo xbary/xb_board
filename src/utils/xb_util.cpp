@@ -519,7 +519,7 @@ void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aad
 
 }
 //=================================================================================================================
-void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep,bool Aenter)
+void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint32_t Acount, char Asep,bool Aenter)
 {
 	REGISTER uint8_t Aint;
 	REGISTER int32_t i;

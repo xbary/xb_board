@@ -189,7 +189,7 @@ extern uint8_t uinttoa(REGISTER uint32_t value, REGISTER char* result);
 extern bool hexstrTouint32(char *Astr, int8_t Alen, uint32_t *Aint);
 extern void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aadd);
 extern void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aadd);
-extern void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint8_t Acount, char Asep = 0,bool Aenter=false);
+extern void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint32_t Acount, char Asep = 0,bool Aenter=false);
 extern int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench);
 extern uint32_t StringPos(const char *Astr,const char *Asubstr, uint32_t *Aposindx);
 extern bool StringTrim(char *Astr, char Achtrim = ' ');
