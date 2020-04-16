@@ -177,6 +177,7 @@ else \
 struct TTask;
 struct TTaskDef;
 struct TGPIODrive;
+struct TSocket;
 
 #define FREEPTR(Aptr) if (Am->Data.FreePTR == Aptr) Aptr = NULL;
 #define GET_TASKSTATUS(enumstatus,cutbeginch) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus); Am->Data.PointerString->remove(0,cutbeginch); break;}
@@ -222,7 +223,8 @@ typedef enum {
 	IM_SD_EJECT,
 	IM_SENSOR,
 	IM_BEFORE_RESET,
-	IM_RTCSYNC
+	IM_RTCSYNC,
+	IM_SOCKET
 } TIDMessage;
 
 
@@ -562,7 +564,14 @@ typedef struct
 	String *VarValue;
 	
 } TVarValueData;
+//-----------------------------------------------------------------------
+typedef enum { tsaConnect, tsaDisconnect, tsaConnectError, tsaReceived, tsaSended } TTypeSocketAction;
+typedef struct
+{
+	TTypeSocketAction TypeSocketAction;
+	TSocket* Socket;
 
+} 	TSocketData;
 //-----------------------------------------------------------------------
 struct TMessageBoard
 {
@@ -583,6 +592,7 @@ struct TMessageBoard
 		TFrameReceiveData FrameReceiveData;
 		TFrameResponseData FrameResponseData;
 		TVarValueData VarValueData;
+		TSocketData SocketData;
 		void *PointerData;
 		void *FreePTR;
 		String *PointerString;

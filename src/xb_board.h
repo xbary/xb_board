@@ -421,6 +421,16 @@ struct TXBMemDebug
 };
 #endif
 
+struct TBuf {
+	uint32_t SectorSize;
+	uint8_t* Buf;
+	uint32_t Length;
+	uint32_t IndxW;
+	uint32_t IndxR;
+	uint32_t LastTickUse;
+};
+
+
 class TXB_board
 {
 	//-----------------------------------------------------------------------------------------------------------------
@@ -627,6 +637,16 @@ public:
 	//-----------------------------------------------------------------------------------------------------------------
 
 };
+
+
+bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av);
+uint32_t BUFFER_GetSizeData(TBuf* Abuf);
+bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av);
+void BUFFER_Flush(TBuf* Abuf);
+void BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf);
+uint8_t* BUFFER_GetReadPtr(TBuf* Abuf);
+void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte);
+void BUFFER_Reset(TBuf* Abuf);
 
 extern TXB_board board;
 extern TTaskDef XB_BOARD_DefTask;

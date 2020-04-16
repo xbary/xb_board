@@ -1565,6 +1565,155 @@ String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 }
 
 #pragma endregion
+#pragma region FUNKCJE_BUFFER_HANDLE
+
+bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
+{
+	if (Abuf->Buf == NULL)
+	{
+		Abuf->Buf = (uint8_t*)board._malloc_psram(Abuf->SectorSize);
+		if (Abuf->Buf == NULL)
+		{
+			board.Log("Memory problem in reserved buffer...", true, true, tlError);
+			Abuf->LastTickUse = SysTickCount;
+			return false;
+		}
+		Abuf->Length = Abuf->SectorSize;
+		Abuf->IndxR = 0;
+		Abuf->IndxW = 0;
+	}
+	else
+	{ // Tu jeœli siê oka¿e ¿e bufor pe³ny
+
+		if (Abuf->IndxW == Abuf->Length)
+		{
+			Abuf->Buf = (uint8_t*)board._realloc_psram(Abuf->Buf, Abuf->Length + Abuf->SectorSize);
+			if (Abuf->Buf == NULL)
+			{
+				board.Log("Memory problem in realloc buffer...", true, true, tlError);
+				Abuf->LastTickUse = SysTickCount;
+				return false;
+			}
+			Abuf->Length += Abuf->SectorSize;
+		}
+	}
+
+	if (Abuf->IndxR == Abuf->IndxW)
+	{
+		Abuf->IndxR = 0;
+		Abuf->IndxW = 0;
+	}
+
+	if (Abuf->IndxR >= Abuf->SectorSize)
+	{
+		uint32_t l = Abuf->IndxW - Abuf->IndxR;
+		for (uint32_t i = 0; i < l; i++)
+		{
+			Abuf->Buf[i] = Abuf->Buf[i + Abuf->IndxR];
+		}
+		Abuf->IndxR = 0;
+		Abuf->IndxW = l;
+	}
+
+	Abuf->Buf[Abuf->IndxW] = Av;
+	Abuf->IndxW++;
+
+	Abuf->LastTickUse = SysTickCount;
+	return true;
+}
+
+uint32_t BUFFER_GetSizeData(TBuf* Abuf)
+{
+	Abuf->LastTickUse = SysTickCount;
+	return Abuf->IndxW - Abuf->IndxR;
+}
+
+bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av)
+{
+	if (Abuf->Buf == NULL)
+	{
+		Abuf->LastTickUse = SysTickCount;
+		return false;
+	}
+
+	if (Abuf->IndxR == Abuf->IndxW)
+	{
+		Abuf->LastTickUse = SysTickCount;
+		return false;
+	}
+
+	if (Av == NULL)
+	{
+		Abuf->LastTickUse = SysTickCount;
+		return false;
+	}
+
+	*Av = Abuf->Buf[Abuf->IndxR];
+	Abuf->IndxR++;
+	Abuf->LastTickUse = SysTickCount;
+	return true;
+}
+
+void BUFFER_Flush(TBuf* Abuf)
+{
+	Abuf->IndxR = 0;
+	Abuf->IndxW = 0;
+	Abuf->LastTickUse = SysTickCount;
+}
+
+void BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf)
+{
+	if (Abuf->Buf != NULL)
+	{
+		if (SysTickCount - Abuf->LastTickUse > Awaitforfreebyf)
+		{
+			board.Log("Buffer to free, detect not use", true, true, tlWarn);
+			board.free(Abuf->Buf);
+			Abuf->Buf = NULL;
+			Abuf->Length = 0;
+			BUFFER_Flush(Abuf);
+		}
+	}
+}
+
+uint8_t* BUFFER_GetReadPtr(TBuf* Abuf)
+{
+	Abuf->LastTickUse = SysTickCount;
+	if (Abuf->Buf == NULL) return NULL;
+	return &Abuf->Buf[Abuf->IndxR];
+}
+
+void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte)
+{
+	if (Abuf->IndxR == Abuf->IndxW)
+	{
+		Abuf->LastTickUse = SysTickCount;
+		return;
+	}
+
+	Abuf->IndxR += Areadedbyte;
+
+	if (Abuf->IndxR >= Abuf->IndxW)
+	{
+		BUFFER_Flush(Abuf);
+		return;
+	}
+
+	Abuf->LastTickUse = SysTickCount;
+}
+
+void BUFFER_Reset(TBuf* Abuf)
+{
+	if (Abuf->Buf != NULL)
+	{
+		board.free(Abuf->Buf);
+		Abuf->Buf = NULL;
+		Abuf->Length = 0;
+		BUFFER_Flush(Abuf);
+	}
+}
+
+#pragma endregion
 #pragma region FUNKCJE_GPIO
 // -----------------------------------------
 TGPIODrive* TXB_board::GetGPIODriveByPin(uint16_t Apin)
