@@ -2844,6 +2844,16 @@ bool TXB_board::SendMessage_GetTaskNameString(TTaskDef *ATaskDef,String &APointe
 	}
 	return res;
 }
+// --------------------------------------------------------------------
+// Wys³anie messaga do zadania w celu uzyskania stringu z nazw¹ zadania
+// -> ATask          - Zadanie od którego uzyskamy string z nazw¹
+// -> APointerString - Referencja klasy String w którym znajdzie siê nazwa
+// <- True           - wykonano poprawnie procedure pobrania nazwy zadania
+//    False          - Zadanie nie obs³uguje messaga 
+bool TXB_board::SendMessage_GetTaskNameString(TTask* ATask, String& APointerString)
+{
+	return SendMessage_GetTaskNameString(ATask->TaskDef, APointerString);
+}
 // -----------------------------------------------------------------------------
 // Wys³anie messaga informuj¹cego zadanie ¿e rozpocznie siê procedura OTA Update
 void TXB_board::SendMessage_OTAUpdateStarted()

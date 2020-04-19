@@ -522,6 +522,7 @@ public:
 	bool DoMessageByTaskName(String Ataskname, TMessageBoard *mb, bool Arunagain);
 	bool SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString);
 	bool SendMessage_GetTaskNameString(TTaskDef *ATaskDef, String &APointerString);
+	bool SendMessage_GetTaskNameString(TTask* ATask, String& APointerString);
 	void SendMessage_OTAUpdateStarted();
 	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL);
 	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL);
