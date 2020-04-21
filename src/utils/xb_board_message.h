@@ -565,12 +565,13 @@ typedef struct
 	
 } TVarValueData;
 //-----------------------------------------------------------------------
-typedef enum { tsaConnect, tsaDisconnect, tsaConnectError, tsaReceived, tsaSended } TTypeSocketAction;
+typedef enum { tsaConnect, tsaDisconnect, tsaConnectError, tsaReceived, tsaSended,tsaServerStart,tsaServerStop,tsaServerStartingError,tsaNewClientSocket } TTypeSocketAction;
 typedef struct
 {
 	TTypeSocketAction TypeSocketAction;
 	TSocket* Socket;
-
+	TSocket* NewClientSocket;
+	bool DestroySocket;
 } 	TSocketData;
 //-----------------------------------------------------------------------
 struct TMessageBoard
