@@ -1302,7 +1302,6 @@ TXB_board::TXB_board()
 	OurReservedBlock = 0;
 	iteratetask_procedure = false;
 	setup_procedure = false;
-	CurrentIterateTask = NULL;
 	CurrentTask = NULL;
 	NoTxCounter = 0;
 	TXCounter = 0;
@@ -1575,7 +1574,6 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
 		if (Abuf->Buf == NULL)
 		{
 			board.Log("Memory problem in reserved buffer...", true, true, tlError);
-			Abuf->LastTickUse = SysTickCount;
 			return false;
 		}
 		Abuf->Length = Abuf->SectorSize;
@@ -1585,13 +1583,12 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
 	else
 	{ // Tu jeœli siê oka¿e ¿e bufor pe³ny
 
-		if (Abuf->IndxW == Abuf->Length)
+		if (Abuf->IndxW >= Abuf->Length)
 		{
 			Abuf->Buf = (uint8_t*)board._realloc_psram(Abuf->Buf, Abuf->Length + Abuf->SectorSize);
 			if (Abuf->Buf == NULL)
 			{
 				board.Log("Memory problem in realloc buffer...", true, true, tlError);
-				Abuf->LastTickUse = SysTickCount;
 				return false;
 			}
 			Abuf->Length += Abuf->SectorSize;
@@ -1606,13 +1603,16 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
 
 	if (Abuf->IndxR >= Abuf->SectorSize)
 	{
-		uint32_t l = Abuf->IndxW - Abuf->IndxR;
-		for (uint32_t i = 0; i < l; i++)
+		if (Abuf->IndxW > Abuf->IndxR)
 		{
-			Abuf->Buf[i] = Abuf->Buf[i + Abuf->IndxR];
+			uint32_t l = Abuf->IndxW - Abuf->IndxR;
+			for (uint32_t i = 0; i < l; i++)
+			{
+				Abuf->Buf[i] = Abuf->Buf[i + Abuf->IndxR];
+			}
+			Abuf->IndxR = 0;
+			Abuf->IndxW = l;
 		}
-		Abuf->IndxR = 0;
-		Abuf->IndxW = l;
 	}
 
 	Abuf->Buf[Abuf->IndxW] = Av;
@@ -1624,7 +1624,6 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
 
 uint32_t BUFFER_GetSizeData(TBuf* Abuf)
 {
-	Abuf->LastTickUse = SysTickCount;
 	return Abuf->IndxW - Abuf->IndxR;
 }
 
@@ -1632,19 +1631,16 @@ bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av)
 {
 	if (Abuf->Buf == NULL)
 	{
-		Abuf->LastTickUse = SysTickCount;
 		return false;
 	}
 
 	if (Abuf->IndxR == Abuf->IndxW)
 	{
-		Abuf->LastTickUse = SysTickCount;
 		return false;
 	}
 
 	if (Av == NULL)
 	{
-		Abuf->LastTickUse = SysTickCount;
 		return false;
 	}
 
@@ -1661,19 +1657,21 @@ void BUFFER_Flush(TBuf* Abuf)
 	Abuf->LastTickUse = SysTickCount;
 }
 
-void BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf)
+bool BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf)
 {
 	if (Abuf->Buf != NULL)
 	{
 		if (SysTickCount - Abuf->LastTickUse > Awaitforfreebyf)
 		{
-			board.Log("Buffer to free, detect not use", true, true, tlWarn);
+			//board.Log("Buffer to free, detect not use", true, true, tlWarn);
 			board.free(Abuf->Buf);
 			Abuf->Buf = NULL;
 			Abuf->Length = 0;
 			BUFFER_Flush(Abuf);
+			return true;
 		}
 	}
+	return false;
 }
 
 uint8_t* BUFFER_GetReadPtr(TBuf* Abuf)
@@ -2402,12 +2400,17 @@ void TXB_board::PrintOnSerial0StatusTask()
 // G³ówna procedura uruchamiaj¹ca zadania z podzia³em na priorytety, zg³oszeñ z przerwañ i czekaj¹cych zadany czas
 void TXB_board::IterateTask()
 {
-	TTask *t = TaskList;
+	
+	static TTask* CurrentWaitLoopTask = TaskList;
+	static TTask* CurrentIterateTaskPriority = TaskList;
+	static TTask* CurrentIterateTaskRealTime = TaskList;
+
 	iteratetask_procedure = true;
 	{
 		// Sprawdzenie czy uruchomiæ przerwanie
 		if(doAllInterruptRC > 0)
 		{
+			TTask* t = TaskList;
 			doAllInterruptRC--;
 			bool isint = false;
 			while (t != NULL)
@@ -2433,27 +2436,29 @@ void TXB_board::IterateTask()
 			}
 		}
 		//--------------------------------------
-		t = TaskList;
 		// Sprawdzenie czy w którymœ zadaniu min¹³ czas na uruchomienie Loop()
 		{
-			while (t != NULL)
+			if (CurrentWaitLoopTask == NULL) CurrentWaitLoopTask = TaskList;
+			while (CurrentWaitLoopTask != NULL)
 			{
-				if (t->TaskDef->doloop != NULL)
+				if (CurrentWaitLoopTask->TaskDef->doloop != NULL)
 				{
-					if (t->TickWaitLoop != 0)
+					if (CurrentWaitLoopTask->TickWaitLoop != 0)
 					{
-						if (SysTickCount - t->TickReturn >= t->TickWaitLoop)
+						if (SysTickCount - CurrentWaitLoopTask->TickReturn >= CurrentWaitLoopTask->TickWaitLoop)
 						{
-							CurrentTask = t;
-							t->doloopRC++;
-							t->TickWaitLoop = t->TaskDef->doloop();
-							t->TickReturn = SysTickCount;
+							CurrentTask = CurrentWaitLoopTask;
+							CurrentWaitLoopTask->doloopRC++;
+							CurrentWaitLoopTask->TickWaitLoop = CurrentWaitLoopTask->TaskDef->doloop();
+							CurrentWaitLoopTask->TickReturn = SysTickCount;
 							CurrentTask  = XB_BOARD_DefTask.Task;
-							t->doloopRC--;
+							CurrentWaitLoopTask->doloopRC--;
+							CurrentWaitLoopTask = CurrentWaitLoopTask->Next;
+							break;
 						}
 					}
 				}
-				t = t->Next;
+				CurrentWaitLoopTask = CurrentWaitLoopTask->Next;
 			}
 
 		}
@@ -2496,63 +2501,62 @@ void TXB_board::IterateTask()
 		//if (Serial_availableForWrite() < Serial_EmptyTXBufferSize) return;
 		// ------------------------------------------------------------
 
-		t = TaskList;
+		if (CurrentIterateTaskRealTime == NULL) CurrentIterateTaskRealTime = TaskList;
 		// Uruchomienie zadañ tzw realtime
 		{
-			while (t != NULL)
+			while (CurrentIterateTaskRealTime != NULL)
 			{
-				if (t->TaskDef->doloop != NULL)
+				if (CurrentIterateTaskRealTime->TaskDef->doloop != NULL)
 				{
-					if (t->TaskDef->Priority == 0)
+					if (CurrentIterateTaskRealTime->TaskDef->Priority == 0)
 					{
-						if (t->TickWaitLoop == 0)
+						if (CurrentIterateTaskRealTime->TickWaitLoop == 0)
 						{
-							CurrentTask = t;
-							t->doloopRC++;
-							t->TickWaitLoop = t->TaskDef->doloop();
-							t->TickReturn = SysTickCount;
+							CurrentTask = CurrentIterateTaskRealTime;
+							CurrentIterateTaskRealTime->doloopRC++;
+							CurrentIterateTaskRealTime->TickWaitLoop = CurrentIterateTaskRealTime->TaskDef->doloop();
+							CurrentIterateTaskRealTime->TickReturn = SysTickCount;
 							CurrentTask = XB_BOARD_DefTask.Task;
-							t->doloopRC--;
+							CurrentIterateTaskRealTime->doloopRC--;
+							CurrentIterateTaskRealTime = CurrentIterateTaskRealTime->Next;
+							break;
 						}
 					}
 				}
-				t = t->Next;
+				CurrentIterateTaskRealTime = CurrentIterateTaskRealTime->Next;
 			}
 		}
 		//--------------------------------------
 
-		t = CurrentIterateTask;
-		if (t == NULL) t = TaskList;
+		if (CurrentIterateTaskPriority == NULL) CurrentIterateTaskPriority = TaskList;
 		
 		// Uruchomienie zadañ z podzia³em na priorytety
 		{
-			while (t != NULL)
+			while (CurrentIterateTaskPriority != NULL)
 			{
-				if (t->TaskDef->doloop != NULL)
+				if (CurrentIterateTaskPriority->TaskDef->doloop != NULL)
 				{
-					if (t->TaskDef->Priority > 0)
+					if (CurrentIterateTaskPriority->TaskDef->Priority > 0)
 					{
-						if (t->TickWaitLoop == 0)
+						if (CurrentIterateTaskPriority->TickWaitLoop == 0)
 						{
-							t->CounterPriority++;
-							if (t->CounterPriority >= t->TaskDef->Priority)
+							CurrentIterateTaskPriority->CounterPriority++;
+							if (CurrentIterateTaskPriority->CounterPriority >= CurrentIterateTaskPriority->TaskDef->Priority)
 							{
-								t->CounterPriority = 0;
-								CurrentTask = t;
-								t->doloopRC++;
-								t->TickWaitLoop = t->TaskDef->doloop();
-								t->TickReturn = SysTickCount;
+								CurrentIterateTaskPriority->CounterPriority = 0;
+								CurrentTask = CurrentIterateTaskPriority;
+								CurrentIterateTaskPriority->doloopRC++;
+								CurrentIterateTaskPriority->TickWaitLoop = CurrentIterateTaskPriority->TaskDef->doloop();
+								CurrentIterateTaskPriority->TickReturn = SysTickCount;
 								CurrentTask = XB_BOARD_DefTask.Task;
-								t->doloopRC--;
-								t = t->Next;
-								CurrentIterateTask = t;
+								CurrentIterateTaskPriority->doloopRC--;
+								CurrentIterateTaskPriority = CurrentIterateTaskPriority->Next;
 								break;
 							}
 						}
 					}
 				}
-				t = t->Next;
-				CurrentIterateTask = t;
+				CurrentIterateTaskPriority = CurrentIterateTaskPriority->Next;
 			}
 		}
 		//--------------------------------------
@@ -2985,7 +2989,7 @@ void ___free(void* Aptr)
 	Aptr = (void*)((uint32_t)Aptr - 16);
 	TXBMemDebug* md = (TXBMemDebug*)Aptr;
 
-	size_t Asize = md->Size + (((md->Size / 8) * 8) + 8) + 16;
+	size_t Asize = (((md->Size / 8) * 8) + 8) + 16;
 
 	uint8_t* bptr = (uint8_t*)md;
 	for (uint32_t i = 16 + md->Size; i < Asize; i++)
@@ -2993,6 +2997,7 @@ void ___free(void* Aptr)
 		if (bptr[i] != 0xff)
 		{
 			board.Log("Mem corrupt....", true, true, tlError);
+			abort();
 			break;
 		}
 	}
@@ -3001,13 +3006,12 @@ void ___free(void* Aptr)
 
 #endif
 	free(Aptr);
-	delay(0);
 }
 
 void* ___malloc(size_t Asize)
 {
 #ifdef XB_BOARD_MEMDEBUG
-	size_t size = Asize + (((Asize / 8) * 8) + 8) + 16;
+	size_t size = (((Asize / 8) * 8) + 8) + 16;
 	void* ptr = malloc(size);
 	if (ptr == NULL) return NULL;
 	TXBMemDebug* md = (TXBMemDebug * )ptr;
@@ -3025,7 +3029,39 @@ void* ___malloc(size_t Asize)
 #else
 	void* ptr = malloc(Asize);
 #endif
-	delay(0);
+//	delay(0);
+	return ptr;
+}
+
+void* ___realloc(void *Aptr,size_t Asize)
+{
+#ifdef XB_BOARD_MEMDEBUG
+	size_t size = (((Asize / 8) * 8) + 8) + 16;
+	Aptr = (void*)((uint32_t)Aptr - 16);
+	
+	TXBMemDebug* Amd = (TXBMemDebug*)Aptr;
+	TXBMemDebug* mdNext = Amd->Next;
+	TXBMemDebug* mdPrev = Amd->Prev;
+	void* ptr = realloc(Aptr, size);
+	if (ptr == NULL) return NULL;
+	TXBMemDebug* md = (TXBMemDebug*)ptr;
+	
+	if (md->Size < Asize)
+	{
+		uint8_t* bptr = (uint8_t*)ptr;
+		for (uint32_t i = 16 + md->Size; i < size; i++) bptr[i] = 0xff;
+	}
+
+	md->Size = Asize;
+	md->Next = mdNext;
+	if (md->Next != NULL) md->Next->Prev = md;
+	md->Prev = mdPrev;
+	if (md->Prev != NULL) md->Prev->Next = md;
+	ptr = (void*)((uint32_t)ptr + 16);
+#else
+	void* ptr = realloc(Aptr,Asize);
+#endif
+//	delay(0);
 	return ptr;
 }
 //#if !defined(_VMICRO_INTELLISENSE)
@@ -3117,7 +3153,7 @@ void* TXB_board::_realloc_psram(void *Aptr,size_t Asize)
 #endif
 #endif 
 #else
-	void* ptr = ___malloc(Asize);
+	void* ptr = ___realloc(Aptr,Asize);
 #ifdef LOG_MALLOC_FREE
 	board.Log(String("nopsram _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
 #endif
@@ -4692,6 +4728,16 @@ uint32_t TXB_board::PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
+uint16_t TXB_board::PREFERENCES_GetUINT16(const char* key, uint16_t defaultvalue)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return defaultvalue;
+	return xbpreferences->getUShort(key, defaultvalue);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
 uint8_t TXB_board::PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue)
 {
 #ifdef ESP32
@@ -4727,6 +4773,16 @@ size_t TXB_board::PREFERENCES_PutUINT32(const char* key, uint32_t value)
 #ifdef ESP32
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putULong(key, value);
+#else
+	return 0;
+#endif
+}
+//-----------------------------------------------------------------------------------------------------------------------
+size_t TXB_board::PREFERENCES_PutUINT16(const char* key, uint16_t value)
+{
+#ifdef ESP32
+	if (xbpreferences == NULL) return 0;
+	return xbpreferences->putUShort(key, value);
 #else
 	return 0;
 #endif

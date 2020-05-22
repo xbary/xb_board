@@ -502,7 +502,6 @@ public:
 	int8_t doAllInterruptRC;
 	DEFLIST_VAR(TTask,TaskList)
 	TTask *CurrentTask;
-	TTask *CurrentIterateTask;
 	
 	void handle();	
 	TTask *AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID = 0);
@@ -613,10 +612,12 @@ public:
 	size_t PREFERENCES_GetString(const char* key, char* value, const size_t maxlen);
 	String PREFERENCES_GetString(const char* key, String defaultvalue);
 	uint32_t PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue);
+	uint16_t PREFERENCES_GetUINT16(const char* key, uint16_t defaultvalue);
 	uint8_t PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue);
 	size_t PREFERENCES_PutString(const char* key, const char* value);
 	size_t PREFERENCES_PutString(const char* key, String value);
 	size_t PREFERENCES_PutUINT32(const char* key, uint32_t value);
+	size_t PREFERENCES_PutUINT16(const char* key, uint16_t value);
 	size_t PREFERENCES_PutUINT8(const char* key, uint8_t value);
 	size_t PREFERENCES_PutINT16(const char* key, int16_t value);
 	int16_t PREFERENCES_GetINT16(const char* key, int16_t defaultvalue);
@@ -644,7 +645,7 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av);
 uint32_t BUFFER_GetSizeData(TBuf* Abuf);
 bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av);
 void BUFFER_Flush(TBuf* Abuf);
-void BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf);
+bool BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf);
 uint8_t* BUFFER_GetReadPtr(TBuf* Abuf);
 void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte);
 void BUFFER_Reset(TBuf* Abuf);

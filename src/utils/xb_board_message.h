@@ -196,10 +196,8 @@ typedef enum {
 	IM_RX_BLINK,
 	IM_TX_BLINK,
 	IM_LIVE_BLINK,
-	IM_WIFI_DISCONNECT,
-	IM_WIFI_CONNECT,
-	IM_ETH_DISCONNECT,
-	IM_ETH_CONNECT,
+	IM_NET_DISCONNECT,
+	IM_NET_CONNECT,
 	IM_INTERNET_DISCONNECT,
 	IM_INTERNET_CONNECT,
 	IM_OTA_UPDATE_STARTED,
@@ -572,6 +570,8 @@ typedef struct
 	TSocket* Socket;
 	TSocket* NewClientSocket;
 	bool DestroySocket;
+	bool AcceptSocket;
+	uint32_t ReceivedLength;
 } 	TSocketData;
 //-----------------------------------------------------------------------
 struct TMessageBoard
