@@ -44,9 +44,11 @@ static uint32_t Aname=0;
 
 #define BEGIN_WAITMS(Aname,Ams) \
 { \
+bool isbegin=false;\
 if (Aname==0) Aname=SysTickCount; \
 if (SysTickCount-Aname>(Ams)) \
-{
+{ \
+isbegin=true;
 
 #define END_WAITMS(Aname) \
 EXITlab##Aname: \
@@ -60,7 +62,7 @@ EXITlab##Aname: \
 if (Aname!=0) \
 Aname = SysTickCount; \
 } \
-break; \
+if (isbegin) break; \
 }
 	
 
