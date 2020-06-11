@@ -359,6 +359,20 @@ struct TGPIODrive
 	String Name;
 	void* UserData;
 };
+
+
+struct TFarDeviceID
+{
+	TFarDeviceID* Next;
+	TFarDeviceID* Prev;
+	TUniqueID FarDeviceID;
+	TTaskDef* RequestTaskStream;
+	uint32_t FarAddress;
+	uint32_t TickLastRequest;
+	uint32_t DateTimeLastRequest;
+
+};
+
 #pragma pack(pop)
 
 #define FUNCTIONPIN_NOIDENT 0
@@ -572,6 +586,13 @@ public:
 	void SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStream, uint32_t Afromaddress, uint32_t Atoaddress, TFrameType AframeType, TUniqueID ADeviceID);
 	void HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream);
 	void HandleFrameLocal(TFrameTransport *Aft);
+	bool RequestFarDevice(TUniqueID AFarDeviceID, TTaskDef* ATaskDefStream, uint32_t AOnAddress);
+	void EraseAllFarDevices();
+	void SaveCfgFarDevice(TFarDeviceID* Afdl);
+	void LoadCfgFarDevices();
+	void ResetCfgFarDevices();
+	DEFLIST_VAR(TFarDeviceID, FarDeviceIDList)
+
 	void AddStreamAddressAsKeyboard(TTaskDef *AStreamDefTask, uint32_t Aaddress);
 	void SubStreamAddressAsKeyboard(TTaskDef *AStreamDefTask, uint32_t Aaddress);
 	void AddStreamAddressAsLog(TTaskDef *AStreamDefTask, uint32_t Aaddress);
@@ -640,6 +661,9 @@ public:
 
 };
 
+#ifdef XB_GUI
+void XB_BOARD_Repaint_TFarDeviceID();
+#endif
 
 bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av);
 uint32_t BUFFER_GetSizeData(TBuf* Abuf);

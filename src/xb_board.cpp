@@ -15,7 +15,6 @@ extern "C" {
 #include <stddef.h>
 #endif
 
-
 // Dla STM32 inkludy z funkcjami jêzyka C
 #ifdef ARDUINO_ARCH_STM32
 extern "C" {
@@ -40,16 +39,12 @@ extern "C" {
 #ifdef BOARD_BETA_DEBUG_FREEMINHEAP
 #include <WiFi.h>
 #endif
+
 #pragma endregion
+
 #pragma region GLOBAL_VARS
 // Podstawowy obiekt tzw. "kernel"
 TXB_board board; 
-
-// Struktura nag³ówkowa zadania obiektu podstawowego.
-uint32_t XB_BOARD_DoLoop(void);
-void XB_BOARD_Setup(void);
-bool XB_BOARD_DoMessage(TMessageBoard *Am);
-TTaskDef XB_BOARD_DefTask = {0,&XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage};
 
 // Data i Czas w formacie Unix
 volatile uint32_t DateTimeUnix;
@@ -70,6 +65,7 @@ bool xb_board_ShowGuiOnStart = false;
 bool xb_board_ConsoleInWindow = false;
 uint8_t xb_board_ConsoleWidth = CONSOLE_WIDTH_DEFAULT;
 uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
+bool xb_board_ShowListFarDeviceID = false;
 
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
 #ifdef XB_GUI
@@ -108,6 +104,7 @@ uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
 
 TWindowClass * xb_board_winHandle0;
 TWindowClass* xb_board_winHandle1;
+TWindowClass* xb_board_winHandle2;
 uint8_t xb_board_currentselecttask = 0;
 uint8_t xb_board_currentYselecttask;
 bool xb_board_listtask_repaint = false;
@@ -144,7 +141,9 @@ void TXB_board::DateTimeSecond_init(void)
 #endif
 
 #pragma endregion
-#pragma region FUNKCJE_SETUP_LOOP_MESSAGES
+#pragma region KONFIGURACJA
+
+
 // -------------------------------------
 bool XB_BOARD_LoadConfiguration()
 {
@@ -211,1078 +210,8 @@ bool XB_BOARD_ResetConfiguration()
 #endif
 
 }
-
-// -------------------------------------
-// Procedura inicjuj¹ca zadanie g³ównego
-void XB_BOARD_Setup(void)
-{
-	board.LoadConfiguration(&XB_BOARD_DefTask);
-	board.AddGPIODrive(BOARD_NUM_DIGITAL_PINS,&XB_BOARD_DefTask,"ESP32");
-	board.SetDigitalPinCount(BOARD_NUM_DIGITAL_PINS);
-
-	// Jeœli framework zosta³ uruchomiony na ESP32 z dodatkow¹ pamiêci¹ RAM SPI , rezerwacja pierwszych 2 megabajtów w celu unikniêcia b³ednej wspó³pracy ESP32 z PSRAM
-#ifdef ESP32
-#ifdef PSRAM_BUG
-#ifdef BOARD_HAS_PSRAM
-			board.psram2m = heap_caps_malloc((1024 * 1024) * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-#endif
-#endif
-#endif
-
-	// Jeœli framework zosta³ uruchomiony na ESP8266 to inicjacja liczników czasowych
-#if defined(ESP8266)
-	board.SysTickCount_init();
-	board.DateTimeSecond_init();
-#endif
-	// Zerowanie liczników czasowych
-	DateTimeUnix = 0;
-	DateTimeStart = 0;
-
-	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e aplikacja dzia³a
-#ifdef BOARD_LED_LIFE_PIN
-	board.pinMode(BOARD_LED_LIFE_PIN, OUTPUT);
-#endif
-
-	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e nast¹pi³a transmisja danych na zewn¹trz
-#ifdef BOARD_LED_TX_PIN
-	board.Tick_TX_BLINK = 0;
-	board.pinMode(BOARD_LED_TX_PIN, OUTPUT);
-#if defined(BOARD_LED_TX_STATUS_OFF)
-	board.digitalWrite(BOARD_LED_TX_PIN, (BOARD_LED_TX_STATUS_OFF));
-#else
-	board.digitalWrite(BOARD_LED_TX_PIN, LOW);
-#endif
-#endif
-
-	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e nast¹pi³a transmisja danych z zewn¹trz
-#ifdef BOARD_LED_RX_PIN
-	board.Tick_RX_BLINK = 0;
-	board.pinMode(BOARD_LED_RX_PIN, OUTPUT);
-#if defined(BOARD_LED_RX_STATUS_OFF)
-	board.digitalWrite(BOARD_LED_RX_PIN, (BOARD_LED_RX_STATUS_OFF));
-#else
-	board.digitalWrite(BOARD_LED_RX_PIN, LOW);
-#endif
-#endif
-
-	// Ustawienie czasu jak d³ugo ma utrzymywaæ siê stan 1 na pinach informuj¹cych na zew¹trz o transmisji danych
-#if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
-#ifdef BOARD_LED_RXTX_BLINK_TICK
-	board.TickEnableBlink = BOARD_LED_RXTX_BLINK_TICK;
-#else
-	board.TickEnableBlink = 250;
-#endif
-#endif
-
-	// Jeœli interface uruchomiony to dodanie zadania obs³uguj¹cego interface GUI
-#ifdef XB_GUI
-	board.AddTask(&XB_GUI_DefTask);
-#endif
-}
-// -----------------------------
-// G³ówna pêtla zadania g³ównego
-// <-      = 0 - Zadanie dzia³a wed³ug harmonogramu priorytetów
-//         > 0 - Zadanie zostanie uruchomione po iloœci milisekund zwrócnej w rezultacie
-uint32_t XB_BOARD_DoLoop(void)
-{
-	// Zamiganie
-	board.handle();
-	return 0;
-}
-// ---------------------------------
-// Obs³uga messagów zadania g³ównego
-// -> Am - WskaŸnik na strukture messaga
-// <-      = true - messag zosta³ obs³u¿ony
-//         = false - messag nie obs³ugiwany przez zadanie
-bool XB_BOARD_DoMessage(TMessageBoard *Am)
-{
-	bool res = false;
-	static uint8_t LastKeyCode = 0;
-	
-	switch (Am->IDMessage)
-	{
-	case IM_FREEPTR:
-	{
-#ifdef XB_GUI
-		FREEPTR(xb_board_winHandle0);
-		FREEPTR(xb_board_winHandle1);
-		FREEPTR(xb_board_menuHandle1);
-		FREEPTR(xb_board_inputdialog0);
-#endif
-		res = true;
-		break;
-	}
-	case IM_LOAD_CONFIGURATION:
-	{
-		XB_BOARD_LoadConfiguration();
-		res = true;
-		break;
-	}
-	case IM_SAVE_CONFIGURATION:
-	{
-		XB_BOARD_SaveConfiguration();
-		res = true;
-		break;
-	}
-	case IM_RESET_CONFIGURATION:
-	{
-		XB_BOARD_ResetConfiguration();
-		res = true;
-		break;
-	}
-	case IM_GPIO:
-	{
-		switch (Am->Data.GpioData.GpioAction)
-		{
-		case gaPinMode:
-		{
-			if (Am->Data.GpioData.GPIODrive == NULL) break;
-
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
-			{
-				pin_Mode(Am->Data.GpioData.NumPin, (WiringPinMode)Am->Data.GpioData.ActionData.Mode);
-
-				if (Am->Data.GpioData.ActionData.Mode == INPUT)
-					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_GPIO, MODEPIN_INPUT);
-				else if (Am->Data.GpioData.ActionData.Mode == OUTPUT)
-					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_GPIO, MODEPIN_OUTPUT);
-#ifdef ESP32
-				else if (Am->Data.GpioData.ActionData.Mode == ANALOG)
-					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_ANALOGIN, MODEPIN_ANALOG);
-#endif
-				else
-					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_NOIDENT, MODEPIN_OUTPUT);
-
-				res = true;
-			}
-			break;
-		}
-		case gaPinRead:
-		{
-			if (Am->Data.GpioData.GPIODrive == NULL) break;
-
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
-			{
-				Am->Data.GpioData.ActionData.Value = digital_Read(Am->Data.GpioData.NumPin);
-
-				if (board.PinInfoTable != NULL)
-				{
-					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
-				}
-				res = true;
-			}
-			break;
-		}
-		case gaPinWrite:
-		{
-			if (Am->Data.GpioData.GPIODrive == NULL) break;
-
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
-			{
-				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
-
-				if (board.PinInfoTable != NULL)
-				{
-					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
-				}
-				res = true;
-			}
-			break;
-		}
-		case gaPinToggle:
-		{
-			if (Am->Data.GpioData.GPIODrive == NULL) break;
-
-			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
-			{
-				if (board.PinInfoTable != NULL)
-				{
-					Am->Data.GpioData.ActionData.Value = !board.PinInfoTable[Am->Data.GpioData.NumPin].value;
-				}
-				else
-				{
-					Am->Data.GpioData.ActionData.Value = !digitalRead(Am->Data.GpioData.NumPin);
-				}
-
-				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
-
-				if (board.PinInfoTable != NULL)
-				{
-					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
-				}
-				res = true;
-			}
-			break;
-		}
-		default:
-		{
-			break;
-		}
-		}
-		break;
-	}
-
-	case IM_KEYBOARD:
-	{
-		if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
-		{
-			if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
-			{
-				static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
-
-				if (board.TerminalFunction == 0)
-				{
-					switch (Am->Data.KeyboardData.KeyCode)
-					{
-					case 127:
-					{
-						board.Tick_ESCKey = 0;
-						board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0);// , & XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-						break;
-					}
-					case 10:
-					{
-						if (LastKeyCode != 13)
-						{
-							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
-							board.TerminalFunction = 0;
-						}
-						else
-						{
-							Am->Data.KeyboardData.KeyCode = 0;
-						}
-						res = true;
-						break;
-					}
-					case 13:
-					{
-						if (LastKeyCode != 10)
-						{
-							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
-							board.TerminalFunction = 0;
-						}
-						else
-						{
-							Am->Data.KeyboardData.KeyCode = 0;
-						}
-						res = true;
-						break;
-					}
-					case 27:
-					{
-						board.TerminalFunction = 1;
-						board.Tick_ESCKey = SysTickCount;
-						break;
-					}
-					case 7:
-					{
-						board.Tick_ESCKey = 0;
-						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-						break;
-					}
-					case 9:
-					{
-						board.Tick_ESCKey = 0;
-						board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0);//, &XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-						break;
-					}
-					case 255:
-					case 0:
-					{
-						board.Tick_ESCKey = 0;
-						board.TerminalFunction = 0;
-						break;
-					}
-
-
-					default:
-					{
-						board.Tick_ESCKey = 0;
-						board.TerminalFunction = 0;
-						break;
-					}
-					}
-				}
-				else if (board.TerminalFunction == 1)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
-					{
-						board.CTRLKey = false;
-						board.Tick_ESCKey = 0;
-						board.TerminalFunction = 2;
-						Am->Data.KeyboardData.KeyCode = 0;
-					} 
-					else if (Am->Data.KeyboardData.KeyCode == 79) // Nadchodzi funkcyjny klawisz z CTRL
-					{
-						board.CTRLKey = true;
-						board.Tick_ESCKey = 0;
-						board.TerminalFunction = 2;
-						Am->Data.KeyboardData.KeyCode = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 10)
-					{
-						board.TerminalFunction = 0;
-					}
-					else
-					{
-						board.Tick_ESCKey = 0;
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-					}
-				}
-				else if (board.TerminalFunction == 2)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
-					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORUP, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0);
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
-					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORDOWN, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0);
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
-					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORLEFT, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0);
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
-					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORRIGHT, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0);
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KF_TABPREV, 0);//, &XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 49) // F1
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F1;
-						board.TerminalFunction = 3;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 50) // INSERT ... F9?
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_INSERT;
-						board.TerminalFunction = 5;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 51) // DELETE
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_DELETE;
-						board.TerminalFunction = 4;
-					}
-					else
-					{
-						board.TerminalFunction = 0;
-					}
-
-				}
-				else if (board.TerminalFunction == 3)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 49) // F1
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F1;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 50) // F2
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F2;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 51) // F3
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F3;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 52) // F4
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F4;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 53) // F5
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F5;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 55) // F6
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F6;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 56) // F7
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F7;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 57) // F8
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F8;
-						board.TerminalFunction = 4;
-					}
-					else
-					{
-						board.TerminalFunction = 0;
-					}
-				}
-				else if (board.TerminalFunction == 5)
-				{
-
-					if (Am->Data.KeyboardData.KeyCode == 126) // INSERT , ...
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 48) // F9
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F9;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 49) // F10
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F10;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 51) // F11
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F11;
-						board.TerminalFunction = 4;
-					}
-					else if (Am->Data.KeyboardData.KeyCode == 52) // F12
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						KeyboardFunctionDetect = KF_F12;
-						board.TerminalFunction = 4;
-					}
-					else
-					{
-						board.TerminalFunction = 0;
-					}
-
-				}
-				else if (board.TerminalFunction == 4)
-				{
-					if (Am->Data.KeyboardData.KeyCode == 126)
-					{
-						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
-						board.TerminalFunction = 0;
-					}
-					else
-					{
-						board.TerminalFunction = 0;
-					}
-				}
-				else
-				{
-					board.TerminalFunction = 0;
-				}
-
-				res = true;
-
-			}
-#ifdef XB_GUI
-			else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
-			{
-			    xb_board_winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
-				GUI_Show();
-				
-				res = true;
-			}
-			else if (Am->Data.KeyboardData.KeyFunction == KF_ENTER)
-			{
-				if (xb_board_winHandle0 != NULL)
-				{
-					if (GUI_FindWindowByActive() == xb_board_winHandle0)
-					{
-						TTask* task = board.GetTaskByIndex(xb_board_currentselecttask);
-						if (task != NULL)
-						{
-							Am->Data.KeyboardData.KeyFunction = KF_NONE;
-							GUIGADGET_OpenMainMenu(task->TaskDef, WINDOW_POS_LAST_RIGHT_ACTIVE, xb_board_winHandle0->Y+xb_board_currentYselecttask + 1);
-
-						}
-					}
-				}
-				res = true;
-			}
-			else if (Am->Data.KeyboardData.KeyFunction == KF_CURSORDOWN)
-			{
-				if (xb_board_winHandle0 != NULL)
-				{
-					if (GUI_FindWindowByActive() == xb_board_winHandle0)
-					{
-						uint8_t l = xb_board_currentselecttask;
-						xb_board_currentselecttask++;
-						if (xb_board_currentselecttask >= board.TaskList_count)
-						{
-							xb_board_currentselecttask = board.TaskList_count - 1;
-						}
-						else
-						{
-							xb_board_listtask_repaint = true;
-							xb_board_winHandle0->RepaintDataCounter++;
-						}
-						TTask* t = board.GetTaskByIndex(l);
-						if (t != NULL) t->LastSumTaskStatusText = 0;
-						t = board.GetTaskByIndex(xb_board_currentselecttask);
-						if (t != NULL) t->LastSumTaskStatusText = 0;
-					}
-				}
-				res = true;
-			}
-			else if (Am->Data.KeyboardData.KeyFunction == KF_CURSORUP)
-			{
-				if (xb_board_winHandle0 != NULL)
-				{
-					if (GUI_FindWindowByActive() == xb_board_winHandle0)
-					{
-						uint8_t l = xb_board_currentselecttask;
-
-						if (xb_board_currentselecttask > 0)
-						{
-							xb_board_currentselecttask--;
-							xb_board_listtask_repaint = true;
-							xb_board_winHandle0->RepaintDataCounter++;
-						}
-
-						TTask* t = board.GetTaskByIndex(l);
-						if (t != NULL) t->LastSumTaskStatusText = 0;
-						t = board.GetTaskByIndex(xb_board_currentselecttask);
-						if (t != NULL) t->LastSumTaskStatusText = 0;
-
-					}
-				}
-				res = true;
-			}
-
-#endif
-			LastKeyCode = Am->Data.KeyboardData.KeyCode;
-
-		}
-		break;
-	}
-#ifdef XB_GUI
-	case IM_MENU:
-	{
-		OPEN_MAINMENU()
-		{
-			xb_board_menuHandle1 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 1, false, X,Y);
-		}
-
-		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 48, MENU_AUTOCOUNT, 0, true)
-		{
-			/*BEGIN_MENUITEM("Dupa", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.Log("DUPA", true, true,tlInfo);
-					board.Log("WARN", true, true, tlWarn);
-					board.Log("ERROR", true, true, tlError);
-				}
-			}
-			END_MENUITEM()*/
-
-			BEGIN_MENUITEM_CHECKED("Show GUI on start", taLeft,xb_board_ShowGuiOnStart)
-			{
-				CLICK_MENUITEM()
-				{
-					xb_board_ShowGuiOnStart = !xb_board_ShowGuiOnStart;
-				}
-			}
-			END_MENUITEM()
-			SEPARATOR_MENUITEM()
-			BEGIN_MENUITEM_CHECKED("CONSOLE IN WINDOW", taLeft, xb_board_ConsoleInWindow)
-			{
-				CLICK_MENUITEM()
-				{
-					xb_board_ConsoleInWindow = !xb_board_ConsoleInWindow;
-				}
-			}
-			END_MENUITEM()
-
-			BEGIN_MENUITEM("CONSOLE WIDTH ["+String(xb_board_ConsoleWidth)+"]", taLeft)
-			{
-				CLICKRIGHT_MENUITEM()
-				{
-					xb_board_ConsoleWidth = xb_board_ConsoleWidth >= 160 ? 160 : xb_board_ConsoleWidth + 1;
-				}
-				CLICKLEFT_MENUITEM()
-				{
-					xb_board_ConsoleWidth = xb_board_ConsoleWidth >80 ? xb_board_ConsoleWidth - 1:80;
-				}
-			}
-			END_MENUITEM()
-
-			BEGIN_MENUITEM("CONSOLE HEIGHT [" + String(xb_board_ConsoleHeight) + "]", taLeft)
-			{
-				CLICKRIGHT_MENUITEM()
-				{
-					xb_board_ConsoleHeight = xb_board_ConsoleHeight >= 50 ? 50 : xb_board_ConsoleHeight + 1;
-				}
-				CLICKLEFT_MENUITEM()
-				{
-					xb_board_ConsoleHeight = xb_board_ConsoleHeight > 25 ? xb_board_ConsoleHeight - 1 : 25;
-				}
-			}
-			END_MENUITEM()
-			SEPARATOR_MENUITEM()
-			BEGIN_MENUITEM("Device Name ["+board.DeviceName+"]", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					xb_board_inputdialog0 = GUIGADGET_CreateInputDialog(&XB_BOARD_DefTask, 0, true);
-				}
-			}
-			END_MENUITEM()
-			SEPARATOR_MENUITEM()
-			CONFIGURATION_MENUITEMS()
-			BEGIN_MENUITEM("Save all configuration", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.AllSaveConfiguration();
-				}
-			}
-			END_MENUITEM()
-			BEGIN_MENUITEM("Save all configuration & Soft RESET", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.AllSaveConfiguration();
-					board.SoftResetMCU(true);
-				}
-			}
-			END_MENUITEM()
-			BEGIN_MENUITEM("Reset all configuration", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.AllResetConfiguration();
-				}
-			}
-			END_MENUITEM()
-			BEGIN_MENUITEM("Reset all configuration & Soft RESET" , taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.AllResetConfiguration();
-					board.SoftResetMCU(true);
-				}
-			}
-			END_MENUITEM()
-				SEPARATOR_MENUITEM()
-			BEGIN_MENUITEM("SOFT RESET MCU", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.SoftResetMCU(true);
-					return true;
-				}
-			}
-			END_MENUITEM()
-
-		}
-		END_MENU()
-
-
-		res = true;
-		break;
-	}
-	case IM_INPUTDIALOG:
-	{
-		BEGIN_DIALOG(0, "Device name", "input device name", tivString, 32, &board.DeviceName)
-		{
-		}
-		END_DIALOG()
-
-		res = true;
-		break;
-	}
-	case IM_WINDOW:
-	{
-		BEGIN_WINDOW_DEF(1, "CONSOLE", 49, 0, xb_board_ConsoleWidth+2, xb_board_ConsoleHeight+2, xb_board_winHandle1)
-		{
-			REPAINT_WINDOW()
-			{
-			}
-			REPAINTDATA_WINDOW()
-			{
-				if (board.ConsoleScreen != NULL)
-				{
-					uint8_t ch,c,lc = 5;
-					WH->BeginDraw();
-					WH->GoToXY(0, 0);
-					WH->TextWordWrap = true;
-					for (uint32_t i = 0; i < (board.ConsoleScreen->Width * board.ConsoleScreen->Height); i++)
-					{
-						c = board.ConsoleScreen->Get_ColorBuf(i);
-						if (c != lc)
-						{
-							lc = c;
-							switch (c)
-							{
-							case 0: WH->SetTextColor(tfcWhite); break;
-							case 1: WH->SetTextColor(tfcYellow); break;
-							case 2: WH->SetTextColor(tfcRed); break;
-							default: WH->SetTextColor(tfcWhite); break;
-							}
-						}
-						ch = board.ConsoleScreen->Buf[i];
-						if (ch == 0) ch = 32;
-						WH->PutChar(ch);
-					}
-					
-					WH->EndDraw(false);
-				}
-			}
-
-			DESTROY_WINDOW()
-			{
-				xb_board_ConsoleInWindow = false;
-			}
-
-		}
-		END_WINDOW_DEF()
-
-		BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
-		{
-			//--------------------------------
-			REPAINT_WINDOW()
-			{
-				int y = 0;
-				String name;
-
-				WH->BeginDraw();
-				if (!xb_board_listtask_repaint)
-				{
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, ("DEVICE NAME: "));
-					WH->SetBoldChar();
-					WH->SetTextColor(tfcYellow);
-					WH->PutStr(board.DeviceName.c_str());
-					y++;
-
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, ("DEVICE VERSION: "));
-					WH->SetBoldChar();
-					WH->SetTextColor(tfcYellow);
-					WH->PutStr(board.DeviceVersion.c_str());
-					y++;
-
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, ("DEVICE ID: "));
-					WH->SetBoldChar();
-					WH->SetTextColor(tfcYellow);
-					WH->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
-					y++;
-
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, ("TIME FROM RUN:"));
-					y++;
-					WH->PutStr(0, y, ("FREE HEAP:"));
-					WH->PutStr(WH->Width - 18, y, ("MIN HEAP:"));
-					y++;
-					WH->PutStr(WH->Width - 18, y, ("MAX HEAP:"));
-					WH->SetBoldChar();
-					WH->SetTextColor(tfcYellow);
-					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreeHeapInLoop).c_str());
-
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, ("MEM USE:"));
-					y++;
-#ifdef BOARD_HAS_PSRAM
-					WH->PutStr(0, y, ("FREEpsram:"));
-					WH->PutStr(WH->Width - 18, y, ("MINpsram:"));
-					y++;
-					WH->PutStr(WH->Width - 18, y, ("MAXpsram:"));
-					WH->SetBoldChar();
-					WH->SetTextColor(tfcYellow);
-					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreePSRAMInLoop).c_str());
-
-					WH->SetNormalChar();
-					WH->SetTextColor(tfcWhite);
-					WH->PutStr(0, y, ("MEM USE:"));
-					y++;
-#endif
-#ifdef XB_PREFERENCES
-					WH->PutStr(0, y, "PREFERENCES FREE ENTRIES:");
-#endif
-					WH->PutStr(32, y, "CPU CLK:");
-					y++;
-
-					WH->PutStr(0, y, ("OUR RESERVED BLOCK:"));
-					WH->PutStr(29, y, "CPU Temp.:");
-					y++;
-					//--------------
-
-					WH->PutStr(0, y, "_", WH->Width, '_');
-					y++;
-					WH->PutStr(0, y, ("TASK NAME"));
-					WH->PutStr(15, y, ("STATUS"));
-
-					y++;
-				}
-				else
-				{
-					y += 9;
-#ifdef BOARD_HAS_PSRAM
-					y += 2;
-#endif
-				}
-
-				WH->SetTextColor(tfcGreen);
-				xb_board_listtask_repaint = false;
-				for (int i = 0; i < board.TaskList_count; i++)
-				{
-
-					if (xb_board_currentselecttask == i)
-					{
-						WH->SetTextColor(tfcYellow);
-						WH->SetReverseChar();
-					}
-					else
-					{
-						WH->SetTextColor(tfcGreen);
-						WH->SetNormalChar();
-					}
-
-					TTask* t = board.GetTaskByIndex(i);
-					if (t != NULL)
-					{
-
-						if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
-						{
-							WH->PutStr(0, y + i, name.c_str(), 14, ' ');
-							if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
-							else WH->PutChar(' ');
-							name = "";
-						}
-						t->LastSumTaskStatusText = 0;
-						t->LastBoldTaskStatus = false;
-					}
-				}
-				WH->EndDraw();
-			}
-			//--------------------------------
-			REPAINTDATA_WINDOW()
-			{
-				int y = 3;
-				WH->BeginDraw();
-
-				WH->SetBoldChar();
-				WH->SetTextColor(tfcYellow);
-				{
-					String txttime = "";
-					GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
-					WH->PutStr(14, y, txttime.c_str());
-				}
-				y++;
-				WH->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
-				WH->PutChar(' ');
-				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreeHeapInLoop).c_str());
-				WH->PutChar(' ');
-				y++;
-				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
-				WH->PutStr(("% "));
-				y++;
-
-#ifdef BOARD_HAS_PSRAM
-				WH->PutStr(10, y, String(board.FreePSRAMInLoop).c_str());
-				WH->PutChar(' ');
-				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreePSRAMInLoop).c_str());
-				WH->PutChar(' ');
-				y++;
-				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
-				WH->PutStr(("% "));
-				y++;
-#endif
-#ifdef XB_PREFERENCES
-				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 6);
-				WH->PutStr(40, y, String(String(ESP.getCpuFreqMHz())+"Mhz").c_str());
-
-				y++;
-#endif
-
-#ifdef XB_BOARD_MEMDEBUG
-				WH->PutStr(20, y, String(MemDebugList_count).c_str(), 8);
-#else
-				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
-#endif
-				
-				WH->PutStr(39, y, String(String(temperatureRead(),2)+"C").c_str());
-				y++;
-
-				String name;
-				name.reserve(80);
-				y += 2;
-
-
-				for (int i = 0; i < board.TaskList_count; i++)
-				{
-					if (xb_board_currentselecttask == i)
-					{
-						WH->SetTextColor(tfcYellow);
-						WH->SetReverseChar();
-						xb_board_currentYselecttask = y + i;
-					}
-					else
-					{
-						WH->SetNormalChar();
-
-					}
-					TTask* t = board.GetTaskByIndex(i);
-
-					if (xb_board_listtask_repaint)
-					{
-						if (xb_board_currentselecttask == i)
-						{
-							WH->SetTextColor(tfcYellow);
-						}
-						else
-						{
-							WH->SetTextColor(tfcGreen);
-						}
-						
-						if (t != NULL)
-						{
-
-							if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
-							{
-								WH->PutStr(0, y + i, name.c_str(), 14, ' ');
-								if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
-								else WH->PutChar(' ');
-								name = "";
-							}
-							//t->LastSumTaskStatusText = 0;
-						}
-						WH->SetTextColor(tfcYellow);
-					}
-
-					if (t != NULL)
-					{
-						if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
-						{
-							uint32_t sum = 0;
-							uint32_t l = name.length();
-							for (uint32_t t = 0; t < l; t++) sum += (uint32_t)name[t];
-							if (t->LastSumTaskStatusText != sum)
-							{
-								t->LastSumTaskStatusText = sum;
-								t->LastBoldTaskStatus = true;
-								
-								
-								if (xb_board_currentselecttask == i)
-								{
-									WH->SetTextColor(tfcYellow);
-									WH->SetReverseChar();
-								}
-								else
-								{
-									WH->SetNormalChar();
-								}
-								WH->SetBoldChar();
-								WH->PutStr(15, y + i, name.c_str(), 33, ' ');
-							}
-							else
-							{
-								if (t->LastBoldTaskStatus)
-								{
-									t->LastBoldTaskStatus = false;
-									if (xb_board_currentselecttask == i)
-									{
-										WH->SetTextColor(tfcYellow);
-										WH->SetReverseChar();
-									}
-									else
-									{
-										WH->SetNormalChar();
-									}
-									WH->PutStr(15, y + i, name.c_str(), 33, ' ');
-								}
-							}
-							name = "";
-						}
-					}
-				}
-				xb_board_listtask_repaint = false;
-				WH->EndDraw();
-			}
-			//--------------------------------
-			DESTROY_WINDOW()
-			{
-				xb_board_ShowGuiOnStart = false;
-			}
-		}
-		//--------------------------------
-		END_WINDOW_DEF()
-
-		res = true;
-		break;
-	}
-#endif
-	case IM_GET_TASKNAME_STRING:
-	{
-		*(Am->Data.PointerString) = ("BOARD");
-		res = true;
-		break;
-	}
-	case IM_GET_TASKSTATUS_STRING:
-	{
-		*(Am->Data.PointerString) = String("TC:" + String(board.TaskList_count));
-#ifdef PSRAM_BUG
-		*(Am->Data.PointerString) += String(" / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER));
-#endif
-		res = true;
-	}
-	case IM_GET_VAR_VALUE:
-	{
-		if (*Am->Data.VarValueData.VarName == "devicename")
-		{
-			*Am->Data.VarValueData.VarValue = board.DeviceName;
-			res = true;
-		}
-		break;
-	}
-	default:;
-	}
-	
-	return res;
-}
 #pragma endregion
+
 #pragma region FUNKCJE_INICJUJACE_TXB_BOARD
 TXB_board::TXB_board()
 {
@@ -1294,6 +223,10 @@ TXB_board::TXB_board()
 	TaskList_last = NULL;
 	ConsoleScreen = NULL;
 	xbpreferences = NULL;
+	FarDeviceIDList = NULL;
+	FarDeviceIDList_count = 0;
+	FarDeviceIDList_last = NULL;
+
 #ifdef PSRAM_BUG
 	lastfreepsram = 0;
 	GETFREEPSRAM_ERROR_COUNTER = 0;
@@ -3856,6 +2789,8 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 
 				if (res)
 				{
+					RequestFarDevice(Aft->SourceDeviceID, ATaskDefStream, Aft->SourceAddress);
+
 					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ftResponseOK, Aft->SourceDeviceID);
 				}
 				else
@@ -3871,6 +2806,7 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 					default: ft = ftResponseError;	
 					}
 					SendResponseFrameOnProt(Aft->FrameID, ATaskDefStream, Aft->DestAddress, Aft->SourceAddress, ft, Aft->SourceDeviceID);
+
 				}
 			}
 		}
@@ -3962,7 +2898,172 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 	}
 	
 }
+// -----------------------------------------------------------------------------------
+bool TXB_board::RequestFarDevice(TUniqueID AFarDeviceID, TTaskDef *ATaskDefStream, uint32_t AOnAddress)
+{
+	TFarDeviceID* fdl = FarDeviceIDList;
+	//String StreamDefTaskName; StreamDefTaskName.reserve(32);
+	//SendMessage_GetTaskNameString(ATaskDefStream->Task, StreamDefTaskName);
+	//board.Log(String("Request Far Device ID:"+board.DeviceIDtoString(AFarDeviceID)+" TaskDef:"+String((uint32_t)ATaskDefStream,HEX)+"TaskDef Name:"+ StreamDefTaskName +" OnAddress:"+IPAddress(AOnAddress).toString()).c_str(), true, true, tlWarn);
+	while (fdl != NULL) 
+	{
+		if (AFarDeviceID.ID.ID64 == fdl->FarDeviceID.ID.ID64)
+		{
+			if (ATaskDefStream == fdl->RequestTaskStream)
+			{
+				if (AOnAddress == fdl->FarAddress)
+				{
+					break;
+				}
+			}
+		}
+		fdl = fdl->Next;
+	}
+	if (fdl == NULL)
+	{
+		CREATE_STR_ADD_TO_LIST(FarDeviceIDList, TFarDeviceID, fdl);
+		if (fdl != NULL)
+		{
+			fdl->FarDeviceID.ID.ID64 = AFarDeviceID.ID.ID64;
+			fdl->RequestTaskStream = ATaskDefStream;
+			fdl->FarAddress = AOnAddress;
+			SaveCfgFarDevice(fdl);
+		}
+	}
+	if (fdl != NULL)
+	{
+		fdl->TickLastRequest = SysTickCount;
+		fdl->DateTimeLastRequest = DateTimeUnix;
+#ifdef XB_GUI
+		XB_BOARD_Repaint_TFarDeviceID();
+#endif
+	}
+	else
+	{
+		Log("Error add new DeviceID to FarDeviceIDList.", true, true, tlError);
+		return false;
+	}
+	return true;
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::EraseAllFarDevices()
+{
+	TFarDeviceID* fdl = FarDeviceIDList_last;
+	while (fdl != NULL)
+	{
+		DESTROY_STR_DEL_FROM_LIST(FarDeviceIDList, fdl);
+		fdl = FarDeviceIDList_last;
+	}
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::SaveCfgFarDevice(TFarDeviceID *Afdl)
+{
+#ifdef XB_PREFERENCES
+	String StreamDefTaskName; StreamDefTaskName.reserve(32);
+	if (SendMessage_GetTaskNameString(Afdl->RequestTaskStream->Task, StreamDefTaskName))
+	{
+		if (board.PREFERENCES_BeginSection("XBBOARD"))
+		{
+			uint16_t Countfdl = board.PREFERENCES_GetUINT16("fd_count",0);
+			String itemname; itemname.reserve(16);
+			TUniqueID itemdeviceid;
+			String itemstreamdeftaskname;
+			uint32_t itemonaddress;
+			for (uint16_t i = 0; i < Countfdl; i++)
+			{
+				itemname = "fditem" + String(i);
+				board.PREFERENCES_GetArrayBytes(String(itemname+"devid").c_str(), (void*)&itemdeviceid.ID.ID, 8);
+				itemstreamdeftaskname = board.PREFERENCES_GetString(String(itemname + "tsn").c_str(), "");
+				itemonaddress = board.PREFERENCES_GetUINT32(String(itemname + "oa").c_str(), 0);
 
+				if (itemdeviceid.ID.ID64 == Afdl->FarDeviceID.ID.ID64)
+				{
+					if (itemstreamdeftaskname == StreamDefTaskName)
+					{
+						if (itemonaddress == Afdl->FarAddress)
+						{
+							board.PREFERENCES_EndSection();
+							return;
+						}
+					}
+				}
+			}
+
+			Countfdl++;
+			board.PREFERENCES_PutUINT16("fd_count", Countfdl);
+			itemname = "fditem" + String(Countfdl-1);
+			board.PREFERENCES_PutArrayBytes(String(itemname + "devid").c_str(), (void*)&Afdl->FarDeviceID.ID, 8);
+			board.PREFERENCES_PutString(String(itemname + "tsn").c_str(), StreamDefTaskName);
+			board.PREFERENCES_PutUINT32(String(itemname + "oa").c_str(), Afdl->FarAddress);
+
+			board.PREFERENCES_EndSection();
+		}
+	}
+	else
+	{
+		board.Log("Error indent stream task in request device id...", true, true, tlError);
+	}
+#endif
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::ResetCfgFarDevices()
+{
+#ifdef XB_PREFERENCES
+		if (board.PREFERENCES_BeginSection("XBBOARD"))
+		{
+			uint16_t Countfdl = board.PREFERENCES_GetUINT16("fd_count", 0);
+			String itemname; itemname.reserve(16);
+			for (uint16_t i = 0; i < Countfdl; i++)
+			{
+				itemname = "fditem" + String(i);
+				board.PREFERENCES_CLEAR(String(itemname + "devid").c_str());
+				board.PREFERENCES_CLEAR(String(itemname + "tsn").c_str());
+				board.PREFERENCES_CLEAR(String(itemname + "oa").c_str());
+			}
+			board.PREFERENCES_PutUINT16("fd_count", 0);
+			board.PREFERENCES_EndSection();
+		}
+#endif
+}
+// -----------------------------------------------------------------------------------
+void TXB_board::LoadCfgFarDevices()
+{
+#ifdef XB_PREFERENCES
+	if (board.PREFERENCES_BeginSection("XBBOARD"))
+	{
+		EraseAllFarDevices();
+		uint16_t Countfdl = board.PREFERENCES_GetUINT16("fd_count", 0);
+		String itemname; itemname.reserve(16);
+		TUniqueID itemdeviceid;
+		String itemstreamdeftaskname;
+		TTaskDef* itemTaskDefStream = NULL;
+		uint32_t itemonaddress;
+		
+		for (uint16_t i = 0; i < Countfdl; i++)
+		{
+			itemname = "fditem" + String(i);
+			board.PREFERENCES_GetArrayBytes(String(itemname + "devid").c_str(), (void*)&itemdeviceid.ID.ID, 8);
+			itemstreamdeftaskname = board.PREFERENCES_GetString(String(itemname + "tsn").c_str(), "");
+			itemstreamdeftaskname.trim();
+			itemonaddress = board.PREFERENCES_GetUINT32(String(itemname + "oa").c_str(), 0);
+			itemTaskDefStream = GetTaskDefByName(itemstreamdeftaskname);
+
+			{
+				TFarDeviceID* fdl = NULL;
+				CREATE_STR_ADD_TO_LIST(FarDeviceIDList, TFarDeviceID, fdl);
+				if (fdl != NULL)
+				{
+					fdl->FarDeviceID.ID.ID64 = itemdeviceid.ID.ID64;
+					fdl->RequestTaskStream = itemTaskDefStream;
+					fdl->FarAddress = itemonaddress;
+				}
+			}
+		}
+
+		board.PREFERENCES_EndSection();
+	}
+#endif
+}
 // -----------------------------------------------------------------------------------
 // Ustalenie wskazanego task streamu jako klawiatury
 // -> AStreamDefTask - Task stream który ma byæ klawiatur¹
@@ -4584,7 +3685,7 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 		if (NoTxCounter == 0) TXCounter++;
 }
 #pragma endregion
-#pragma region PREFERENCES
+#pragma region FUNKCJE_PREFERENCES
 #ifdef XB_PREFERENCES
 //-----------------------------------------------------------------------------------------------------------------------
 bool TXB_board::PREFERENCES_BeginSection(String ASectionname)
@@ -4938,3 +4039,1214 @@ void TXB_board::AllResetConfiguration(void)
 }
 
 #pragma endregion 
+
+#pragma region FUNKCJE_SETUP_LOOP_MESSAGES
+// -------------------------------------
+// Procedura inicjuj¹ca zadanie g³ównego
+void XB_BOARD_Setup(void)
+{
+	board.LoadConfiguration(&XB_BOARD_DefTask);
+	board.AddGPIODrive(BOARD_NUM_DIGITAL_PINS, &XB_BOARD_DefTask, "ESP32");
+	board.SetDigitalPinCount(BOARD_NUM_DIGITAL_PINS);
+
+	// Jeœli framework zosta³ uruchomiony na ESP32 z dodatkow¹ pamiêci¹ RAM SPI , rezerwacja pierwszych 2 megabajtów w celu unikniêcia b³ednej wspó³pracy ESP32 z PSRAM
+#ifdef ESP32
+#ifdef PSRAM_BUG
+#ifdef BOARD_HAS_PSRAM
+	board.psram2m = heap_caps_malloc((1024 * 1024) * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+#endif
+#endif
+#endif
+
+	// Jeœli framework zosta³ uruchomiony na ESP8266 to inicjacja liczników czasowych
+#if defined(ESP8266)
+	board.SysTickCount_init();
+	board.DateTimeSecond_init();
+#endif
+	// Zerowanie liczników czasowych
+	DateTimeUnix = 0;
+	DateTimeStart = 0;
+
+	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e aplikacja dzia³a
+#ifdef BOARD_LED_LIFE_PIN
+	board.pinMode(BOARD_LED_LIFE_PIN, OUTPUT);
+#endif
+
+	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e nast¹pi³a transmisja danych na zewn¹trz
+#ifdef BOARD_LED_TX_PIN
+	board.Tick_TX_BLINK = 0;
+	board.pinMode(BOARD_LED_TX_PIN, OUTPUT);
+#if defined(BOARD_LED_TX_STATUS_OFF)
+	board.digitalWrite(BOARD_LED_TX_PIN, (BOARD_LED_TX_STATUS_OFF));
+#else
+	board.digitalWrite(BOARD_LED_TX_PIN, LOW);
+#endif
+#endif
+
+	// Skonfigurowanie pinu (jeœli podano) informuj¹cego na zewn¹trz ¿e nast¹pi³a transmisja danych z zewn¹trz
+#ifdef BOARD_LED_RX_PIN
+	board.Tick_RX_BLINK = 0;
+	board.pinMode(BOARD_LED_RX_PIN, OUTPUT);
+#if defined(BOARD_LED_RX_STATUS_OFF)
+	board.digitalWrite(BOARD_LED_RX_PIN, (BOARD_LED_RX_STATUS_OFF));
+#else
+	board.digitalWrite(BOARD_LED_RX_PIN, LOW);
+#endif
+#endif
+
+	// Ustawienie czasu jak d³ugo ma utrzymywaæ siê stan 1 na pinach informuj¹cych na zew¹trz o transmisji danych
+#if defined(BOARD_LED_RX_PIN) || defined(BOARD_LED_TX_PIN)
+#ifdef BOARD_LED_RXTX_BLINK_TICK
+	board.TickEnableBlink = BOARD_LED_RXTX_BLINK_TICK;
+#else
+	board.TickEnableBlink = 250;
+#endif
+#endif
+
+	// Jeœli interface uruchomiony to dodanie zadania obs³uguj¹cego interface GUI
+#ifdef XB_GUI
+	board.AddTask(&XB_GUI_DefTask);
+#endif
+}
+// -----------------------------
+// G³ówna pêtla zadania g³ównego
+// <-      = 0 - Zadanie dzia³a wed³ug harmonogramu priorytetów
+//         > 0 - Zadanie zostanie uruchomione po iloœci milisekund zwrócnej w rezultacie
+uint32_t XB_BOARD_DoLoop(void)
+{
+	static bool FirstLoop = false;
+	if (!FirstLoop)
+	{
+		FirstLoop = true;
+		board.LoadCfgFarDevices();
+	}
+
+	// Zamiganie
+	board.handle();
+
+	return 0;
+}
+// ---------------------------------
+#ifdef XB_GUI
+
+void XB_BOARD_Show_TFarDeviceID()
+{
+	xb_board_winHandle2 = GUI_WindowCreate(&XB_BOARD_DefTask, 2);
+}
+
+void XB_BOARD_Close_TFarDeviceID()
+{
+	if (xb_board_winHandle2 != NULL)
+	{
+		xb_board_winHandle2->Close();
+	}
+}
+
+void XB_BOARD_Repaint_TFarDeviceID()
+{
+	if (xb_board_winHandle2 != NULL)
+	{
+		if ((board.FarDeviceIDList_count + 3) > xb_board_winHandle2->Height)
+		{
+			xb_board_winHandle2->SetWindowSize(100, board.FarDeviceIDList_count + 3);
+			xb_board_winHandle2->RepaintCounter++;
+		}
+		xb_board_winHandle2->RepaintDataCounter++;
+	}
+}
+
+void XB_BOARD_Captions_TFarDeviceID(TWindowClass* Awh, Ty& Ay)
+{
+	Awh->GoToXY(0, Ay);
+	Awh->PutStr("Device ID", 24, ' ', taLeft); Awh->PutChar('|');
+	Awh->PutStr("Request Task Stream", 20, ' ', taLeft); Awh->PutChar('|');
+	Awh->PutStr("Address", 16, ' ', taLeft); Awh->PutChar('|');
+	Awh->PutStr("Date Time Last request", 32, ' ', taLeft); Awh->PutChar('|');
+	Ay++;
+}
+
+void XB_BOARD_RowDraw_TFarDeviceID(TWindowClass* Awh, TFarDeviceID* Afdi, Ty& Ay)
+{
+	String str; str.reserve(64);
+	Awh->GoToXY(0, Ay);
+	if (Afdi != NULL)
+	{
+		Awh->PutStr(board.DeviceIDtoString(Afdi->FarDeviceID).c_str(), 24, ' ', taLeft); Awh->PutChar('|');
+
+		board.SendMessage_GetTaskNameString(Afdi->RequestTaskStream, str);
+		str.trim();
+		Awh->PutStr(str.c_str(), 20, ' ', taLeft); Awh->PutChar('|');
+
+		Awh->PutStr(IPAddress(Afdi->FarAddress).toString().c_str(), 16, ' ', taLeft); Awh->PutChar('|');
+
+		str = "";
+		GetTime(str, Afdi->DateTimeLastRequest, true, true, true);
+		Awh->PutStr(str.c_str(), 32, ' ', taLeft); Awh->PutChar('|');
+
+	}
+	Ay++;
+}
+
+#endif
+// ---------------------------------
+// Obs³uga messagów zadania g³ównego
+// -> Am - WskaŸnik na strukture messaga
+// <-      = true - messag zosta³ obs³u¿ony
+//         = false - messag nie obs³ugiwany przez zadanie
+bool XB_BOARD_DoMessage(TMessageBoard* Am)
+{
+	bool res = false;
+	static uint8_t LastKeyCode = 0;
+
+	switch (Am->IDMessage)
+	{
+	case IM_GET_TASKNAME_STRING:
+	{
+		GET_TASKNAME("BOARD");
+		res = true;
+		break;
+	}
+	case IM_GET_TASKSTATUS_STRING:
+	{
+		GET_TASKSTATUS_ADDSTR(String("TC:" + String(board.TaskList_count)));
+		GET_TASKSTATUS_ADDSTR(String(" FD:" + String(board.FarDeviceIDList_count)));
+#ifdef PSRAM_BUG
+		GET_TASKSTATUS_ADDSTR(String(" / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER)));
+#endif
+		res = true;
+	}
+	case IM_FREEPTR:
+	{
+#ifdef XB_GUI
+		FREEPTR(xb_board_winHandle0);
+		FREEPTR(xb_board_winHandle1);
+		FREEPTR(xb_board_winHandle2);
+		FREEPTR(xb_board_menuHandle1);
+		FREEPTR(xb_board_inputdialog0);
+#endif
+		res = true;
+		break;
+	}
+	case IM_LOAD_CONFIGURATION:
+	{
+		XB_BOARD_LoadConfiguration();
+		res = true;
+		break;
+	}
+	case IM_SAVE_CONFIGURATION:
+	{
+		XB_BOARD_SaveConfiguration();
+		res = true;
+		break;
+	}
+	case IM_RESET_CONFIGURATION:
+	{
+		XB_BOARD_ResetConfiguration();
+		res = true;
+		break;
+	}
+	case IM_GPIO:
+	{
+		switch (Am->Data.GpioData.GpioAction)
+		{
+		case gaPinMode:
+		{
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
+			{
+				pin_Mode(Am->Data.GpioData.NumPin, (WiringPinMode)Am->Data.GpioData.ActionData.Mode);
+
+				if (Am->Data.GpioData.ActionData.Mode == INPUT)
+					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_GPIO, MODEPIN_INPUT);
+				else if (Am->Data.GpioData.ActionData.Mode == OUTPUT)
+					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_GPIO, MODEPIN_OUTPUT);
+#ifdef ESP32
+				else if (Am->Data.GpioData.ActionData.Mode == ANALOG)
+					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_ANALOGIN, MODEPIN_ANALOG);
+#endif
+				else
+					board.SetPinInfo(Am->Data.GpioData.NumPin, FUNCTIONPIN_NOIDENT, MODEPIN_OUTPUT);
+
+				res = true;
+			}
+			break;
+		}
+		case gaPinRead:
+		{
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
+			{
+				Am->Data.GpioData.ActionData.Value = digital_Read(Am->Data.GpioData.NumPin);
+
+				if (board.PinInfoTable != NULL)
+				{
+					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
+				}
+				res = true;
+			}
+			break;
+		}
+		case gaPinWrite:
+		{
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
+			{
+				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
+
+				if (board.PinInfoTable != NULL)
+				{
+					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
+				}
+				res = true;
+			}
+			break;
+		}
+		case gaPinToggle:
+		{
+			if (Am->Data.GpioData.GPIODrive == NULL) break;
+
+			if ((Am->Data.GpioData.NumPin >= 0) && (Am->Data.GpioData.NumPin < board.Digital_Pins_Count))
+			{
+				if (board.PinInfoTable != NULL)
+				{
+					Am->Data.GpioData.ActionData.Value = !board.PinInfoTable[Am->Data.GpioData.NumPin].value;
+				}
+				else
+				{
+					Am->Data.GpioData.ActionData.Value = !digitalRead(Am->Data.GpioData.NumPin);
+				}
+
+				digital_Write(Am->Data.GpioData.NumPin, Am->Data.GpioData.ActionData.Value);
+
+				if (board.PinInfoTable != NULL)
+				{
+					board.PinInfoTable[Am->Data.GpioData.NumPin].value = Am->Data.GpioData.ActionData.Value;
+				}
+				res = true;
+			}
+			break;
+		}
+		default:
+		{
+			break;
+		}
+		}
+		break;
+	}
+
+	case IM_KEYBOARD:
+	{
+		if (Am->Data.KeyboardData.TypeKeyboardAction == tkaKEYPRESS)
+		{
+			if (Am->Data.KeyboardData.KeyFunction == KF_CODE)
+			{
+				static TKeyboardFunction KeyboardFunctionDetect = KF_CODE;
+
+				if (board.TerminalFunction == 0)
+				{
+					switch (Am->Data.KeyboardData.KeyCode)
+					{
+					case 127:
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0);// , & XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+						break;
+					}
+					case 10:
+					{
+						if (LastKeyCode != 13)
+						{
+							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
+							board.TerminalFunction = 0;
+						}
+						else
+						{
+							Am->Data.KeyboardData.KeyCode = 0;
+						}
+						res = true;
+						break;
+					}
+					case 13:
+					{
+						if (LastKeyCode != 10)
+						{
+							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
+							board.TerminalFunction = 0;
+						}
+						else
+						{
+							Am->Data.KeyboardData.KeyCode = 0;
+						}
+						res = true;
+						break;
+					}
+					case 27:
+					{
+						board.TerminalFunction = 1;
+						board.Tick_ESCKey = SysTickCount;
+						break;
+					}
+					case 7:
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+						break;
+					}
+					case 9:
+					{
+						board.Tick_ESCKey = 0;
+						board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+						break;
+					}
+					case 255:
+					case 0:
+					{
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 0;
+						break;
+					}
+
+
+					default:
+					{
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 0;
+						break;
+					}
+					}
+				}
+				else if (board.TerminalFunction == 1)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 91) // Nadchodzi funkcyjny klawisz
+					{
+						board.CTRLKey = false;
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 2;
+						Am->Data.KeyboardData.KeyCode = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 79) // Nadchodzi funkcyjny klawisz z CTRL
+					{
+						board.CTRLKey = true;
+						board.Tick_ESCKey = 0;
+						board.TerminalFunction = 2;
+						Am->Data.KeyboardData.KeyCode = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 10)
+					{
+						board.TerminalFunction = 0;
+					}
+					else
+					{
+						board.Tick_ESCKey = 0;
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+				}
+				else if (board.TerminalFunction == 2)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORUP, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORDOWN, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORLEFT, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
+					{
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORRIGHT, 0);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0);
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.SendMessage_FunctionKeyPress(KF_TABPREV, 0);//, &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 49) // F1
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F1;
+						board.TerminalFunction = 3;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 50) // INSERT ... F9?
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_INSERT;
+						board.TerminalFunction = 5;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 51) // DELETE
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_DELETE;
+						board.TerminalFunction = 4;
+					}
+					else
+					{
+						board.TerminalFunction = 0;
+					}
+
+				}
+				else if (board.TerminalFunction == 3)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 49) // F1
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F1;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 50) // F2
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F2;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 51) // F3
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F3;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 52) // F4
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F4;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 53) // F5
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F5;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 55) // F6
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F6;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 56) // F7
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F7;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 57) // F8
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F8;
+						board.TerminalFunction = 4;
+					}
+					else
+					{
+						board.TerminalFunction = 0;
+					}
+				}
+				else if (board.TerminalFunction == 5)
+				{
+
+					if (Am->Data.KeyboardData.KeyCode == 126) // INSERT , ...
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 48) // F9
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F9;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 49) // F10
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F10;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 51) // F11
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F11;
+						board.TerminalFunction = 4;
+					}
+					else if (Am->Data.KeyboardData.KeyCode == 52) // F12
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						KeyboardFunctionDetect = KF_F12;
+						board.TerminalFunction = 4;
+					}
+					else
+					{
+						board.TerminalFunction = 0;
+					}
+
+				}
+				else if (board.TerminalFunction == 4)
+				{
+					if (Am->Data.KeyboardData.KeyCode == 126)
+					{
+						Am->Data.KeyboardData.KeyCode = 0;
+						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+						board.TerminalFunction = 0;
+					}
+					else
+					{
+						board.TerminalFunction = 0;
+					}
+				}
+				else
+				{
+					board.TerminalFunction = 0;
+				}
+
+				res = true;
+
+			}
+#ifdef XB_GUI
+			else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
+			{
+				xb_board_winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
+				GUI_Show();
+
+				res = true;
+			}
+			else if (Am->Data.KeyboardData.KeyFunction == KF_ENTER)
+			{
+				if (xb_board_winHandle0 != NULL)
+				{
+					if (GUI_FindWindowByActive() == xb_board_winHandle0)
+					{
+						TTask* task = board.GetTaskByIndex(xb_board_currentselecttask);
+						if (task != NULL)
+						{
+							Am->Data.KeyboardData.KeyFunction = KF_NONE;
+							GUIGADGET_OpenMainMenu(task->TaskDef, WINDOW_POS_LAST_RIGHT_ACTIVE, xb_board_winHandle0->Y + xb_board_currentYselecttask + 1);
+
+						}
+					}
+				}
+				res = true;
+			}
+			else if (Am->Data.KeyboardData.KeyFunction == KF_CURSORDOWN)
+			{
+				if (xb_board_winHandle0 != NULL)
+				{
+					if (GUI_FindWindowByActive() == xb_board_winHandle0)
+					{
+						uint8_t l = xb_board_currentselecttask;
+						xb_board_currentselecttask++;
+						if (xb_board_currentselecttask >= board.TaskList_count)
+						{
+							xb_board_currentselecttask = board.TaskList_count - 1;
+						}
+						else
+						{
+							xb_board_listtask_repaint = true;
+							xb_board_winHandle0->RepaintDataCounter++;
+						}
+						TTask* t = board.GetTaskByIndex(l);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+						t = board.GetTaskByIndex(xb_board_currentselecttask);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+					}
+				}
+				res = true;
+			}
+			else if (Am->Data.KeyboardData.KeyFunction == KF_CURSORUP)
+			{
+				if (xb_board_winHandle0 != NULL)
+				{
+					if (GUI_FindWindowByActive() == xb_board_winHandle0)
+					{
+						uint8_t l = xb_board_currentselecttask;
+
+						if (xb_board_currentselecttask > 0)
+						{
+							xb_board_currentselecttask--;
+							xb_board_listtask_repaint = true;
+							xb_board_winHandle0->RepaintDataCounter++;
+						}
+
+						TTask* t = board.GetTaskByIndex(l);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+						t = board.GetTaskByIndex(xb_board_currentselecttask);
+						if (t != NULL) t->LastSumTaskStatusText = 0;
+
+					}
+				}
+				res = true;
+			}
+
+#endif
+			LastKeyCode = Am->Data.KeyboardData.KeyCode;
+
+		}
+		break;
+	}
+#ifdef XB_GUI
+	case IM_MENU:
+	{
+		OPEN_MAINMENU()
+		{
+			xb_board_menuHandle1 = GUIGADGET_CreateMenu(&XB_BOARD_DefTask, 1, false, X, Y);
+		}
+
+		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 48, MENU_AUTOCOUNT, 0, true)
+		{
+			/*BEGIN_MENUITEM("Dupa", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.Log("DUPA", true, true,tlInfo);
+					board.Log("WARN", true, true, tlWarn);
+					board.Log("ERROR", true, true, tlError);
+				}
+			}
+			END_MENUITEM()*/
+
+			BEGIN_MENUITEM_CHECKED("Show GUI on start", taLeft, xb_board_ShowGuiOnStart)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_ShowGuiOnStart = !xb_board_ShowGuiOnStart;
+				}
+			}
+			END_MENUITEM()
+			SEPARATOR_MENUITEM()
+			BEGIN_MENUITEM_CHECKED("CONSOLE IN WINDOW", taLeft, xb_board_ConsoleInWindow)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_ConsoleInWindow = !xb_board_ConsoleInWindow;
+				}
+			}
+			END_MENUITEM()
+
+			BEGIN_MENUITEM("CONSOLE WIDTH [" + String(xb_board_ConsoleWidth) + "]", taLeft)
+			{
+				CLICKRIGHT_MENUITEM()
+				{
+					xb_board_ConsoleWidth = xb_board_ConsoleWidth >= 160 ? 160 : xb_board_ConsoleWidth + 1;
+				}
+				CLICKLEFT_MENUITEM()
+				{
+					xb_board_ConsoleWidth = xb_board_ConsoleWidth > 80 ? xb_board_ConsoleWidth - 1 : 80;
+				}
+			}
+			END_MENUITEM()
+
+			BEGIN_MENUITEM("CONSOLE HEIGHT [" + String(xb_board_ConsoleHeight) + "]", taLeft)
+			{
+				CLICKRIGHT_MENUITEM()
+				{
+					xb_board_ConsoleHeight = xb_board_ConsoleHeight >= 50 ? 50 : xb_board_ConsoleHeight + 1;
+				}
+				CLICKLEFT_MENUITEM()
+				{
+					xb_board_ConsoleHeight = xb_board_ConsoleHeight > 25 ? xb_board_ConsoleHeight - 1 : 25;
+				}
+			}
+			END_MENUITEM()
+			SEPARATOR_MENUITEM()
+			BEGIN_MENUITEM_CHECKED("Show list Far Device ID", taLeft, xb_board_ShowListFarDeviceID)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_ShowListFarDeviceID = !xb_board_ShowListFarDeviceID;
+					if (xb_board_ShowListFarDeviceID)
+					{
+						XB_BOARD_Show_TFarDeviceID();
+					}
+					else
+					{
+						XB_BOARD_Close_TFarDeviceID();
+					}
+				}
+			}
+			END_MENUITEM()
+			BEGIN_MENUITEM("Reset list Far Device ID", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.ResetCfgFarDevices();
+					board.EraseAllFarDevices();
+					board.LoadCfgFarDevices();
+					XB_BOARD_Repaint_TFarDeviceID();
+				}
+			}
+			END_MENUITEM()
+
+			SEPARATOR_MENUITEM()
+			BEGIN_MENUITEM("Device Name [" + board.DeviceName + "]", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_inputdialog0 = GUIGADGET_CreateInputDialog(&XB_BOARD_DefTask, 0, true);
+				}
+			}
+			END_MENUITEM()
+				SEPARATOR_MENUITEM()
+				CONFIGURATION_MENUITEMS()
+				BEGIN_MENUITEM("Save all configuration", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllSaveConfiguration();
+				}
+			}
+			END_MENUITEM()
+				BEGIN_MENUITEM("Save all configuration & Soft RESET", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllSaveConfiguration();
+					board.SoftResetMCU(true);
+				}
+			}
+			END_MENUITEM()
+				BEGIN_MENUITEM("Reset all configuration", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllResetConfiguration();
+				}
+			}
+			END_MENUITEM()
+				BEGIN_MENUITEM("Reset all configuration & Soft RESET", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AllResetConfiguration();
+					board.SoftResetMCU(true);
+				}
+			}
+			END_MENUITEM()
+				SEPARATOR_MENUITEM()
+				BEGIN_MENUITEM("SOFT RESET MCU", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					board.SoftResetMCU(true);
+					return true;
+				}
+			}
+			END_MENUITEM()
+
+		}
+		END_MENU()
+
+
+			res = true;
+		break;
+	}
+	case IM_INPUTDIALOG:
+	{
+		BEGIN_DIALOG(0, "Device name", "input device name", tivString, 32, &board.DeviceName)
+		{
+		}
+		END_DIALOG()
+
+			res = true;
+		break;
+	}
+	case IM_WINDOW:
+	{
+		BEGIN_WINDOW_DEF(2, "List Far DeviceID", 20, 0, 100, board.FarDeviceIDList_count + 3, xb_board_winHandle2)
+		{
+			static Ty YRow;
+			REPAINT_WINDOW()
+			{
+				YRow = 0;
+				WH->BeginDraw();
+				WH->SetTextColor(tfcMagenta);
+				XB_BOARD_Captions_TFarDeviceID(WH, YRow);
+				WH->EndDraw(false);
+			}
+			REPAINTDATA_WINDOW()
+			{
+				TFarDeviceID *fdi = board.FarDeviceIDList;
+				Ty _Row = YRow;
+				WH->BeginDraw();
+				WH->SetTextColor(tfcYellow);
+				while (fdi != NULL)
+				{
+					XB_BOARD_RowDraw_TFarDeviceID(WH, fdi, _Row);
+					fdi = fdi->Next;
+				}
+				WH->EndDraw(false);
+			}
+
+			DESTROY_WINDOW()
+			{
+				xb_board_ShowListFarDeviceID = false;
+			}
+
+		}
+		END_WINDOW_DEF()
+
+
+		BEGIN_WINDOW_DEF(1, "CONSOLE", 49, 0, xb_board_ConsoleWidth + 2, xb_board_ConsoleHeight + 2, xb_board_winHandle1)
+		{
+			REPAINT_WINDOW()
+			{
+			}
+			REPAINTDATA_WINDOW()
+			{
+				if (board.ConsoleScreen != NULL)
+				{
+					uint8_t ch, c, lc = 5;
+					WH->BeginDraw();
+					WH->GoToXY(0, 0);
+					WH->TextWordWrap = true;
+					for (uint32_t i = 0; i < (board.ConsoleScreen->Width * board.ConsoleScreen->Height); i++)
+					{
+						c = board.ConsoleScreen->Get_ColorBuf(i);
+						if (c != lc)
+						{
+							lc = c;
+							switch (c)
+							{
+							case 0: WH->SetTextColor(tfcWhite); break;
+							case 1: WH->SetTextColor(tfcYellow); break;
+							case 2: WH->SetTextColor(tfcRed); break;
+							default: WH->SetTextColor(tfcWhite); break;
+							}
+						}
+						ch = board.ConsoleScreen->Buf[i];
+						if (ch == 0) ch = 32;
+						WH->PutChar(ch);
+					}
+
+					WH->EndDraw(false);
+				}
+			}
+
+			DESTROY_WINDOW()
+			{
+				xb_board_ConsoleInWindow = false;
+			}
+
+		}
+		END_WINDOW_DEF()
+
+			BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
+		{
+			//--------------------------------
+			REPAINT_WINDOW()
+			{
+				int y = 0;
+				String name;
+
+				WH->BeginDraw();
+				if (!xb_board_listtask_repaint)
+				{
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, ("DEVICE NAME: "));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(board.DeviceName.c_str());
+					y++;
+
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, ("DEVICE VERSION: "));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(board.DeviceVersion.c_str());
+					y++;
+
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, ("DEVICE ID: "));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(board.DeviceIDtoString(board.DeviceID).c_str());
+					y++;
+
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, ("TIME FROM RUN:"));
+					y++;
+					WH->PutStr(0, y, ("FREE HEAP:"));
+					WH->PutStr(WH->Width - 18, y, ("MIN HEAP:"));
+					y++;
+					WH->PutStr(WH->Width - 18, y, ("MAX HEAP:"));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreeHeapInLoop).c_str());
+
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, ("MEM USE:"));
+					y++;
+#ifdef BOARD_HAS_PSRAM
+					WH->PutStr(0, y, ("FREEpsram:"));
+					WH->PutStr(WH->Width - 18, y, ("MINpsram:"));
+					y++;
+					WH->PutStr(WH->Width - 18, y, ("MAXpsram:"));
+					WH->SetBoldChar();
+					WH->SetTextColor(tfcYellow);
+					WH->PutStr(WH->Width - 9, y, String(board.MaximumFreePSRAMInLoop).c_str());
+
+					WH->SetNormalChar();
+					WH->SetTextColor(tfcWhite);
+					WH->PutStr(0, y, ("MEM USE:"));
+					y++;
+#endif
+#ifdef XB_PREFERENCES
+					WH->PutStr(0, y, "PREFERENCES FREE ENTRIES:");
+#endif
+					WH->PutStr(32, y, "CPU CLK:");
+					y++;
+
+					WH->PutStr(0, y, ("OUR RESERVED BLOCK:"));
+					WH->PutStr(29, y, "CPU Temp.:");
+					y++;
+					//--------------
+
+					WH->PutStr(0, y, "_", WH->Width, '_');
+					y++;
+					WH->PutStr(0, y, ("TASK NAME"));
+					WH->PutStr(15, y, ("STATUS"));
+
+					y++;
+				}
+				else
+				{
+					y += 9;
+#ifdef BOARD_HAS_PSRAM
+					y += 2;
+#endif
+				}
+
+				WH->SetTextColor(tfcGreen);
+				xb_board_listtask_repaint = false;
+				for (int i = 0; i < board.TaskList_count; i++)
+				{
+
+					if (xb_board_currentselecttask == i)
+					{
+						WH->SetTextColor(tfcYellow);
+						WH->SetReverseChar();
+					}
+					else
+					{
+						WH->SetTextColor(tfcGreen);
+						WH->SetNormalChar();
+					}
+
+					TTask* t = board.GetTaskByIndex(i);
+					if (t != NULL)
+					{
+
+						if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
+						{
+							WH->PutStr(0, y + i, name.c_str(), 14, ' ');
+							if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
+							else WH->PutChar(' ');
+							name = "";
+						}
+						t->LastSumTaskStatusText = 0;
+						t->LastBoldTaskStatus = false;
+					}
+				}
+				WH->EndDraw();
+			}
+			//--------------------------------
+			REPAINTDATA_WINDOW()
+			{
+				int y = 3;
+				WH->BeginDraw();
+
+				WH->SetBoldChar();
+				WH->SetTextColor(tfcYellow);
+				{
+					String txttime = "";
+					GetTimeIndx(txttime, DateTimeUnix - DateTimeStart);
+					WH->PutStr(14, y, txttime.c_str());
+				}
+				y++;
+				WH->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
+				WH->PutChar(' ');
+				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreeHeapInLoop).c_str());
+				WH->PutChar(' ');
+				y++;
+				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreeHeapInLoop / (board.MaximumFreeHeapInLoop / 100L)))).c_str());
+				WH->PutStr(("% "));
+				y++;
+
+#ifdef BOARD_HAS_PSRAM
+				WH->PutStr(10, y, String(board.FreePSRAMInLoop).c_str());
+				WH->PutChar(' ');
+				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreePSRAMInLoop).c_str());
+				WH->PutChar(' ');
+				y++;
+				WH->PutStr(9, y, String((uint32_t)(100 - (board.FreePSRAMInLoop / (board.MaximumFreePSRAMInLoop / 100L)))).c_str());
+				WH->PutStr(("% "));
+				y++;
+#endif
+#ifdef XB_PREFERENCES
+				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 6);
+				WH->PutStr(40, y, String(String(ESP.getCpuFreqMHz()) + "Mhz").c_str());
+
+				y++;
+#endif
+
+#ifdef XB_BOARD_MEMDEBUG
+				WH->PutStr(20, y, String(MemDebugList_count).c_str(), 8);
+#else
+				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
+#endif
+
+				WH->PutStr(39, y, String(String(temperatureRead(), 2) + "C").c_str());
+				y++;
+
+				String name;
+				name.reserve(80);
+				y += 2;
+
+
+				for (int i = 0; i < board.TaskList_count; i++)
+				{
+					if (xb_board_currentselecttask == i)
+					{
+						WH->SetTextColor(tfcYellow);
+						WH->SetReverseChar();
+						xb_board_currentYselecttask = y + i;
+					}
+					else
+					{
+						WH->SetNormalChar();
+
+					}
+					TTask* t = board.GetTaskByIndex(i);
+
+					if (xb_board_listtask_repaint)
+					{
+						if (xb_board_currentselecttask == i)
+						{
+							WH->SetTextColor(tfcYellow);
+						}
+						else
+						{
+							WH->SetTextColor(tfcGreen);
+						}
+
+						if (t != NULL)
+						{
+
+							if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
+							{
+								WH->PutStr(0, y + i, name.c_str(), 14, ' ');
+								if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
+								else WH->PutChar(' ');
+								name = "";
+							}
+							//t->LastSumTaskStatusText = 0;
+						}
+						WH->SetTextColor(tfcYellow);
+					}
+
+					if (t != NULL)
+					{
+						if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
+						{
+							uint32_t sum = 0;
+							uint32_t l = name.length();
+							for (uint32_t t = 0; t < l; t++) sum += (uint32_t)name[t];
+							if (t->LastSumTaskStatusText != sum)
+							{
+								t->LastSumTaskStatusText = sum;
+								t->LastBoldTaskStatus = true;
+
+
+								if (xb_board_currentselecttask == i)
+								{
+									WH->SetTextColor(tfcYellow);
+									WH->SetReverseChar();
+								}
+								else
+								{
+									WH->SetNormalChar();
+								}
+								WH->SetBoldChar();
+								WH->PutStr(15, y + i, name.c_str(), 33, ' ');
+							}
+							else
+							{
+								if (t->LastBoldTaskStatus)
+								{
+									t->LastBoldTaskStatus = false;
+									if (xb_board_currentselecttask == i)
+									{
+										WH->SetTextColor(tfcYellow);
+										WH->SetReverseChar();
+									}
+									else
+									{
+										WH->SetNormalChar();
+									}
+									WH->PutStr(15, y + i, name.c_str(), 33, ' ');
+								}
+							}
+							name = "";
+						}
+					}
+				}
+				xb_board_listtask_repaint = false;
+				WH->EndDraw();
+			}
+			//--------------------------------
+			DESTROY_WINDOW()
+			{
+				xb_board_ShowGuiOnStart = false;
+			}
+		}
+		//--------------------------------
+		END_WINDOW_DEF()
+
+			res = true;
+		break;
+	}
+#endif
+	case IM_GET_VAR_VALUE:
+	{
+		if (*Am->Data.VarValueData.VarName == "devicename")
+		{
+			*Am->Data.VarValueData.VarValue = board.DeviceName;
+			res = true;
+		}
+		break;
+	}
+	default:;
+	}
+
+	return res;
+}
+
+TTaskDef XB_BOARD_DefTask = { 0,&XB_BOARD_Setup,&XB_BOARD_DoLoop,&XB_BOARD_DoMessage };
+
+#pragma endregion
