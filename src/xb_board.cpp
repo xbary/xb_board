@@ -2902,9 +2902,6 @@ void TXB_board::HandleFrameLocal(TFrameTransport *Aft)
 bool TXB_board::RequestFarDevice(TUniqueID AFarDeviceID, TTaskDef *ATaskDefStream, uint32_t AOnAddress)
 {
 	TFarDeviceID* fdl = FarDeviceIDList;
-	//String StreamDefTaskName; StreamDefTaskName.reserve(32);
-	//SendMessage_GetTaskNameString(ATaskDefStream->Task, StreamDefTaskName);
-	//board.Log(String("Request Far Device ID:"+board.DeviceIDtoString(AFarDeviceID)+" TaskDef:"+String((uint32_t)ATaskDefStream,HEX)+"TaskDef Name:"+ StreamDefTaskName +" OnAddress:"+IPAddress(AOnAddress).toString()).c_str(), true, true, tlWarn);
 	while (fdl != NULL) 
 	{
 		if (AFarDeviceID.ID.ID64 == fdl->FarDeviceID.ID.ID64)
