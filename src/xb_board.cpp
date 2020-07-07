@@ -259,6 +259,10 @@ TXB_board::TXB_board()
 	DeviceVersion = "0.0";
 #endif
 	DeviceID = GetUniqueID();
+#ifndef PROJECT_NAME
+#define PROJECT_NAME "no define"
+#endif 
+	ProjectName = PROJECT_NAME;
 	HDFT_ResponseItemList = NULL;
 }
 
@@ -4801,6 +4805,13 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 				CLICK_MENUITEM()
 				{
 					xb_board_inputdialog0 = GUIGADGET_CreateInputDialog(&XB_BOARD_DefTask, 0, true);
+				}
+			}
+			END_MENUITEM()
+			BEGIN_MENUITEM("Project Name [" + board.ProjectName + "]", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
 				}
 			}
 			END_MENUITEM()

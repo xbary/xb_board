@@ -25,9 +25,13 @@ KROK 2. Dodanie flagi dla kompilatora aby szuka³ inkludy w katalogu projektu.
 
 We w³aœciwoœciach projektu dodajemy w pozycji Extra flags: taki wpis -I{build.path}
 
+-----------------------------------------------------
+KROK 3. Dodanie definicji we w³aœciwoœciach projektu z nazw¹ projektu.
+
+We w³aœciwoœciach projektu dodajemy w pozycji Defines: PROJECT_NAME="{build.project_name}"
 
 -----------------------------------------------------
-KROK 3. Dodanie pliku inkludy o nazwie xb_board_def.h
+KROK 4. Dodanie pliku inkludy o nazwie xb_board_def.h
 
 #ifndef XB_BOARD_DEF_H
 #define XB_BOARD_DEF_H
@@ -36,7 +40,7 @@ KROK 3. Dodanie pliku inkludy o nazwie xb_board_def.h
 
 
 ------------------------------------------------------------------------------------------------
-KROK 4. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: ESP32 Dev module, 
+KROK 5. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: ESP32 Dev module, 
         ESP32 wRover module.
 
 
@@ -461,6 +465,7 @@ public:
 	//-----------------------------------------------------------------------------------------------------------------
 	String DeviceName;
 	String DeviceVersion;
+	String ProjectName;
 	TUniqueID DeviceID;
 	uint32_t Tick_ESCKey;
 	uint8_t TerminalFunction;
