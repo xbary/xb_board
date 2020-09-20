@@ -111,14 +111,19 @@ else \
 
 #define MOVE_STR_TO_ENDLIST(Alist,AClass,_this_) \
 { \
+if (Alist!=NULL) \
+{ \
 if (_this_->Next!=NULL) \
 { \
 DELETE_FROM_LIST_STR(Alist,_this_); \
 ADD_TO_LIST_STR(Alist,AClass,_this_); \
 } \
+} \
 }
 
 #define MOVE_STR_TO_BEGINLIST(Alist,AClass,_this_) \
+{ \
+if (Alist!=NULL) \
 { \
 if (_this_->Prev!=NULL) \
 { \
@@ -133,6 +138,7 @@ else \
 	Alist=_this_; \
 	_this_->Next=l; \
 	l->Prev=_this_; \
+} \
 } \
 } \
 }
@@ -257,7 +263,7 @@ typedef struct {
 
 //-----------------------------------------------------------------------
 typedef enum {
-	saGet, saPut, saBeginUseGet, saEndUseGet, saGetLocalAddress
+	saGet, saPut, saBeginUseGet, saEndUseGet, saGetLocalAddress,saDisableTX,saEnableTX
 } TStreamAction;
 
 typedef struct {
@@ -553,6 +559,7 @@ typedef struct
 	TTypeKeyboardAction TypeKeyboardAction;
 	uint8_t KeyCode;
 	TKeyboardFunction KeyFunction;
+	TTaskDef* FromStreamTask;
 } TKeyboardData;
 
 //-----------------------------------------------------------------------

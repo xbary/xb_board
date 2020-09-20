@@ -45,9 +45,6 @@ KROK 5. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 
 
 
-
-
-
 *** MAKRA KONFIGURACJI ORAZ URUCHAMIAJ¥CE FUNKCJE BIBLIOTEKI ***
 
 
@@ -80,10 +77,8 @@ KROK 5. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 #define TICK_LED_BLINK 250
 // Ustalenie czasu jak d³ugo ma LED_TX LED_RX œwieciæ po wyzwoleniu funkcjami Blink_RX() oraz Blink_TX()
 
-
 #define XB_GUI
 // Jeœ³i zdefiniowano to ca³y system zacznie korzystaæ z biblioteki xb_gui.h
-
 
 #define XB_PREFERENCES
 // Jeœli zdefiniowano to biblioteka zacznie korzystaæ do obs³ugi konfiguracji w pamiêci flash z 
@@ -200,24 +195,10 @@ struct THandleDataFrameTransport;
 
 #include "xb_board_def.h"
 #include <utils\xb_board_message.h>
+
 #ifdef XB_PREFERENCES
 #include <Preferences.h>
 #endif
-
-//extern "C" volatile uint32_t statusdoping;
-
-#define BEGIN_TRANSACTION(Anamevar) \
-{ \
-bool status##Anamevar=true; \
-if (Anamevar==0) { Anamevar++;
-
-#define ELSE_TRANSACTION(Anamevar) \
-} \
-else \
-{ status##Anamevar=false;
-
-#define END_TRANSACTION(Anamevar) \
-if (status##Anamevar) if (Anamevar>0) Anamevar--;} }
 
 #ifndef BOARD_TASKNAME_MAXLENGTH
 #define BOARD_TASKNAME_MAXLENGTH 16
@@ -252,7 +233,6 @@ struct TTask
 	bool ShowLogInfo;
 	bool ShowLogWarn;
 	bool ShowLogError;
-	TIDMessage LastIDMessage;
 	DEFLIST_VAR(THandleDataFrameTransport,HandleDataFrameTransportList)
 	int8_t dosetupRC;
 	int8_t doloopRC;
@@ -308,6 +288,7 @@ struct THDFT
 #ifndef TIMEOUT_HANDLEDATAFRAMETRANSPORT
 #define TIMEOUT_HANDLEDATAFRAMETRANSPORT 10000
 #endif
+
 struct THDFT_ResponseItem
 {
 	THDFT_ResponseItem *Next;
@@ -441,11 +422,13 @@ struct TXBMemDebug
 
 struct TBuf {
 	uint32_t SectorSize;
+	uint32_t AlarmMaxLength;
 	uint8_t* Buf;
 	uint32_t Length;
 	uint32_t IndxW;
 	uint32_t IndxR;
 	uint32_t LastTickUse;
+	uint32_t MaxLength;
 };
 
 
@@ -542,8 +525,8 @@ public:
 	bool SendMessage_GetTaskNameString(TTaskDef *ATaskDef, String &APointerString);
 	bool SendMessage_GetTaskNameString(TTask* ATask, String& APointerString);
 	void SendMessage_OTAUpdateStarted();
-	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL);
-	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL);
+	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL, TTaskDef* Afromstreamtask=NULL);
+	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL, TTaskDef* Afromstreamtask = NULL);
 	void SendMessage_FreePTR(void *Aptr);
 	void SendMessage_RTCSYNC();
 	//-----------------------------------------------------------------------------------------------------------------
@@ -582,6 +565,8 @@ public:
 	void BeginUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
 	void EndUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
 	bool GetStreamLocalAddress(TTaskDef* AStreamTaskDef, uint32_t* Alocaladdress);
+	bool DisableTXStream(TTaskDef* AStreamTaskDef);
+	bool EnableTXStream(TTaskDef* AStreamTaskDef);
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
 	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress);
@@ -670,7 +655,7 @@ public:
 void XB_BOARD_Repaint_TFarDeviceID();
 #endif
 
-bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av);
+bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av, bool Alogmessage=false);
 uint32_t BUFFER_GetSizeData(TBuf* Abuf);
 bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av);
 void BUFFER_Flush(TBuf* Abuf);

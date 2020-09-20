@@ -63,6 +63,7 @@ DEFLIST_VAR(TXBMemDebug, MemDebugList);
 // Konfiguracja ---------------------------------------------------------------------
 bool xb_board_ShowGuiOnStart = false;
 bool xb_board_ConsoleInWindow = false;
+bool xb_board_CFG_ConsoleInWindow = false;
 uint8_t xb_board_ConsoleWidth = CONSOLE_WIDTH_DEFAULT;
 uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
 bool xb_board_ShowListFarDeviceID = false;
@@ -153,6 +154,7 @@ bool XB_BOARD_LoadConfiguration()
 		board.DeviceName = board.PREFERENCES_GetString("DeviceName", board.DeviceName);
 		xb_board_ShowGuiOnStart = board.PREFERENCES_GetBool("ShowGuiOnStart", xb_board_ShowGuiOnStart);
 		xb_board_ConsoleInWindow = board.PREFERENCES_GetBool("ConInWin", xb_board_ConsoleInWindow);
+		xb_board_CFG_ConsoleInWindow = board.PREFERENCES_GetBool("ConInWin", xb_board_ConsoleInWindow);
 		xb_board_ConsoleWidth = board.PREFERENCES_GetUINT8("ConWidth", xb_board_ConsoleWidth);
 		xb_board_ConsoleHeight = board.PREFERENCES_GetUINT8("ConHeight", xb_board_ConsoleHeight);
 		board.PREFERENCES_EndSection();
@@ -503,14 +505,14 @@ String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 #pragma endregion
 #pragma region FUNKCJE_BUFFER_HANDLE
 
-bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
+bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av, bool Alogmessage)
 {
 	if (Abuf->Buf == NULL)
 	{
 		Abuf->Buf = (uint8_t*)board._malloc_psram(Abuf->SectorSize);
 		if (Abuf->Buf == NULL)
 		{
-			board.Log("Memory problem in reserved buffer...", true, true, tlError);
+			if (Alogmessage) board.Log("Memory problem in reserved buffer...", true, true, tlError);
 			return false;
 		}
 		Abuf->Length = Abuf->SectorSize;
@@ -522,12 +524,14 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
 
 		if (Abuf->IndxW >= Abuf->Length)
 		{
-			Abuf->Buf = (uint8_t*)board._realloc_psram(Abuf->Buf, Abuf->Length + Abuf->SectorSize);
-			if (Abuf->Buf == NULL)
+			uint8_t *newptr= (uint8_t*)board._realloc_psram(Abuf->Buf, Abuf->Length + Abuf->SectorSize);
+
+			if (newptr == NULL)
 			{
-				board.Log("Memory problem in realloc buffer...", true, true, tlError);
+				if (Alogmessage) board.Log("Memory problem in realloc buffer...", true, true, tlError);
 				return false;
 			}
+			Abuf->Buf = newptr;
 			Abuf->Length += Abuf->SectorSize;
 		}
 	}
@@ -554,15 +558,26 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av)
 
 	Abuf->Buf[Abuf->IndxW] = Av;
 	Abuf->IndxW++;
-
 	Abuf->LastTickUse = SysTickCount;
+
+	if (Abuf->IndxW > Abuf->MaxLength)
+	{
+		Abuf->MaxLength = Abuf->IndxW;
+	}
+	
+	if (Abuf->AlarmMaxLength != 0)
+	{
+		if (Abuf->MaxLength >= Abuf->AlarmMaxLength)
+		{
+			if (Alogmessage) board.Log("Max Length buffer is alarm length...", true, true, tlError);
+			return false;
+		}
+	}
+
+	
 	return true;
 }
 
-uint32_t BUFFER_GetSizeData(TBuf* Abuf)
-{
-	return Abuf->IndxW - Abuf->IndxR;
-}
 
 bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av)
 {
@@ -609,6 +624,11 @@ bool BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf)
 		}
 	}
 	return false;
+}
+
+uint32_t BUFFER_GetSizeData(TBuf* Abuf)
+{
+	return Abuf->IndxW - Abuf->IndxR;
 }
 
 uint8_t* BUFFER_GetReadPtr(TBuf* Abuf)
@@ -1176,8 +1196,8 @@ void TXB_board::handle(void)
 	}
 #endif
 	//--------------------------------------
-	DEF_WAITMS_VAR(LOOPW2);
-	BEGIN_WAITMS(LOOPW2, 5)
+//	DEF_WAITMS_VAR(LOOPW2);
+//	BEGIN_WAITMS(LOOPW2, 5)
 	{
 		TTask *t = TaskList;
 		while (t != NULL)
@@ -1195,7 +1215,7 @@ void TXB_board::handle(void)
 						{
 							//String s = "Code:" + String(bufkey[i], HEX) + " , " + String(bufkey[i], DEC);
 							//board.Log(s.c_str(), true, true);
-							SendMessage_KeyPress((char)bufkey[i]);
+							SendMessage_KeyPress((char)bufkey[i],NULL,t->TaskDef);
 						}
 						break;
 					}
@@ -1205,7 +1225,7 @@ void TXB_board::handle(void)
 			t = t->Next;
 		}
 	}
-	END_WAITMS(LOOPW2)
+//	END_WAITMS(LOOPW2)
 		
 	//--------------------------------------
 	if(Tick_ESCKey != 0)
@@ -1805,23 +1825,25 @@ void TXB_board::SendMessage_OTAUpdateStarted()
 	DoMessageOnAllTask(&mb, true, doBACKWARD); 
 }
 
-void TXB_board::SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask)
+void TXB_board::SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask, TTaskDef* Afromstreamtask)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_KEYBOARD;
 	mb.Data.KeyboardData.KeyCode = Akey;
 	mb.Data.KeyboardData.KeyFunction = Akeyfunction;
 	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
+	mb.Data.KeyboardData.FromStreamTask = Afromstreamtask;
 	DoMessageOnAllTask(&mb, true, doFORWARD, NULL, Aexcludetask);  
 } 
 
-void TXB_board::SendMessage_KeyPress(char Akey,TTaskDef *Aexcludetask)
+void TXB_board::SendMessage_KeyPress(char Akey,TTaskDef *Aexcludetask, TTaskDef* Afromstreamtask)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_KEYBOARD;
 	mb.Data.KeyboardData.KeyCode = Akey;
 	mb.Data.KeyboardData.KeyFunction = KF_CODE;
 	mb.Data.KeyboardData.TypeKeyboardAction = tkaKEYPRESS;
+	mb.Data.KeyboardData.FromStreamTask = Afromstreamtask;
 	DoMessageOnAllTask(&mb, true, doFORWARD, NULL, Aexcludetask);  
 }
 
@@ -1942,6 +1964,7 @@ void ___free(void* Aptr)
 	DELETE_FROM_LIST_STR(MemDebugList, md);
 
 #endif
+	heap_caps_check_integrity_all(true);
 	free(Aptr);
 }
 
@@ -2292,6 +2315,30 @@ bool TXB_board::GetStreamLocalAddress(TTaskDef* AStreamTaskDef, uint32_t* Alocal
 	}
 	
 	return false;
+}
+// ---------------------------------------------------------------------------------------------------------
+// Wy³¹czenie nadawania dla podanego streamu
+// -> *AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+bool TXB_board::DisableTXStream(TTaskDef* AStreamTaskDef)
+{
+	if (AStreamTaskDef == NULL) return false;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saDisableTX;
+	return DoMessage(&mb, true, NULL, AStreamTaskDef);
+}
+// ---------------------------------------------------------------------------------------------------------
+// W³¹czenie nadawania dla podanego streamu
+// -> *AStreamtaskdef - wskaŸnik zadania obs³uguj¹cego stream
+bool TXB_board::EnableTXStream(TTaskDef* AStreamTaskDef)
+{
+	if (AStreamTaskDef == NULL) return false;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saEnableTX;
+	return DoMessage(&mb, true, NULL, AStreamTaskDef);
 }
 // ---------------------------------------------------------------------------------------------------------
 // Funkcja wywo³ywana w GetStream, s³u¿y do wyci¹gania ze streamu ramki która zaczyna siê od 4 bajtowego ACK
@@ -4353,7 +4400,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					case 127:
 					{
 						board.Tick_ESCKey = 0;
-						board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0);// , & XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KF_BACKSPACE, 0,NULL,Am->Data.KeyboardData.FromStreamTask);// , & XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 						break;
 					}
@@ -4361,7 +4408,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					{
 						if (LastKeyCode != 13)
 						{
-							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
+							board.SendMessage_FunctionKeyPress(KF_ENTER, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//, &XB_BOARD_DefTask);
 							board.TerminalFunction = 0;
 						}
 						else
@@ -4375,7 +4422,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					{
 						if (LastKeyCode != 10)
 						{
-							board.SendMessage_FunctionKeyPress(KF_ENTER, 0);//, &XB_BOARD_DefTask);
+							board.SendMessage_FunctionKeyPress(KF_ENTER, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//, &XB_BOARD_DefTask);
 							board.TerminalFunction = 0;
 						}
 						else
@@ -4394,14 +4441,14 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					case 7:
 					{
 						board.Tick_ESCKey = 0;
-						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KF_ESC, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//, &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 						break;
 					}
 					case 9:
 					{
 						board.Tick_ESCKey = 0;
-						board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0);//, &XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KF_TABNEXT, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//, &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 						break;
 					}
@@ -4446,7 +4493,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					{
 						board.Tick_ESCKey = 0;
 						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KF_ESC, 0);//, &XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KF_ESC, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//, &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
 				}
@@ -4454,36 +4501,36 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 				{
 					if (Am->Data.KeyboardData.KeyCode == 65) // cursor UP
 					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORUP, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0);
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORUP, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORUP, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
 						Am->Data.KeyboardData.KeyCode = 0;
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 66) // cursor DOWN
 					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORDOWN, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0);
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORDOWN, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORDOWN, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
 						Am->Data.KeyboardData.KeyCode = 0;
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 68) // cursor LEFT
 					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORLEFT, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0);
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORLEFT, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORLEFT, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
 						Am->Data.KeyboardData.KeyCode = 0;
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 67) // cursor RIGHT
 					{
-						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORRIGHT, 0);
-						else board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0);
+						if (board.CTRLKey)  board.SendMessage_FunctionKeyPress(KF_CTRL_CURSORRIGHT, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
+						else board.SendMessage_FunctionKeyPress(KF_CURSORRIGHT, 0, NULL, Am->Data.KeyboardData.FromStreamTask);
 						Am->Data.KeyboardData.KeyCode = 0;
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 90) // shift+tab
 					{
 						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KF_TABPREV, 0);//, &XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KF_TABPREV, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//, &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 49) // F1
@@ -4571,7 +4618,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					if (Am->Data.KeyboardData.KeyCode == 126) // INSERT , ...
 					{
 						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//,NULL &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
 					else if (Am->Data.KeyboardData.KeyCode == 48) // F9
@@ -4609,7 +4656,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					if (Am->Data.KeyboardData.KeyCode == 126)
 					{
 						Am->Data.KeyboardData.KeyCode = 0;
-						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0);//,NULL &XB_BOARD_DefTask);
+						board.SendMessage_FunctionKeyPress(KeyboardFunctionDetect, 0, NULL, Am->Data.KeyboardData.FromStreamTask);//,NULL &XB_BOARD_DefTask);
 						board.TerminalFunction = 0;
 					}
 					else
@@ -4628,8 +4675,17 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 #ifdef XB_GUI
 			else if (Am->Data.KeyboardData.KeyFunction == KF_F1)
 			{
+				board.EnableTXStream(Am->Data.KeyboardData.FromStreamTask);
+				xb_board_ConsoleInWindow=xb_board_CFG_ConsoleInWindow;
 				xb_board_winHandle0 = GUI_WindowCreate(&XB_BOARD_DefTask, 0);
 				GUI_Show();
+
+				res = true;
+			}
+			else if (Am->Data.KeyboardData.KeyFunction == KF_F12)
+			{
+				board.DisableTXStream(Am->Data.KeyboardData.FromStreamTask);
+				GUI_Hide();
 
 				res = true;
 			}
@@ -4915,7 +4971,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 		END_WINDOW_DEF()
 
 
-		BEGIN_WINDOW_DEF(1, "CONSOLE", 49, 0, xb_board_ConsoleWidth + 2, xb_board_ConsoleHeight + 2, xb_board_winHandle1)
+		BEGIN_WINDOW_DEF(1, "CONSOLE LOG", 49, 0, xb_board_ConsoleWidth + 2, xb_board_ConsoleHeight + 2, xb_board_winHandle1)
 		{
 			REPAINT_WINDOW()
 			{
