@@ -402,7 +402,9 @@ public:
 
 	uint8_t Color;
 	uint8_t *Buf;
+	uint32_t Size_Buf;
 	TConsoleColor *ColorBuf;
+	uint32_t Size_ColorBuf;
 	uint8_t Currsor_X;
 	uint8_t Currsor_Y;
 	uint8_t Width;
@@ -527,7 +529,8 @@ public:
 	void SendMessage_OTAUpdateStarted();
 	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL, TTaskDef* Afromstreamtask=NULL);
 	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL, TTaskDef* Afromstreamtask = NULL);
-	void SendMessage_FreePTR(void *Aptr);
+	void SendMessage_FREEPTR(void *Aptr);
+	void SendMessage_REALLOCPTR(void* Aoldptr, void* Anewptr);
 	void SendMessage_RTCSYNC();
 	//-----------------------------------------------------------------------------------------------------------------
 #ifdef PSRAM_BUG
@@ -562,11 +565,13 @@ public:
 
 	uint32_t GetStream(void *Adata, uint32_t Amaxlength, TTaskDef *AStreamtaskdef, uint32_t Afromaddress = 0);
 	uint32_t PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamtaskdef, uint32_t AToAddress = 0);
+	bool IsTaskStream(TTaskDef* AStreamTaskDef);
 	void BeginUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
 	void EndUseGetStream(TTaskDef *AStreamtaskdef, uint32_t AToAddress);
 	bool GetStreamLocalAddress(TTaskDef* AStreamTaskDef, uint32_t* Alocaladdress);
 	bool DisableTXStream(TTaskDef* AStreamTaskDef);
 	bool EnableTXStream(TTaskDef* AStreamTaskDef);
+	bool StatusDisableTXStream(TTaskDef* AStreamTaskDef);
 	bool HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport, TTaskDef *ATaskDefStream);
 	bool GetFromErrFrameTransport(TMessageBoard *mb, THandleDataFrameTransport *AHandleDataFrameTransport);
 	THandleDataFrameTransport *AddToTask_HandleDataFrameTransport(TTaskDef *AStreamtaskdef, uint32_t Afromaddress);
@@ -597,6 +602,7 @@ public:
 	uint32_t TXCounter;
 	uint8_t NoTxCounter;
 
+	uint8_t SumEnableTXStream();
 	void AllPutStreamGui(void *Adata, uint32_t Alength);
 	void AllPutStreamLog(void *Adata, uint32_t Alength);
 	int print(String Atext);
@@ -671,6 +677,7 @@ extern volatile uint32_t DateTimeStart;
 extern uint8_t xb_board_currentselecttask;
 extern uint8_t xb_board_currentYselecttask;
 
+void __HandlePTR(void** Aptr, TMessageBoard* Am);
 
 #ifdef ARDUINO_ARCH_STM32
 #define SysTickCount (uint32_t)(millis())

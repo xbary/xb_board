@@ -1847,13 +1847,27 @@ void TXB_board::SendMessage_KeyPress(char Akey,TTaskDef *Aexcludetask, TTaskDef*
 	DoMessageOnAllTask(&mb, true, doFORWARD, NULL, Aexcludetask);  
 }
 
-void TXB_board::SendMessage_FreePTR(void *Aptr)
+void TXB_board::SendMessage_FREEPTR(void *Aptr)
 {
 	if (Aptr != NULL)
 	{
 		TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-		mb.IDMessage = IM_FREEPTR;
-		mb.Data.FreePTR = Aptr;
+		mb.IDMessage = IM_HANDLEPTR;
+		mb.Data.HandlePTRData.TypeHandlePTRAction = thpaFreePTR;
+		mb.Data.HandlePTRData.FreePTR = Aptr;
+		DoMessageOnAllTask(&mb, true, doBACKWARD);
+	}
+}
+
+void TXB_board::SendMessage_REALLOCPTR(void* Aoldptr, void* Anewptr)
+{
+	if (Aoldptr != NULL)
+	{
+		TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+		mb.IDMessage = IM_HANDLEPTR;
+		mb.Data.HandlePTRData.TypeHandlePTRAction = thpaReallocPTR;
+		mb.Data.HandlePTRData.OldPTR = Aoldptr;
+		mb.Data.HandlePTRData.NewPTR = Anewptr;
 		DoMessageOnAllTask(&mb, true, doBACKWARD);
 	}
 }
@@ -1941,6 +1955,17 @@ uint32_t TXB_board::getFreeHeap()
 #endif
 }
 
+void __HandlePTR(void** Aptr, TMessageBoard* Am)
+{
+	if (Am->Data.HandlePTRData.TypeHandlePTRAction == thpaFreePTR) \
+	{ 
+		if (Am->Data.HandlePTRData.FreePTR == *Aptr) *Aptr = NULL; \
+	} 
+	else if (Am->Data.HandlePTRData.TypeHandlePTRAction == thpaReallocPTR) \
+	{ 
+		if (Am->Data.HandlePTRData.OldPTR == *Aptr) *Aptr = Am->Data.HandlePTRData.NewPTR; \
+	} 
+}
 
 void ___free(void* Aptr)
 {
@@ -1964,7 +1989,10 @@ void ___free(void* Aptr)
 	DELETE_FROM_LIST_STR(MemDebugList, md);
 
 #endif
-	heap_caps_check_integrity_all(true);
+	if (!heap_caps_check_integrity_all(true))
+	{
+		heap_caps_dump_all();
+	}
 	free(Aptr);
 }
 
@@ -1995,33 +2023,7 @@ void* ___malloc(size_t Asize)
 
 void* ___realloc(void *Aptr,size_t Asize)
 {
-#ifdef XB_BOARD_MEMDEBUG
-	size_t size = (((Asize / 8) * 8) + 8) + 16;
-	Aptr = (void*)((uint32_t)Aptr - 16);
-	
-	TXBMemDebug* Amd = (TXBMemDebug*)Aptr;
-	TXBMemDebug* mdNext = Amd->Next;
-	TXBMemDebug* mdPrev = Amd->Prev;
-	void* ptr = realloc(Aptr, size);
-	if (ptr == NULL) return NULL;
-	TXBMemDebug* md = (TXBMemDebug*)ptr;
-	
-	if (md->Size < Asize)
-	{
-		uint8_t* bptr = (uint8_t*)ptr;
-		for (uint32_t i = 16 + md->Size; i < size; i++) bptr[i] = 0xff;
-	}
-
-	md->Size = Asize;
-	md->Next = mdNext;
-	if (md->Next != NULL) md->Next->Prev = md;
-	md->Prev = mdPrev;
-	if (md->Prev != NULL) md->Prev->Next = md;
-	ptr = (void*)((uint32_t)ptr + 16);
-#else
 	void* ptr = realloc(Aptr,Asize);
-#endif
-//	delay(0);
 	return ptr;
 }
 //#if !defined(_VMICRO_INTELLISENSE)
@@ -2123,6 +2125,10 @@ void* TXB_board::_realloc_psram(void *Aptr,size_t Asize)
 	{
 		board.Log("Out of memory error in realloc(...).", true, true, tlError);
 	}
+	else if (ptr != Aptr)
+	{
+		board.SendMessage_REALLOCPTR(Aptr, ptr);
+	}
 
 	return ptr;
 }
@@ -2158,7 +2164,7 @@ void TXB_board::free(void *Aptr)
 {
 	if (Aptr != NULL)
 	{
-		SendMessage_FreePTR(Aptr);
+		SendMessage_FREEPTR(Aptr);
 		___free(Aptr);
 		OurReservedBlock--;
 #ifdef LOG_MALLOC_FREE
@@ -2261,6 +2267,18 @@ uint32_t TXB_board::PutStream(void *Adata, uint32_t Alength, TTaskDef *AStreamta
 	return 0;
 }
 // ---------------------------------------------------------------------------------------------------------
+// Sprawdzenie czy wskazane zadanie obs≥uguje stream
+// -> *AStreamtaskdef - wskaünik zadania obs≥ugujπcego stream
+bool TXB_board::IsTaskStream(TTaskDef* AStreamTaskDef)
+{
+	if (AStreamTaskDef == NULL) return false;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saTaskStream;
+	return DoMessage(&mb, true, NULL, AStreamTaskDef);
+}
+// ---------------------------------------------------------------------------------------------------------
 // Poinformowanie zadania obs≥ugujπcego stream, øe cykliczny odczyt streamu zostanie przejÍty przez inne zadanie
 // -> AStreamtaskdef - wskaünik zadania obs≥ugujπcego stream
 // -> AToAddress     - Adres/Kana≥/Numer urzπdzenia ktÛrego bÍdzie obs≥ugiwany odczyt streamu
@@ -2338,6 +2356,19 @@ bool TXB_board::EnableTXStream(TTaskDef* AStreamTaskDef)
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_STREAM;
 	mb.Data.StreamData.StreamAction = saEnableTX;
+	return DoMessage(&mb, true, NULL, AStreamTaskDef);
+}
+// ---------------------------------------------------------------------------------------------------------
+// Sprawdzenie czy w≥πczone nadawanie dla podanego streamu
+// -> *AStreamtaskdef - wskaünik zadania obs≥ugujπcego stream
+// <- True to wy≥πczony TX
+bool TXB_board::StatusDisableTXStream(TTaskDef* AStreamTaskDef)
+{
+	if (AStreamTaskDef == NULL) return false;
+
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_STREAM;
+	mb.Data.StreamData.StreamAction = saStatusDisableTX;
 	return DoMessage(&mb, true, NULL, AStreamTaskDef);
 }
 // ---------------------------------------------------------------------------------------------------------
@@ -3389,10 +3420,12 @@ void TConsoleScreen::CreateConsoleInWindow()
 		board.freeandnull((void**)&ColorBuf);
 	}
 
-	Buf = (uint8_t*)board._malloc_psram(Width * Height);
+	Size_Buf = Width * Height;
+	Buf = (uint8_t*)board._malloc_psram(Size_Buf);
 	if (Buf != NULL)
 	{
-		ColorBuf = (TConsoleColor *)board._malloc_psram((Width * Height)/4);
+		Size_ColorBuf = ((Width * Height) / 4)+8;
+		ColorBuf = (TConsoleColor *)board._malloc_psram(Size_ColorBuf);
 #ifdef XB_GUI
 		xb_board_winHandle1 = GUI_WindowCreate(&XB_BOARD_DefTask, 1);
 #endif
@@ -3411,10 +3444,12 @@ void TConsoleScreen::DestroyConsoleInWindow()
 	if (Buf != NULL)
 	{
 		board.freeandnull((void**)&Buf);
+		Size_Buf = 0;
 	}
 	if (ColorBuf != NULL)
 	{
 		board.freeandnull((void**)&ColorBuf);
+		Size_ColorBuf = 0;
 	}
 }
 
@@ -3423,6 +3458,12 @@ void TConsoleScreen::Set_ColorBuf(uint32_t Aindx,uint8_t Acolor)
 	if (ColorBuf != NULL)
 	{
 		uint32_t indx = Aindx / 4;
+		if (indx >= Size_ColorBuf)
+		{
+			Serial.print("Error in Set ColorBuf, overflow");
+			return;
+
+		}
 		switch (Aindx % 4)
 		{
 		case 0: ColorBuf[indx].Color0 = Acolor; break;
@@ -3439,17 +3480,20 @@ uint8_t TConsoleScreen::Get_ColorBuf(uint32_t Aindx)
 	uint8_t _Color = 0;
 	if (ColorBuf != NULL)
 	{
-		if (ColorBuf != NULL)
+		uint32_t indx = Aindx / 4;
+		if (indx >= Size_ColorBuf)
 		{
-			uint32_t indx = Aindx / 4;
-			switch (Aindx % 4)
-			{
-			case 0: _Color = ColorBuf[indx].Color0; break;
-			case 1: _Color = ColorBuf[indx].Color1; break;
-			case 2: _Color = ColorBuf[indx].Color2; break;
-			case 3: _Color = ColorBuf[indx].Color3; break;
-			default: break;
-			}
+			Serial.print("Error in Get ColorBuf, overflow");
+			return 0;
+		}
+
+		switch (Aindx % 4)
+		{
+		case 0: _Color = ColorBuf[indx].Color0; break;
+		case 1: _Color = ColorBuf[indx].Color1; break;
+		case 2: _Color = ColorBuf[indx].Color2; break;
+		case 3: _Color = ColorBuf[indx].Color3; break;
+		default: break;
 		}
 	}
 	return _Color;
@@ -3466,6 +3510,17 @@ void TConsoleScreen::ScrollUPConsole()
 			{
 				uint32_t indx_s = ((y + 1) * Width) + x;
 				uint32_t indx_d = ((y)*Width) + x;
+				if (indx_d >= Size_Buf)
+				{
+					Serial.println("Error in Scroll up,indx_d overflow");
+					return;
+				}
+				if (indx_s >= Size_Buf)
+				{
+					Serial.println("Error in Scroll up,indx_s overflow");
+					return;
+				}
+
 				Buf[indx_d] = Buf[indx_s];
 				Set_ColorBuf(indx_d, Get_ColorBuf(indx_s));
 			}
@@ -3473,7 +3528,12 @@ void TConsoleScreen::ScrollUPConsole()
 		for (uint32_t x = 0; x < Width; x++)
 		{
 			uint32_t indx = ((Height - 1) * Width) + x;
-			Buf[indx] = 32;
+			if (indx >= Size_Buf)
+			{
+				Serial.println("Error in Scroll up,indx overflow");
+				return;
+			}
+			Buf[indx] = ' ';
 			Set_ColorBuf(indx,Color);
 
 		}
@@ -3516,6 +3576,11 @@ void TConsoleScreen::PutCharConsole(uint8_t Ach)
 		uint32_t indx = Currsor_X + (Currsor_Y * Width);
 		if (Buf != NULL)
 		{
+			if (indx >= Size_Buf)
+			{
+				Serial.print("Error in Put Console, overflow");
+				return ;
+			}
 			Buf[indx] = Ach;
 			Set_ColorBuf(indx,Color);
 		}
@@ -3553,6 +3618,26 @@ void TConsoleScreen::PutConsole(uint8_t* Adata, uint32_t Alength)
 		Alength--;
 	}
 }
+
+
+uint8_t TXB_board::SumEnableTXStream()
+{
+	TTask* t = TaskList;
+	uint8_t SumEnable = 0;
+	while (t != NULL)
+	{
+		if (IsTaskStream(t->TaskDef))
+		{
+			if (!StatusDisableTXStream(t->TaskDef))
+			{
+				SumEnable++;
+			}
+		}
+		t = t->Next;
+	}
+}
+
+
 
 
 void TXB_board::AllPutStreamGui(void *Adata, uint32_t Alength)
@@ -4263,14 +4348,14 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 #endif
 		res = true;
 	}
-	case IM_FREEPTR:
+	case IM_HANDLEPTR:
 	{
 #ifdef XB_GUI
-		FREEPTR(xb_board_winHandle0);
-		FREEPTR(xb_board_winHandle1);
-		FREEPTR(xb_board_winHandle2);
-		FREEPTR(xb_board_menuHandle1);
-		FREEPTR(xb_board_inputdialog0);
+		HANDLEPTR(xb_board_winHandle0);
+		HANDLEPTR(xb_board_winHandle1);
+		HANDLEPTR(xb_board_winHandle2);
+		HANDLEPTR(xb_board_menuHandle1);
+		HANDLEPTR(xb_board_inputdialog0);
 #endif
 		res = true;
 		break;
@@ -4685,8 +4770,10 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 			else if (Am->Data.KeyboardData.KeyFunction == KF_F12)
 			{
 				board.DisableTXStream(Am->Data.KeyboardData.FromStreamTask);
-				GUI_Hide();
-
+				if (board.SumEnableTXStream() == 0)
+				{
+					GUI_Hide();
+				}
 				res = true;
 			}
 			else if (Am->Data.KeyboardData.KeyFunction == KF_ENTER)

@@ -185,7 +185,6 @@ struct TTaskDef;
 struct TGPIODrive;
 struct TSocket;
 
-#define FREEPTR(Aptr) if (Am->Data.FreePTR == Aptr) Aptr = NULL;
 #define GET_TASKSTATUS(enumstatus,cutbeginch) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus); Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKSTATUS_OTHER(enumstatus,cutbeginch,other) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus)+other; Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKSTATUS_ADDSTR(Astr) {*(Am->Data.PointerString) += String(Astr); }
@@ -198,7 +197,7 @@ typedef enum {
 	IM_IDLE = 0,
 	IM_GPIO,
 	IM_DELTASK,
-	IM_FREEPTR,
+	IM_HANDLEPTR,
 	IM_RX_BLINK,
 	IM_TX_BLINK,
 	IM_LIVE_BLINK,
@@ -263,7 +262,7 @@ typedef struct {
 
 //-----------------------------------------------------------------------
 typedef enum {
-	saGet, saPut, saBeginUseGet, saEndUseGet, saGetLocalAddress,saDisableTX,saEnableTX
+	saGet, saPut, saBeginUseGet, saEndUseGet, saGetLocalAddress, saDisableTX, saEnableTX, saStatusDisableTX, saTaskStream
 } TStreamAction;
 
 typedef struct {
@@ -570,7 +569,19 @@ typedef struct
 	
 } TVarValueData;
 //-----------------------------------------------------------------------
-typedef enum { tsaConnect, tsaDisconnect, tsaConnectError, tsaReceived, tsaSended,tsaServerStart,tsaServerStop,tsaServerStartingError,tsaNewClientSocket } TTypeSocketAction;
+typedef enum { 
+	tsaIDLE,
+	tsaConnect, 
+	tsaDisconnect, 
+	tsaConnectError, 
+	tsaReceived, 
+	tsaSended,
+	tsaServerStart,
+	tsaServerStop,
+	tsaServerStartingError,
+	tsaNewClientSocket 
+} TTypeSocketAction;
+
 typedef struct
 {
 	TTypeSocketAction TypeSocketAction;
@@ -580,6 +591,17 @@ typedef struct
 	bool AcceptSocket;
 	uint32_t ReceivedLength;
 } 	TSocketData;
+//-----------------------------------------------------------------------
+typedef enum { thpaFreePTR,thpaReallocPTR } TTypeHandlePTRAction;
+typedef struct
+{
+	void *OldPTR;
+	void *NewPTR;
+	void *FreePTR;
+	TTypeHandlePTRAction TypeHandlePTRAction;
+} 	THandlePTRData;
+
+#define HANDLEPTR(Aptr) __HandlePTR((void **)&(Aptr),Am);
 //-----------------------------------------------------------------------
 struct TMessageBoard
 {
@@ -602,7 +624,7 @@ struct TMessageBoard
 		TVarValueData VarValueData;
 		TSocketData SocketData;
 		void *PointerData;
-		void *FreePTR;
+		THandlePTRData HandlePTRData;
 		String *PointerString;
 		uint64_t uData64;
 		uint32_t uData32;
