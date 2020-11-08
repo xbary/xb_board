@@ -1,6 +1,3 @@
-//#define BOARD_BETA_DEBUG
-//#define BOARD_BETA_DEBUG_FREEMINHEAP
-//#define XB_BOARD_MEMDEBUG
 #pragma region INCLUDES
 #include <xb_board.h>
 
@@ -36,9 +33,6 @@ extern "C" {
 #include <xb_GUI_Gadget.h>
 #endif
 
-#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
-#include <WiFi.h>
-#endif
 
 #pragma endregion
 
@@ -54,11 +48,6 @@ volatile uint32_t DateTimeStart;
 #if defined(ESP8266) 
 volatile uint32_t __SysTickCount;
 #endif
-
-#ifdef XB_BOARD_MEMDEBUG
-DEFLIST_VAR(TXBMemDebug, MemDebugList);
-#endif
-
 
 // Konfiguracja ---------------------------------------------------------------------
 bool xb_board_ShowGuiOnStart = false;
@@ -157,6 +146,7 @@ bool XB_BOARD_LoadConfiguration()
 		xb_board_CFG_ConsoleInWindow = board.PREFERENCES_GetBool("ConInWin", xb_board_ConsoleInWindow);
 		xb_board_ConsoleWidth = board.PREFERENCES_GetUINT8("ConWidth", xb_board_ConsoleWidth);
 		xb_board_ConsoleHeight = board.PREFERENCES_GetUINT8("ConHeight", xb_board_ConsoleHeight);
+		board.AutoCheckHeapIntegrity = board.PREFERENCES_GetBool("ACHI", board.AutoCheckHeapIntegrity);
 		board.PREFERENCES_EndSection();
 	}
 	else
@@ -180,7 +170,7 @@ bool XB_BOARD_SaveConfiguration()
 		board.PREFERENCES_PutString("DeviceName", board.DeviceName);
 		board.PREFERENCES_PutUINT8("ConWidth", xb_board_ConsoleWidth);
 		board.PREFERENCES_PutUINT8("ConHeight", xb_board_ConsoleHeight);
-
+		board.PREFERENCES_PutBool("ACHI", board.AutoCheckHeapIntegrity);
 		board.PREFERENCES_EndSection();
 	}
 	else
@@ -228,6 +218,7 @@ TXB_board::TXB_board()
 	FarDeviceIDList = NULL;
 	FarDeviceIDList_count = 0;
 	FarDeviceIDList_last = NULL;
+	AutoCheckHeapIntegrity = false;
 
 #ifdef PSRAM_BUG
 	lastfreepsram = 0;
@@ -504,7 +495,7 @@ String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 
 #pragma endregion
 #pragma region FUNKCJE_BUFFER_HANDLE
-
+// Zapis bajtu do bufora
 bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av, bool Alogmessage)
 {
 	if (Abuf->Buf == NULL)
@@ -577,8 +568,7 @@ bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av, bool Alogmessage)
 	
 	return true;
 }
-
-
+// Odczyt bajtu z bufora
 bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av)
 {
 	if (Abuf->Buf == NULL)
@@ -601,21 +591,21 @@ bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av)
 	Abuf->LastTickUse = SysTickCount;
 	return true;
 }
-
+// resetowanie indeksów zapisu odczytu
 void BUFFER_Flush(TBuf* Abuf)
 {
 	Abuf->IndxR = 0;
 	Abuf->IndxW = 0;
 	Abuf->LastTickUse = SysTickCount;
 }
-
+// Funkcja odpowiada za zwolnienie pamiêci zajêtej przez bufor po okreslonym czasie bezczynnoœci
 bool BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf)
 {
 	if (Abuf->Buf != NULL)
 	{
 		if (SysTickCount - Abuf->LastTickUse > Awaitforfreebyf)
 		{
-			//board.Log("Buffer to free, detect not use", true, true, tlWarn);
+			
 			board.free(Abuf->Buf);
 			Abuf->Buf = NULL;
 			Abuf->Length = 0;
@@ -625,19 +615,19 @@ bool BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf)
 	}
 	return false;
 }
-
+// Odczyt ilosci bajtów aktualnie gotowych do odczytu z bufora
 uint32_t BUFFER_GetSizeData(TBuf* Abuf)
 {
 	return Abuf->IndxW - Abuf->IndxR;
 }
-
+// Odczyt wskaŸnika danych aktualnie gotowych do odczytu
 uint8_t* BUFFER_GetReadPtr(TBuf* Abuf)
 {
 	Abuf->LastTickUse = SysTickCount;
 	if (Abuf->Buf == NULL) return NULL;
 	return &Abuf->Buf[Abuf->IndxR];
 }
-
+// Przesuniêcie indeksu odczytu z bufora aktualnie gotowych danych do odczytu
 void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte)
 {
 	if (Abuf->IndxR == Abuf->IndxW)
@@ -656,7 +646,7 @@ void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte)
 
 	Abuf->LastTickUse = SysTickCount;
 }
-
+// Wymuszenie zwolnienia pamiêci zajêtej przez bufor i resetowanie indeksów odczytu i zapisu
 void BUFFER_Reset(TBuf* Abuf)
 {
 	if (Abuf->Buf != NULL)
@@ -667,7 +657,39 @@ void BUFFER_Reset(TBuf* Abuf)
 		BUFFER_Flush(Abuf);
 	}
 }
+// Przejêcie pamiêci zajêtej przez dane gotowe do odczytu przez otrzymanie wskaŸnika do danych
+// Nastêpnie resetowanie bufora do gotowoœci przyjêcia kolenych danych
+uint8_t* BUFFER_GetBufferPtrAndReset(TBuf* Abuf)
+{
+	if (Abuf == NULL) return NULL;
+	if (Abuf->IndxW == Abuf->IndxR) return NULL;
+	if (Abuf->Buf == NULL) return NULL;
+	uint32_t l = Abuf->IndxW - Abuf->IndxR;
 
+	if (Abuf->IndxR > 0)
+	{
+		for (uint32_t i = 0; i < l; i++)
+		{
+			Abuf->Buf[i] = Abuf->Buf[i + Abuf->IndxR];
+		}
+		Abuf->IndxR = 0;
+		Abuf->IndxW = l;
+	}
+
+	uint8_t* ptr =(uint8_t *) board._realloc_psram(Abuf->Buf, l);
+
+	if (ptr != NULL)
+	{
+
+		Abuf->Buf = NULL;
+		Abuf->IndxR = 0;
+		Abuf->IndxW = 0;
+		Abuf->LastTickUse = SysTickCount;
+		Abuf->Length = 0;
+	}
+
+	return ptr;
+}
 #pragma endregion
 #pragma region FUNKCJE_GPIO
 // -----------------------------------------
@@ -1325,35 +1347,6 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 	return false;
 }
 // ---------------------------------------------------------------------------------------------------------------
-// Wyœwietlenie statusów zadañ w momencie zg³oszenia kolejnej minimalnej wolnej pamiêci na stercie
-#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
-void TXB_board::PrintOnSerial0StatusTask()
-{
-	TTask* t = TaskList;
-	String s; s.reserve(256);
-	Serial.print("\n");
-	GetTime(s, DateTimeUnix, true, true, true);
-	Serial.print("Alert minimum free heap! [" + String(MinimumFreeHeapInLoop) + "] at time: "+s+"\n");
-	while (t != NULL)
-	{
-		s = "";
-		SendMessage_GetTaskNameString(t->TaskDef, s);
-		s = s + " [";
-		Serial.print(s);
-		s = "";
-		SendMessage_GetTaskStatusString(t->TaskDef, s);
-		s.trim();
-		s = s + "]\n";
-		Serial.print(s);
-		t = t->Next;
-	}
-	Serial.print("\nWIFI DIAG:\n");
-	WiFi.printDiag(Serial);
-	
-	Serial.println("---------------------------------\n");
-}
-#endif
-// ---------------------------------------------------------------------------------------------------------------
 // G³ówna procedura uruchamiaj¹ca zadania z podzia³em na priorytety, zg³oszeñ z przerwañ i czekaj¹cych zadany czas
 void TXB_board::IterateTask()
 {
@@ -1437,9 +1430,6 @@ void TXB_board::IterateTask()
 				if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 				{
 					MinimumFreeHeapInLoop = FreeHeapInLoop;
-#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
-					PrintOnSerial0StatusTask();
-#endif
 				}	
 			}
 #else
@@ -1518,6 +1508,16 @@ void TXB_board::IterateTask()
 		}
 		//--------------------------------------
 	}
+
+	
+	if (AutoCheckHeapIntegrity)
+	{
+		if (!heap_caps_check_integrity_all(true))
+		{
+			heap_caps_dump_all();
+		}
+	}
+
 	iteratetask_procedure = false;
 }
 
@@ -1969,26 +1969,6 @@ void __HandlePTR(void** Aptr, TMessageBoard* Am)
 
 void ___free(void* Aptr)
 {
-#ifdef XB_BOARD_MEMDEBUG
-	Aptr = (void*)((uint32_t)Aptr - 16);
-	TXBMemDebug* md = (TXBMemDebug*)Aptr;
-
-	size_t Asize = (((md->Size / 8) * 8) + 8) + 16;
-
-	uint8_t* bptr = (uint8_t*)md;
-	for (uint32_t i = 16 + md->Size; i < Asize; i++)
-	{
-		if (bptr[i] != 0xff)
-		{
-			board.Log("Mem corrupt....", true, true, tlError);
-			abort();
-			break;
-		}
-	}
-
-	DELETE_FROM_LIST_STR(MemDebugList, md);
-
-#endif
 	if (!heap_caps_check_integrity_all(true))
 	{
 		heap_caps_dump_all();
@@ -1998,31 +1978,29 @@ void ___free(void* Aptr)
 
 void* ___malloc(size_t Asize)
 {
-#ifdef XB_BOARD_MEMDEBUG
-	size_t size = (((Asize / 8) * 8) + 8) + 16;
-	void* ptr = malloc(size);
-	if (ptr == NULL) return NULL;
-	TXBMemDebug* md = (TXBMemDebug * )ptr;
-	md->Next = NULL;
-	md->Prev = NULL;
-	md->Size = Asize;
-	md->OwnerTask = board.CurrentTask;
-	ADD_TO_LIST_STR(MemDebugList, TXBMemDebug, md);
+	if (board.AutoCheckHeapIntegrity)
+	{
+		if (!heap_caps_check_integrity_all(true))
+		{
+			heap_caps_dump_all();
+		}
+	}
 
-	uint8_t *bptr = (uint8_t*)md;
-	for (uint32_t i = 16 + Asize; i < size; i++) bptr[i] = 0xff;
-
-	ptr = (void*)((uint32_t)ptr + 16);
-
-#else
 	void* ptr = malloc(Asize);
-#endif
-//	delay(0);
+	if (ptr != NULL) for (uint32_t i = 0; i < Asize; i++) ((uint8_t*)ptr)[i] = 0;
 	return ptr;
 }
 
 void* ___realloc(void *Aptr,size_t Asize)
 {
+	if (board.AutoCheckHeapIntegrity)
+	{
+		if (!heap_caps_check_integrity_all(true))
+		{
+			heap_caps_dump_all();
+		}
+	}
+
 	void* ptr = realloc(Aptr,Asize);
 	return ptr;
 }
@@ -2078,6 +2056,7 @@ void *TXB_board::_malloc_psram(size_t Asize)
 	}
 	else
 	{
+		Serial.print("\nOut of memory.");
 		board.Log("Out of memory.", true, true, tlError);
 	}
 	
@@ -2151,6 +2130,7 @@ void *TXB_board::_malloc(size_t size)
 	}
 	else
 	{
+		Serial.print("\nOut of memory.");
 		board.Log("Out of memory.", true, true, tlError);
 	}
 	return ptr;
@@ -2167,9 +2147,6 @@ void TXB_board::free(void *Aptr)
 		SendMessage_FREEPTR(Aptr);
 		___free(Aptr);
 		OurReservedBlock--;
-#ifdef LOG_MALLOC_FREE
-		board.Log(String("free adress:" + String((uint32_t)Aptr,HEX)).c_str(), true, true);
-#endif
 	}
 }
 // --------------------------------------------------------------------------------------------------------------------
@@ -2691,11 +2668,13 @@ bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAd
 	static THDFT *hdft = NULL;
 	if (hdft != NULL)
 	{
-		board.free(hdft);
+		//board.free(hdft);
+		___free(hdft);
 		hdft = NULL;
 	}
-	hdft = (THDFT *)board._malloc(sizeof(THDFT));
-	
+//	hdft = (THDFT *)board._malloc(sizeof(THDFT));
+	hdft = (THDFT*)___malloc(sizeof(THDFT));
+
 	if (hdft == NULL)
 	{
 		board.Log("Error memory in send frame...", true, true, tlError);
@@ -2756,9 +2735,6 @@ bool TXB_board::SendFrameToDeviceTask(String ASourceTaskName, uint32_t ASourceAd
 		if (reslen != ltsize)
 		{
 			*AframeID = 0;
-#ifdef BOARD_BETA_DEBUG
-			board.Log(String("Stream error - Send: " + String(ltsize) + " Sended: " + String(reslen) + " ...").c_str(), true, true, tlWarn);
-#endif
 			return false;
 		}
 	}
@@ -2819,21 +2795,6 @@ void TXB_board::SendResponseFrameOnProt(uint32_t AFrameID, TTaskDef *ATaskDefStr
 	
 	return;
 }
-
-#ifdef BOARD_BETA_DEBUG
-void PrintFrameTransport(TFrameTransport *Aft)
-{
-	String s;
-	s.reserve(512);
-	s += "\nAft->DestAddress   = " + IPAddress(Aft->DestAddress).toString();
-	s += "\nAft->DestDeviceID = " + board.DeviceIDtoString(Aft->DestDeviceID);
-	s += "\nAft->SourceAddress = " + IPAddress(Aft->SourceAddress).toString();
-	s += "\nAft->SourceDeviceID = " + board.DeviceIDtoString(Aft->SourceDeviceID);
-	s += "\n";
-	board.Log(s.c_str());
-	
-}
-#endif
 // -----------------------------------------------------------------------------------------------------------------------
 // Sprawdzenie sumy kontrolnej wskazanej ramki, wys³anie messaga do wskazanego zadania w ramce z wskaŸnikiem na dane ramki
 // -> Aft - WskaŸnik ramki transportowej
@@ -2864,10 +2825,6 @@ void TXB_board::HandleFrame(TFrameTransport *Aft, TTaskDef *ATaskDefStream)
 				mb.Data.FrameReceiveData.DestAddress = Aft->DestAddress;
 
 				bool res = DoMessage(&mb,true,NULL,DestTaskDefReceive);
-
-#ifdef BOARD_BETA_DEBUG
-				board.Log(String("Receive frame, HANDLESEND: " + String(Aft->FrameID,HEX)+" res:"+String(res)).c_str(), true, true);
-#endif
 
 				if (res)
 				{
@@ -4282,9 +4239,9 @@ void XB_BOARD_Repaint_TFarDeviceID()
 		if ((board.FarDeviceIDList_count + 3) > xb_board_winHandle2->Height)
 		{
 			xb_board_winHandle2->SetWindowSize(100, board.FarDeviceIDList_count + 3);
-			xb_board_winHandle2->RepaintCounter++;
+			xb_board_winHandle2->Repaint();
 		}
-		xb_board_winHandle2->RepaintDataCounter++;
+		xb_board_winHandle2->RepaintData();
 	}
 }
 
@@ -4941,7 +4898,14 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 				}
 			}
 			END_MENUITEM()
-
+			BEGIN_MENUITEM_CHECKED("Auto check heap Integrity", taLeft, board.AutoCheckHeapIntegrity)
+			{
+				CLICK_MENUITEM()
+				{
+					board.AutoCheckHeapIntegrity = !board.AutoCheckHeapIntegrity;
+				}
+			}
+			END_MENUITEM()
 			SEPARATOR_MENUITEM()
 			BEGIN_MENUITEM("Device Name [" + board.DeviceName + "]", taLeft)
 			{

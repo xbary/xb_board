@@ -539,10 +539,6 @@ public:
 	uint32_t lastfreepsram;
 	uint32_t MaximumMallocPSRAM;
 #endif
-#ifdef BOARD_BETA_DEBUG_FREEMINHEAP
-	void PrintOnSerial0StatusTask();
-#endif
-
 	uint32_t FreePSRAMInLoop;
 	uint32_t MinimumFreePSRAMInLoop;
 	uint32_t MaximumFreePSRAMInLoop;
@@ -550,7 +546,8 @@ public:
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
 	int OurReservedBlock;
-	
+	bool AutoCheckHeapIntegrity;
+
 	uint32_t getFreePSRAM();
 	uint32_t getFreeHeap();
 	void *_malloc_psram(size_t size);
@@ -669,6 +666,7 @@ bool BUFFER_Handle(TBuf* Abuf, uint32_t Awaitforfreebyf);
 uint8_t* BUFFER_GetReadPtr(TBuf* Abuf);
 void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte);
 void BUFFER_Reset(TBuf* Abuf);
+uint8_t* BUFFER_GetBufferPtrAndReset(TBuf* Abuf);
 
 extern TXB_board board;
 extern TTaskDef XB_BOARD_DefTask;

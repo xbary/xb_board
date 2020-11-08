@@ -223,7 +223,7 @@ extern int round(float value);
 extern float _CutPrecision(float liczba, uint8_t digprecis=2);
 extern void xb_memoryfill(REGISTER void *Aadr, REGISTER uint32_t Alength, REGISTER uint8_t Avalue);
 extern void xb_memorycopy(REGISTER void *Asource, REGISTER void *Adestination, REGISTER int32_t Alength);
-extern bool xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength);
+extern uint32_t xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength=0, REGISTER uint8_t Aendch=0);
 
 
 

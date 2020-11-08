@@ -1012,15 +1012,35 @@ void xb_memorycopy(REGISTER void *Asource, REGISTER void *Adestination, REGISTER
 	
 }
 
-bool xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength)
+uint32_t xb_memorycompare(REGISTER void *Aadr1, REGISTER void *Aadr2, REGISTER uint32_t Alength,REGISTER uint8_t Aendch)
 {
+	uint32_t lencompre = 0;
+
+	if (Alength == 0)
+	{
+		uint32_t  l1 = StringLength((const char *)Aadr1, Aendch);
+		uint32_t  l2 = StringLength((const char *)Aadr2, Aendch);
+
+		if (l1 <= l2)
+		{
+			Alength = l1;
+		}
+		else
+		{
+			Alength = l2;
+		}
+	}
+
 	for (REGISTER uint32_t i = 0;i<Alength;i++)
 	{
 		if (((uint8_t *)Aadr1)[i] != ((uint8_t *)Aadr2)[i])
 		{
-			return false;
+			lencompre = 0;
+			return lencompre;
 		}
+		lencompre++;
 	}
-	return true;
+
+	return lencompre;
 }
 
