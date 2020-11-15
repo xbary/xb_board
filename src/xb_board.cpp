@@ -82,18 +82,9 @@ bool xb_board_ShowListFarDeviceID = false;
 #endif
 
 #ifdef BOARD_HAS_PSRAM
-#ifdef XB_PREFERENCES
 #define WINDOW_0_HEIGHT board.TaskList_count + 14
 #else
-#define WINDOW_0_HEIGHT board.TaskList_count + 13
-#endif
-
-#else
-#ifdef XB_PREFERENCES
 #define WINDOW_0_HEIGHT board.TaskList_count + 12
-#else
-#define WINDOW_0_HEIGHT board.TaskList_count + 11
-#endif
 #endif
 
 TWindowClass * xb_board_winHandle0;
@@ -3601,6 +3592,7 @@ uint8_t TXB_board::SumEnableTXStream()
 		}
 		t = t->Next;
 	}
+	return SumEnable;
 }
 
 
@@ -5099,7 +5091,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 		}
 		END_WINDOW_DEF()
 
-			BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
+		BEGIN_WINDOW_DEF(0, WINDOW_0_CAPTION, 0, 0, 48, WINDOW_0_HEIGHT, xb_board_winHandle0)
 		{
 			//--------------------------------
 			REPAINT_WINDOW()
@@ -5166,6 +5158,8 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 #endif
 #ifdef XB_PREFERENCES
 					WH->PutStr(0, y, "PREFERENCES FREE ENTRIES:");
+#else
+					WH->PutStr(0, y, "PREFERENCES NOT USE");
 #endif
 					WH->PutStr(32, y, "CPU CLK:");
 					y++;
@@ -5258,10 +5252,10 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 #endif
 #ifdef XB_PREFERENCES
 				WH->PutStr(26, y, String(board.preferences_freeEntries).c_str(), 6);
-				WH->PutStr(40, y, String(String(ESP.getCpuFreqMHz()) + "Mhz").c_str());
-
-				y++;
 #endif
+				WH->PutStr(40, y, String(String(ESP.getCpuFreqMHz()) + "Mhz").c_str());
+				y++;
+
 
 #ifdef XB_BOARD_MEMDEBUG
 				WH->PutStr(20, y, String(MemDebugList_count).c_str(), 8);
