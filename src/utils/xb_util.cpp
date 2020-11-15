@@ -235,7 +235,7 @@ uint8_t ahextoint(REGISTER uint8_t Ach)
 	return 0xff;
 }
 
-#include <bits/basic_string.h>
+//#include <bits/basic_string.h>
 
 double strtodouble(String Astrdouble)
 {
@@ -961,7 +961,7 @@ void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringt
 	
 }
 
-int round(float value) {
+/*int round(float value) {
 	float val1;
 	if (value < 0.0f)
 		val1 = value - 0.5f;
@@ -969,7 +969,7 @@ int round(float value) {
 		val1 = value + 0.5f;
 	int intPart = int(val1);
 	return intPart;
-}
+}*/
 
 float _CutPrecision(float liczba,uint8_t digprecis)
 {

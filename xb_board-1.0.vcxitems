@@ -22,15 +22,4 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\xb_board_message.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)src\utils\xb_util.h" />
   </ItemGroup>
-  <ItemGroup>
-    <Text Include="$(MSBuildThisFileDirectory)library.properties" />
-    <Text Include="$(MSBuildThisFileDirectory)vs-readme.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory).gitignore" />
-    <None Include="$(MSBuildThisFileDirectory)README.md" />
-    <None Include="$(MSBuildThisFileDirectory)xb_board.vcxitems" />
-    <None Include="$(MSBuildThisFileDirectory)xb_board.vcxitems.filters" />
-    <None Include="$(MSBuildThisFileDirectory)xb_board.vcxitems.user" />
-  </ItemGroup>
 </Project>

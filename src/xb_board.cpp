@@ -28,6 +28,10 @@ extern "C" {
 #endif
 #endif
 
+#ifdef Serial0BoardBuf_BAUD
+#include <XB_SERIAL.h>
+#endif
+
 #ifdef XB_GUI
 #include <xb_GUI.h>
 #include <xb_GUI_Gadget.h>
@@ -155,9 +159,8 @@ bool XB_BOARD_LoadConfiguration()
 	}
 	return true;
 #else
-	return false
+	return false;
 #endif
-
 }
 
 bool XB_BOARD_SaveConfiguration()
@@ -179,9 +182,8 @@ bool XB_BOARD_SaveConfiguration()
 	}
 	return true;
 #else
-	return false
+	return false;
 #endif
-
 }
 
 bool XB_BOARD_ResetConfiguration()
@@ -198,9 +200,8 @@ bool XB_BOARD_ResetConfiguration()
 	}
 	return true;
 #else
-	return false
+	return false;
 #endif
-
 }
 #pragma endregion
 
@@ -214,7 +215,9 @@ TXB_board::TXB_board()
 	TaskList_count = 0;
 	TaskList_last = NULL;
 	ConsoleScreen = NULL;
+#ifdef XB_PREFERENCES
 	xbpreferences = NULL;
+#endif
 	FarDeviceIDList = NULL;
 	FarDeviceIDList_count = 0;
 	FarDeviceIDList_last = NULL;
@@ -257,6 +260,15 @@ TXB_board::TXB_board()
 #endif 
 	ProjectName = PROJECT_NAME;
 	HDFT_ResponseItemList = NULL;
+
+	
+
+#ifndef Serial0BoardBuf_BAUD
+	Serial.begin(115200);
+	delay(100);
+#endif
+
+
 }
 
 TXB_board::~TXB_board()
@@ -1967,7 +1979,8 @@ void __HandlePTR(void** Aptr, TMessageBoard* Am)
 	} 
 }
 
-void ___free(void* Aptr)
+//#if !defined(_VMICRO_INTELLISENSE)
+static void ___free(void* Aptr)
 {
 	if (!heap_caps_check_integrity_all(true))
 	{
@@ -1976,7 +1989,7 @@ void ___free(void* Aptr)
 	free(Aptr);
 }
 
-void* ___malloc(size_t Asize)
+static void* ___malloc(size_t Asize)
 {
 	if (board.AutoCheckHeapIntegrity)
 	{
@@ -1991,7 +2004,7 @@ void* ___malloc(size_t Asize)
 	return ptr;
 }
 
-void* ___realloc(void *Aptr,size_t Asize)
+static void* ___realloc(void *Aptr,size_t Asize)
 {
 	if (board.AutoCheckHeapIntegrity)
 	{
@@ -2004,7 +2017,6 @@ void* ___realloc(void *Aptr,size_t Asize)
 	void* ptr = realloc(Aptr,Asize);
 	return ptr;
 }
-//#if !defined(_VMICRO_INTELLISENSE)
 //------------------------------------------------------------------------------------------------------------------------------
 // Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
 // -> Asize - Iloœæ rezerwowanej pamiêci PSRAM
@@ -2062,8 +2074,6 @@ void *TXB_board::_malloc_psram(size_t Asize)
 	
 	return ptr;
 }
-//#endif
-//#if !defined(_VMICRO_INTELLISENSE)
 //------------------------------------------------------------------------------------------------------------------------------
 // Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
 // -> Asize - Iloœæ rezerwowanej pamiêci PSRAM
@@ -2111,8 +2121,6 @@ void* TXB_board::_realloc_psram(void *Aptr,size_t Asize)
 
 	return ptr;
 }
-//#endif
-//#if !defined(_VMICRO_INTELLISENSE)
 //---------------------------------------
 // Rezerwacja pamiêci RAM mikrokontrolera
 // -> Asize - Iloœæ rezerwowanej pamiêci 
@@ -2135,7 +2143,6 @@ void *TXB_board::_malloc(size_t size)
 	}
 	return ptr;
 }
-//#endif
 // ------------------
 // Zwolnienie pamiêci
 // -> Aptr wskaŸnik na blok pamiêci zwalnianej
@@ -2149,6 +2156,7 @@ void TXB_board::free(void *Aptr)
 		OurReservedBlock--;
 	}
 }
+
 // --------------------------------------------------------------------------------------------------------------------
 // Zwolnienie pamiêci z pod wskazanego (wskaŸniniem) wskaŸnika i nastêpnie nadanie wartoœæi NULL wskaŸnikowi wskazanemu
 //  -> WskaŸnik wskaŸnika zwalnianego bloku pamiêci
@@ -3134,7 +3142,7 @@ void TXB_board::AddStreamAddressAsKeyboard(TTaskDef *AStreamDefTask,uint32_t Aad
 				}
 			}
 
-			t->GetStreamAddressAsKeyboard = (uint32_t *)realloc((void *)t->GetStreamAddressAsKeyboard, sizeof(uint32_t)*(t->CountGetStreamAddressAsKeyboard + 1));
+			t->GetStreamAddressAsKeyboard = (uint32_t *)___realloc((void *)t->GetStreamAddressAsKeyboard, sizeof(uint32_t)*(t->CountGetStreamAddressAsKeyboard + 1));
 			t->CountGetStreamAddressAsKeyboard++;
 
 			t->GetStreamAddressAsKeyboard[t->CountGetStreamAddressAsKeyboard-1] = Aaddress;
@@ -3216,7 +3224,7 @@ void TXB_board::AddStreamAddressAsLog(TTaskDef *AStreamDefTask, uint32_t Aaddres
 				}
 			}
 
-			t->PutStreamAddressAsLog = (uint32_t *)realloc((void *)t->PutStreamAddressAsLog, sizeof(uint32_t)*(t->CountPutStreamAddressAsLog + 1));
+			t->PutStreamAddressAsLog = (uint32_t *)___realloc((void *)t->PutStreamAddressAsLog, sizeof(uint32_t)*(t->CountPutStreamAddressAsLog + 1));
 			t->CountPutStreamAddressAsLog++;
 
 			t->PutStreamAddressAsLog[t->CountPutStreamAddressAsLog-1] = Aaddress;
@@ -3295,7 +3303,7 @@ void TXB_board::AddStreamAddressAsGui(TTaskDef *AStreamDefTask, uint32_t Aaddres
 				}
 			}
 
-			t->PutStreamAddressAsGui = (uint32_t *)realloc((void *)t->PutStreamAddressAsGui, sizeof(uint32_t)*(t->CountPutStreamAddressAsGui + 1));
+			t->PutStreamAddressAsGui = (uint32_t *)___realloc((void *)t->PutStreamAddressAsGui, sizeof(uint32_t)*(t->CountPutStreamAddressAsGui + 1));
 			t->CountPutStreamAddressAsGui++;
 
 			t->PutStreamAddressAsGui[t->CountPutStreamAddressAsGui-1] = Aaddress;
@@ -3558,11 +3566,12 @@ void TConsoleScreen::PutCharConsole(uint8_t Ach)
 	}
 	}
 
+#ifdef XB_GUI
 	if (xb_board_winHandle1 != NULL)
 	{
 		xb_board_winHandle1->RepaintDataCounter++;
 	}
-
+#endif
 }
 
 void TConsoleScreen::PutConsole(uint8_t* Adata, uint32_t Alength)
@@ -3623,6 +3632,7 @@ void TXB_board::AllPutStreamLog(void *Adata, uint32_t Alength)
 	else
 	{
 		TTask* t = TaskList;
+		bool isput = false;
 		while (t != NULL)
 		{
 			for (uint32_t i = 0; i < t->CountPutStreamAddressAsLog; i++)
@@ -3630,9 +3640,16 @@ void TXB_board::AllPutStreamLog(void *Adata, uint32_t Alength)
 				if (t->PutStreamAddressAsLog[i] != 0xffffffff)
 				{
 					PutStream(Adata, Alength, t->TaskDef, t->PutStreamAddressAsLog[i]);
+					isput = true;
 				}
 			}
 			t = t->Next;
+		}
+		if (!isput)
+		{
+#ifndef Serial0BoardBuf_BAUD
+			Serial.write((const char*)Adata, (size_t)Alength);
+#endif
 		}
 	}
 }
@@ -4193,10 +4210,18 @@ void XB_BOARD_Setup(void)
 #endif
 #endif
 
+#ifdef Serial0BoardBuf_BAUD
+	board.AddTask(&XB_SERIAL_DefTask);
+#endif
+
 	// Jeœli interface uruchomiony to dodanie zadania obs³uguj¹cego interface GUI
 #ifdef XB_GUI
 	board.AddTask(&XB_GUI_DefTask);
 #endif
+
+	board_log("\n\n----------------------------------------------------");
+	board_log("\nStart XB_BOARD system by XBary. (email: xbary@wp.pl)\n");
+
 }
 // -----------------------------
 // G³ówna pêtla zadania g³ównego
@@ -4209,6 +4234,14 @@ uint32_t XB_BOARD_DoLoop(void)
 	{
 		FirstLoop = true;
 		board.LoadCfgFarDevices();
+
+
+		board_log("\nDevice Name: \""+board.DeviceName+"\"");
+		board_log("\nDevice Version: \"" + board.DeviceVersion + "\"");
+		board_log("\nProject Name: \"" + board.ProjectName + "\"\n");
+
+
+
 	}
 
 	// Zamiganie

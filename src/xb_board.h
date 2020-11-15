@@ -196,6 +196,12 @@ struct THandleDataFrameTransport;
 #include "xb_board_def.h"
 #include <utils\xb_board_message.h>
 
+#ifndef Serial0BoardBuf_BAUD
+#define board_log(str) Serial.print(str)
+#else
+#define board_log(str) board.Log(String(str).c_str())
+#endif
+
 #ifdef XB_PREFERENCES
 #include <Preferences.h>
 #endif
