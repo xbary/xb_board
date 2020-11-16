@@ -5,24 +5,24 @@ VisualStudioVersion = 16.0.29613.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ESP32_STATION3", "ESP32_STATION3\ESP32_STATION3.vcxproj", "{C5F80730-F44F-4478-BDAE-6634EFC2CA88}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xb_board-1.0", "..\..\libraries\xb_board\xb_board-1.0.vcxitems", "{A287E04E-89F7-4AFA-9E8B-0969E7ABF38C}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xb_board-1.0", "..\..\xb_board-1.0.vcxitems", "{A287E04E-89F7-4AFA-9E8B-0969E7ABF38C}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xb_SERIAL-0.0.1", "..\..\libraries\xb_SERIAL\xb_SERIAL-0.0.1.vcxitems", "{22AE3057-E71F-4E0A-B5FA-F59E6C3E73D2}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xb_SERIAL-0.0.1", "..\..\..\xb_SERIAL\xb_SERIAL-0.0.1.vcxitems", "{22AE3057-E71F-4E0A-B5FA-F59E6C3E73D2}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xb_GUI-1.0", "..\..\libraries\xb_GUI\xb_GUI-1.0.vcxitems", "{5083BB07-5ABE-4EE4-BA5A-8D002E239D0E}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xb_GUI-1.0", "..\..\..\xb_GUI\xb_GUI-1.0.vcxitems", "{5083BB07-5ABE-4EE4-BA5A-8D002E239D0E}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Preferences-1.0", "..\..\hardware\espressif\esp32\libraries\Preferences\Preferences-1.0.vcxitems", "{B424BED2-9601-4A91-A230-0A9F03EAF7FF}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Preferences-1.0", "..\..\..\..\hardware\espressif\esp32\libraries\Preferences\Preferences-1.0.vcxitems", "{570BBB7F-5D44-475D-A4CE-1CF41C1A84D4}"
 EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		..\..\libraries\xb_SERIAL\xb_SERIAL-0.0.1.vcxitems*{22ae3057-e71f-4e0a-b5fa-f59e6c3e73d2}*SharedItemsImports = 9
-		..\..\libraries\xb_GUI\xb_GUI-1.0.vcxitems*{5083bb07-5abe-4ee4-ba5a-8d002e239d0e}*SharedItemsImports = 9
-		..\..\libraries\xb_board\xb_board-1.0.vcxitems*{a287e04e-89f7-4afa-9e8b-0969e7abf38c}*SharedItemsImports = 9
-		..\..\hardware\espressif\esp32\libraries\Preferences\Preferences-1.0.vcxitems*{b424bed2-9601-4a91-a230-0a9f03eaf7ff}*SharedItemsImports = 9
-		..\..\hardware\espressif\esp32\libraries\Preferences\Preferences-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
-		..\..\libraries\xb_board\xb_board-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
-		..\..\libraries\xb_GUI\xb_GUI-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
-		..\..\libraries\xb_SERIAL\xb_SERIAL-0.0.1.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		..\..\..\xb_SERIAL\xb_SERIAL-0.0.1.vcxitems*{22ae3057-e71f-4e0a-b5fa-f59e6c3e73d2}*SharedItemsImports = 9
+		..\..\..\xb_GUI\xb_GUI-1.0.vcxitems*{5083bb07-5abe-4ee4-ba5a-8d002e239d0e}*SharedItemsImports = 9
+		..\..\..\..\hardware\espressif\esp32\libraries\Preferences\Preferences-1.0.vcxitems*{570bbb7f-5d44-475d-a4ce-1cf41c1a84d4}*SharedItemsImports = 9
+		..\..\xb_board-1.0.vcxitems*{a287e04e-89f7-4afa-9e8b-0969e7abf38c}*SharedItemsImports = 9
+		..\..\..\..\hardware\espressif\esp32\libraries\Preferences\Preferences-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		..\..\xb_board-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		..\..\..\xb_GUI\xb_GUI-1.0.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
+		..\..\..\xb_SERIAL\xb_SERIAL-0.0.1.vcxitems*{c5f80730-f44f-4478-bdae-6634efc2ca88}*SharedItemsImports = 4
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86

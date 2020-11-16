@@ -44,21 +44,21 @@
 // biblioteka pobiera³a kody z RX jako wciskanie klawiszy, nale¿y najpierw dodaæ do projektu
 // biblioteke XB_SERIAL. Podstawowa konfiguracja XB_SERIAL polega na ustawieniu takich makr:
 
-#define Serial0Board_BAUD 921600
+#define Serial0BoardBuf_BAUD 921600
 // Okreœla szybkoœæ pierwszego UARTa w urz¹dzeniu, oraz równoczeœnie go uruchamia
 
 #define SERIAL0_SizeRXBuffer 1024
 // Definicja wielkoœci bufora odbiorczego
 
-#define Serial0Board_UseKeyboard
+#define Serial0BoardBuf_UseKeyboard
 // Jeœli zdefiniujemy to zostanie dodany stream z którego korzystaæ bêdzie klawiatura jako kody 
 // klawiszy nadchodz¹ce w RX
 
-#define Serial0Board_UseLog
+#define Serial0BoardBuf_UseLog
 // Jeœli zdefiniowane to biblioteka XB_BOARD a konkretnie funkcja Log() zacznie korzystaæ poprzez
 // stream do wysy³ania komunikatów na TX uarta pierwszego
 
-#define Serial0Board_UseGui
+#define Serial0BoardBuf_UseGui
 // Jeœli zdefiniowane to na pierwszy uart bêdzie rysowane GUI
 
 //#define Serial0Board_RX_PIN ?
