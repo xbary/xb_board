@@ -552,7 +552,7 @@ public:
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
 	int OurReservedBlock;
-	bool AutoCheckHeapIntegrity;
+	bool AutoCheckHeapIntegrity=false;
 
 	uint32_t getFreePSRAM();
 	uint32_t getFreeHeap();
