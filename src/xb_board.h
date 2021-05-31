@@ -26,9 +26,9 @@ KROK 2. Dodanie flagi dla kompilatora aby szuka³ inkludy w katalogu projektu.
 We w³aœciwoœciach projektu dodajemy w pozycji Extra flags: taki wpis -I{build.path}
 
 -----------------------------------------------------
-KROK 3. Dodanie definicji we w³aœciwoœciach projektu z nazw¹ projektu.
+KROK 3. Dodanie definicji we w³aœciwoœciach projektu z nazw¹ projektu oraz sta³ej XB_BOARD.
 
-We w³aœciwoœciach projektu dodajemy w pozycji Defines: PROJECT_NAME="{build.project_name}"
+We w³aœciwoœciach projektu dodajemy w pozycji Defines: PROJECT_NAME="{build.project_name}";XB_BOARD
 
 -----------------------------------------------------
 KROK 4. Dodanie pliku inkludy o nazwie xb_board_def.h
@@ -131,7 +131,8 @@ KROK 5. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 
 #ifdef ESP32
 #include <WString.h>
-#define FSS(str) (String(F(str)).c_str())
+//#define FSS(str) (String(F(str)).c_str())
+#define FSS(str) str
 #endif
 
 #ifdef __riscv64
@@ -203,12 +204,14 @@ struct THandleDataFrameTransport;
 #endif
 
 #ifdef XB_PREFERENCES
-#include <Preferences.h>
+#include "../../../hardware/espressif/esp32master/libraries/Preferences/src/Preferences.h"
 #endif
 
 #ifndef BOARD_TASKNAME_MAXLENGTH
 #define BOARD_TASKNAME_MAXLENGTH 16
 #endif
+
+#define DEVICENAME_MAXSIZE 32
 
 struct TTaskDef
 {
@@ -418,16 +421,6 @@ public:
 	uint8_t Repaint_All;
 };
 
-#ifdef XB_BOARD_MEMDEBUG
-struct TXBMemDebug
-{
-	TXBMemDebug* Next;
-	TXBMemDebug* Prev;
-	uint32_t Size;
-	TTask* OwnerTask;
-};
-#endif
-
 struct TBuf {
 	uint32_t SectorSize;
 	uint32_t AlarmMaxLength;
@@ -470,7 +463,8 @@ public:
 #endif
 	//-----------------------------------------------------------------------------------------------------------------
 	uint8_t crc8(const uint8_t *addr, uint8_t len);
-	void FilterString(const char *Asourcestring, String &Adestinationstring);	
+	void FilterString(const char *Asourcestring, String &Adestinationstring);
+	void FilterString(const char* Asourcestring, TBuf *Adestinationstring);
 	String DeviceIDtoString(TUniqueID Adevid);
     //-----------------------------------------------------------------------------------------------------------------
 	TPinInfo *PinInfoTable;	
@@ -519,6 +513,7 @@ public:
 	TTask *GetTaskByIndex(uint8_t Aindex);
 	TTaskDef *GetTaskDefByName(String ATaskName);
 	TTask* GetTaskByName(String ATaskName);
+	void DoLoopTask(TTask* t);
 	void IterateTask();
 	void TriggerInterrupt(TTaskDef *Ataskdef);
 	void DoInterrupt(TTaskDef *Ataskdef);
@@ -529,33 +524,38 @@ public:
 	bool DoMessage(TMessageBoard *mb, bool Arunagain, TTask *Afromtask, TTaskDef *Atotaskdef);
 	bool DoMessageOnAllTask(TMessageBoard *mb, bool Arunagain, TDoMessageDirection ADoMessageDirection, TTask *Afromtask = NULL, TTaskDef *Aexcludetask = NULL);
 	bool DoMessageByTaskName(String Ataskname, TMessageBoard *mb, bool Arunagain);
-	bool SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString);
-	bool SendMessage_GetTaskNameString(TTaskDef *ATaskDef, String &APointerString);
-	bool SendMessage_GetTaskNameString(TTask* ATask, String& APointerString);
+	bool SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String *APointerString);
+	bool SendMessage_GetTaskNameString(TTaskDef *ATaskDef, String *APointerString);
+	bool SendMessage_GetTaskNameString(TTask* ATask, String *APointerString);
 	void SendMessage_OTAUpdateStarted();
 	void SendMessage_FunctionKeyPress(TKeyboardFunction Akeyfunction, char Akey, TTaskDef *Aexcludetask=NULL, TTaskDef* Afromstreamtask=NULL);
 	void SendMessage_KeyPress(char Akey, TTaskDef *Aexcludetask = NULL, TTaskDef* Afromstreamtask = NULL);
 	void SendMessage_FREEPTR(void *Aptr);
 	void SendMessage_REALLOCPTR(void* Aoldptr, void* Anewptr);
 	void SendMessage_RTCSYNC();
+	int SendMessage_GetVarCount(TTask* Atask);
+	String SendMessage_GetVarName(int AindxVar, TTask* Atask);
+	String SendMessage_GetVarValue(String Avarname, TTask* Atask);
+	String SendMessage_GetVarDescription(String Avarname, TTask* Atask);
 	//-----------------------------------------------------------------------------------------------------------------
-#ifdef PSRAM_BUG
-	void *psram2m;
-	uint32_t GETFREEPSRAM_ERROR_COUNTER;
-	uint32_t lastfreepsram;
-	uint32_t MaximumMallocPSRAM;
-#endif
 	uint32_t FreePSRAMInLoop;
 	uint32_t MinimumFreePSRAMInLoop;
 	uint32_t MaximumFreePSRAMInLoop;
 	uint32_t FreeHeapInLoop;
 	uint32_t MinimumFreeHeapInLoop;
 	uint32_t MaximumFreeHeapInLoop;
-	int OurReservedBlock;
+	uint32_t MaxFreeHeapInLoop;
+
+	uint32_t FreeMaxAllocInLoop;
+	uint32_t MinimumFreeMaxAllocInLoop;
+
+
+
 	bool AutoCheckHeapIntegrity=false;
 
 	uint32_t getFreePSRAM();
 	uint32_t getFreeHeap();
+	uint32_t getMaxAllocHeap();
 	void *_malloc_psram(size_t size);
 	void *_realloc_psram(void* Aptr, size_t Asize);
 	void *_malloc(size_t size);
@@ -615,11 +615,12 @@ public:
 	TConsoleScreen *ConsoleScreen;
 	
 	//-----------------------------------------------------------------------------------------------------------------
-#ifdef XB_PREFERENCES
 	size_t preferences_freeEntries;
+#ifdef XB_PREFERENCES
 	Preferences *xbpreferences;
+#endif
 
-	bool PREFERENCES_BeginSection(String ASectionname);
+	bool PREFERENCES_BeginSection(String ASectionname="");
 	void PREFERENCES_EndSection();
 	void PREFERENCES_CLEAR();
 	void PREFERENCES_CLEAR(String Akey);
@@ -643,7 +644,7 @@ public:
 	int16_t PREFERENCES_GetINT16(const char* key, int16_t defaultvalue);
 	size_t PREFERENCES_PutDouble(const char* key, double value);
 	double PREFERENCES_GetDouble(const char* key, double defaultvalue);
-#endif
+
 	void LoadConfiguration(TTaskDef* ATaskDef);
 	void LoadConfiguration(TTask* ATask);
 	void LoadConfiguration();
@@ -664,6 +665,30 @@ public:
 void XB_BOARD_Repaint_TFarDeviceID();
 #endif
 
+
+#define LOG_ERROR(str) \
+board.Log(String(str).c_str(),true,true,tlError)
+
+#define LOG_ERROR_S(str,show) \
+{ if (show) board.Log(String(str).c_str(),true,true,tlError); }
+
+#define LOG_WARN(str) \
+board.Log(String(str).c_str(),true,true,tlWarn)
+
+#define LOG_WARN_S(str,show) \
+{ if (show) board.Log(String(str).c_str(),true,true,tlWarn); }
+
+#define LOG(str) \
+board.Log(String(str).c_str(),true,true,tlInfo)
+
+#define LOG_NR(str) \
+board.Log(String(str).c_str(),tlInfo)
+
+#define LOG_S(str,show) \
+{ if (show) board.Log(String(str).c_str(),true,true,tlInfo); }
+
+
+
 bool BUFFER_Write_UINT8(TBuf* Abuf, uint8_t Av, bool Alogmessage=false);
 uint32_t BUFFER_GetSizeData(TBuf* Abuf);
 bool BUFFER_Read_UINT8(TBuf* Abuf, uint8_t* Av);
@@ -673,6 +698,8 @@ uint8_t* BUFFER_GetReadPtr(TBuf* Abuf);
 void BUFFER_Readed(TBuf* Abuf, uint32_t Areadedbyte);
 void BUFFER_Reset(TBuf* Abuf);
 uint8_t* BUFFER_GetBufferPtrAndReset(TBuf* Abuf);
+
+String BOARD_GetString_TFrameType(TFrameType Aft);
 
 extern TXB_board board;
 extern TTaskDef XB_BOARD_DefTask;

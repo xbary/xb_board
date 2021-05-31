@@ -174,11 +174,13 @@ extern int32_t globalonetry;
 
 
 
-
+extern void DecodeUnixTime(uint32_t t, struct tm* dt);
 extern void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt);	
 extern uint32_t RTC_EncodeUnixTime(struct tm *TM);
 extern void GetTimeIndx(String &Atotxt, uint32_t Atimeindx);
+extern String GetTimeString(uint32_t Adatetimeunix);
 extern void GetTime(String& Atotxt, uint32_t Adatetimeunix, bool Ayear = false, bool Amonth = false, bool Aday = false);
+extern String GetDateTimeAsString(uint32_t Adatetimeunix, bool Ayear, bool Amonth, bool Aday);
 extern uint8_t ahextoint(REGISTER uint8_t Ach);
 extern double strtodouble(String Astrdouble);
 extern uint8_t doubletostr(double v,char *buf, uint8_t prec = 2);
@@ -190,9 +192,10 @@ extern uint8_t uinttoaw(REGISTER uint32_t value, REGISTER  char* result, uint8_t
 extern uint8_t uinttoa(REGISTER uint32_t value, REGISTER char* result);
 extern bool hexstrTouint32(char *Astr, int8_t Alen, uint32_t *Aint);
 extern void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aadd);
+extern String uint32tohexstring(uint32_t Auint32_t);
 extern void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aadd);
 extern void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint32_t Acount, char Asep = 0,bool Aenter=false);
-extern int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench);
+extern int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench, bool AignoreinDblQuote = false, bool AignoreinQuote=false);
 extern uint32_t StringPos(const char *Astr,const char *Asubstr, uint32_t *Aposindx);
 extern bool StringTrim(char *Astr, char Achtrim = ' ');
 extern bool StringTrimRight(char* Astr, char Achtrim = ' ');
@@ -218,6 +221,7 @@ extern void uintcat(char *Astr, uint32_t Avalue);
 extern void charcat(char *Astr, char Ach);
 
 typedef enum { staLeft, staCentre, staRight } TStringTextAlignment;
+extern String StringAddRightChar(String Astr, uint8_t Awidth, char Achar = ' ');
 extern void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringtextalignment=staLeft, char Ach=' '); 
 //extern int round(float value);
 extern float _CutPrecision(float liczba, uint8_t digprecis=2);

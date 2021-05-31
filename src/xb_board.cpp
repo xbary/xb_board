@@ -22,7 +22,7 @@ extern "C" {
 
 #ifdef XB_PREFERENCES
 #ifdef ESP32
-#include <Preferences.h>
+#include "../../../hardware/espressif/esp32master/libraries/Preferences/src/Preferences.h"
 #else
 #error "XB_PREFERENCES not support"
 #endif
@@ -59,6 +59,7 @@ bool xb_board_ConsoleInWindow = false;
 bool xb_board_CFG_ConsoleInWindow = false;
 uint8_t xb_board_ConsoleWidth = CONSOLE_WIDTH_DEFAULT;
 uint8_t xb_board_ConsoleHeight = CONSOLE_HEIGHT_DEFAULT;
+bool xb_board_Consoleputtoserial = false;
 bool xb_board_ShowListFarDeviceID = false;
 
 // Zmienne i funkcjonalnoœæ GUI do zadania systemowego
@@ -214,12 +215,6 @@ TXB_board::TXB_board()
 	FarDeviceIDList_last = NULL;
 	AutoCheckHeapIntegrity = false;
 
-#ifdef PSRAM_BUG
-	lastfreepsram = 0;
-	GETFREEPSRAM_ERROR_COUNTER = 0;
-	MaximumMallocPSRAM = 0;
-#endif
-	OurReservedBlock = 0;
 	iteratetask_procedure = false;
 	setup_procedure = false;
 	CurrentTask = NULL;
@@ -384,6 +379,7 @@ typedef enum
 	sfGetVarName, 
 	sfCancelGetVarName
 } TStepFilter;
+
 void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstring)
 {
 	uint32_t lensource = StringLength(Asourcestring, 0);
@@ -427,10 +423,10 @@ void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstri
 					if(varname.length() > 0)					
 					{
 						TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
-						mb.IDMessage = IM_GET_VAR_VALUE;
+						mb.IDMessage = IM_VAR;
 						mb.fromTask = NULL;
-						mb.Data.VarValueData.VarName = &varname;
-						mb.Data.VarValueData.VarValue = &varvalue;
+						mb.Data.VarData.VarName = &varname;
+						mb.Data.VarData.VarValue = &varvalue;
 						result = DoMessageOnAllTask(&mb, true, doFORWARD);
 						if (result)
 						{
@@ -447,6 +443,7 @@ void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstri
 
 							Adestinationstring += '%';
 							Adestinationstring += varname;
+							Adestinationstring += '%';
 							varname = "";
 							sf = sfGetVarName;
 							indx_s++;
@@ -487,6 +484,112 @@ void TXB_board::FilterString(const char *Asourcestring, String &Adestinationstri
 	
 	}
 }
+
+void TXB_board::FilterString(const char* Asourcestring, TBuf *Adestinationstring)
+{
+	uint32_t lensource = StringLength(Asourcestring, 0);
+	uint32_t indx_s = 0;
+	char ch = 0;
+	String varname = "";
+	varname.reserve(256);
+	String varvalue = "";
+	varvalue.reserve(256);
+	TStepFilter sf = sfNormalChar;
+	bool result;
+
+	while (indx_s < lensource)
+	{
+		ch = Asourcestring[indx_s];
+		switch (sf)
+		{
+		case sfNormalChar:
+		{
+			if (ch == '%')
+			{
+				sf = sfGetVarName;
+				varname = "";
+				indx_s++;
+			}
+			else
+			{
+				BUFFER_Write_UINT8(Adestinationstring, (uint8_t)ch);
+
+				indx_s++;
+			}
+			break;
+		}
+		case sfGetVarName:
+		{
+			if (ch == '%')
+			{
+				// Koniec nazwy zmiennej
+				if (varname.length() > 0)
+				{
+					TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+					mb.IDMessage = IM_VAR;
+					mb.fromTask = NULL;
+					mb.Data.VarData.VarName = &varname;
+					mb.Data.VarData.VarValue = &varvalue;
+					result = DoMessageOnAllTask(&mb, true, doFORWARD);
+					if (result)
+					{
+						// Wstaw zawartoœæ
+						for (int i = 0; i < varvalue.length(); i++)  BUFFER_Write_UINT8(Adestinationstring, (uint8_t)varvalue[i]);
+						varname = "";
+						varvalue = "";
+						indx_s++;
+						sf = sfNormalChar;
+					}
+					else
+					{
+						// wstaw nazwe zmiennej bo niema w systemie takiej
+
+						BUFFER_Write_UINT8(Adestinationstring, (uint8_t)'%');
+						for (int i = 0; i < varname.length(); i++)  BUFFER_Write_UINT8(Adestinationstring, (uint8_t)varname[i]);
+						BUFFER_Write_UINT8(Adestinationstring, (uint8_t)'%');
+
+						varname = "";
+						sf = sfGetVarName;
+						indx_s++;
+					}
+				}
+				else
+				{
+					Adestinationstring += ch;
+					sf = sfNormalChar;
+				}
+			}
+			else
+			{
+				// Kolejny znak nazwy zmienne;
+				varname += ch;
+				indx_s++;
+
+				if (indx_s >= lensource)
+				{
+					// Anuluj nazwe zmiennej bo koniec Ÿród³a
+					indx_s--;
+					sf = sfCancelGetVarName;
+				}
+			}
+			break;
+		}
+		case sfCancelGetVarName:
+		{
+			BUFFER_Write_UINT8(Adestinationstring, (uint8_t)'%');
+			for(int i=0;i<varname.length();i++)  BUFFER_Write_UINT8(Adestinationstring, (uint8_t)varname[i]);
+
+			varname = "";
+			sf = sfNormalChar;
+			indx_s++;
+			break;
+		}
+		}
+	}
+}
+
+
+
 String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 {
 	char strid[25];
@@ -494,6 +597,21 @@ String TXB_board::DeviceIDtoString(TUniqueID Adevid)
 	uint8tohexstr(strid, (uint8_t *)&Adevid, 8, ':');
 
 	return String(strid);
+}
+
+String BOARD_GetString_TFrameType(TFrameType Aft)
+{
+	switch (Aft)
+	{
+		GET_ENUMSTRING(ftResponseOK, 2);
+		GET_ENUMSTRING(ftResponseError, 2);
+		GET_ENUMSTRING(ftResponseCRCError, 2);
+		GET_ENUMSTRING(ftBufferIsFull, 2);
+		GET_ENUMSTRING(ftOKWaitForNext, 2);
+		GET_ENUMSTRING(ftUnrecognizedType, 2);
+		GET_ENUMSTRING(ftThereIsNoSuchTask, 2);
+	}
+	return "No ident Enum";
 }
 
 #pragma endregion
@@ -1277,13 +1395,13 @@ TTask *TXB_board::AddTask(TTaskDef *Ataskdef, uint64_t ADeviceID)
 		if (Ataskdef == ta->TaskDef)
 		{
 			String taskname = "";
-			SendMessage_GetTaskNameString(Ataskdef, taskname);
+			SendMessage_GetTaskNameString(Ataskdef, &taskname);
 			Log(String("The task [" + taskname + "] has already been added...").c_str(), true, true, tlWarn);
 			return ta;
 		}
 		ta = ta->Next;
 	}
-	
+
 	TTask *t = (TTask *)board._malloc(sizeof(TTask));
 	if (t != NULL)
 	{
@@ -1350,6 +1468,22 @@ bool TXB_board::DelTask(TTaskDef *Ataskdef)
 	return false;
 }
 // ---------------------------------------------------------------------------------------------------------------
+
+void TXB_board::DoLoopTask(TTask* t)
+{
+	if (t == NULL) return;
+	if (t->TaskDef == NULL) return;
+	t->doloopRC++;
+	{
+		CurrentTask = t;
+		t->TickWaitLoop = t->TaskDef->doloop();
+		t->TickReturn = SysTickCount;
+		CurrentTask = XB_BOARD_DefTask.Task;
+	}
+	t->doloopRC--;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // G³ówna procedura uruchamiaj¹ca zadania z podzia³em na priorytety, zg³oszeñ z przerwañ i czekaj¹cych zadany czas
 void TXB_board::IterateTask()
 {
@@ -1363,8 +1497,9 @@ void TXB_board::IterateTask()
 		// Sprawdzenie czy uruchomiæ przerwanie
 		if(doAllInterruptRC > 0)
 		{
-			TTask* t = TaskList;
 			doAllInterruptRC--;
+
+			TTask* t = TaskList;
 			bool isint = false;
 			while (t != NULL)
 			{
@@ -1372,12 +1507,12 @@ void TXB_board::IterateTask()
 				{
 					if (t->dointerruptRC > 0)
 					{
-						iteratetask_procedure = false;
+						
 						CurrentTask = t;
 						DoInterrupt(t->TaskDef);
 						CurrentTask = XB_BOARD_DefTask.Task;
 						isint = true;
-						iteratetask_procedure = true;
+						
 					}
 				}
 				t = t->Next;
@@ -1386,37 +1521,11 @@ void TXB_board::IterateTask()
 			if (isint) 
 			{
 				iteratetask_procedure = false;
+				return;
 			}
 		}
-		//--------------------------------------
-		// Sprawdzenie czy w którymœ zadaniu min¹³ czas na uruchomienie Loop()
-		{
-			if (CurrentWaitLoopTask == NULL) CurrentWaitLoopTask = TaskList;
-			while (CurrentWaitLoopTask != NULL)
-			{
-				if (CurrentWaitLoopTask->TaskDef->doloop != NULL)
-				{
-					if (CurrentWaitLoopTask->TickWaitLoop != 0)
-					{
-						if (SysTickCount - CurrentWaitLoopTask->TickReturn >= CurrentWaitLoopTask->TickWaitLoop)
-						{
-							CurrentTask = CurrentWaitLoopTask;
-							CurrentWaitLoopTask->doloopRC++;
-							CurrentWaitLoopTask->TickWaitLoop = CurrentWaitLoopTask->TaskDef->doloop();
-							CurrentWaitLoopTask->TickReturn = SysTickCount;
-							CurrentTask  = XB_BOARD_DefTask.Task;
-							CurrentWaitLoopTask->doloopRC--;
-							CurrentWaitLoopTask = CurrentWaitLoopTask->Next;
-							break;
-						}
-					}
-				}
-				CurrentWaitLoopTask = CurrentWaitLoopTask->Next;
-			}
 
-		}
-		//--------------------------------------
-
+		// ----------------------------------------------------------
 		// zapamiêtanie iloœci wolnej pamiêci ram i minimalnego stanu
 		DEF_WAITMS_VAR(GFH);
 		BEGIN_WAITMS(GFH, 500);
@@ -1433,7 +1542,21 @@ void TXB_board::IterateTask()
 				if (FreeHeapInLoop < MinimumFreeHeapInLoop)
 				{
 					MinimumFreeHeapInLoop = FreeHeapInLoop;
-				}	
+				}
+
+				FreeMaxAllocInLoop = getMaxAllocHeap();
+				if (FreeMaxAllocInLoop < MinimumFreeMaxAllocInLoop)
+				{
+					MinimumFreeMaxAllocInLoop = FreeMaxAllocInLoop;
+				}
+
+				if (AutoCheckHeapIntegrity)
+				{
+					if (!heap_caps_check_integrity_all(true))
+					{
+						heap_caps_dump_all();
+					}
+				}
 			}
 #else
 			FreeHeapInLoop = getFreeHeap();
@@ -1445,43 +1568,70 @@ void TXB_board::IterateTask()
 
 		}
 		END_WAITMS(GFH);
-		// ----------------------------------------------------------
+		//--------------------------------------
 
-		// jeœli bufor nadawczy jest zape³niony to nie uruchamiaj zadañ
-		//if (Serial_availableForWrite() < Serial_EmptyTXBufferSize) return;
-		// ------------------------------------------------------------
 
-		if (CurrentIterateTaskRealTime == NULL) CurrentIterateTaskRealTime = TaskList;
-		// Uruchomienie zadañ tzw realtime
+		//--------------------------------------
+		// Sprawdzenie czy w którymœ zadaniu min¹³ czas na uruchomienie Loop()
 		{
-			while (CurrentIterateTaskRealTime != NULL)
+			if (CurrentWaitLoopTask == NULL) CurrentWaitLoopTask = TaskList;
+			while (CurrentWaitLoopTask != NULL)
 			{
-				if (CurrentIterateTaskRealTime->TaskDef->doloop != NULL)
+				if (CurrentWaitLoopTask->TaskDef->doloop != NULL)
 				{
-					if (CurrentIterateTaskRealTime->TaskDef->Priority == 0)
+					if (CurrentWaitLoopTask->TickWaitLoop != 0)
 					{
-						if (CurrentIterateTaskRealTime->TickWaitLoop == 0)
+						if (SysTickCount - CurrentWaitLoopTask->TickReturn >= CurrentWaitLoopTask->TickWaitLoop)
 						{
-							CurrentTask = CurrentIterateTaskRealTime;
-							CurrentIterateTaskRealTime->doloopRC++;
-							CurrentIterateTaskRealTime->TickWaitLoop = CurrentIterateTaskRealTime->TaskDef->doloop();
-							CurrentIterateTaskRealTime->TickReturn = SysTickCount;
-							CurrentTask = XB_BOARD_DefTask.Task;
-							CurrentIterateTaskRealTime->doloopRC--;
-							CurrentIterateTaskRealTime = CurrentIterateTaskRealTime->Next;
-							break;
+							DoLoopTask(CurrentWaitLoopTask);
+							CurrentWaitLoopTask = CurrentWaitLoopTask->Next;
+							//break;
+							iteratetask_procedure = false;
+							return;
 						}
 					}
 				}
-				CurrentIterateTaskRealTime = CurrentIterateTaskRealTime->Next;
+				CurrentWaitLoopTask = CurrentWaitLoopTask->Next;
+			}
+
+		}
+		//--------------------------------------
+
+		//--------------------------------------
+		// Uruchomienie zadañ tzw realtime
+		{
+			if (CurrentIterateTaskRealTime == NULL)
+			{
+				CurrentIterateTaskRealTime = TaskList;
+			}
+			else
+			{
+				while (CurrentIterateTaskRealTime != NULL)
+				{
+					if (CurrentIterateTaskRealTime->TaskDef->doloop != NULL)
+					{
+						if (CurrentIterateTaskRealTime->TaskDef->Priority == 0)
+						{
+							if (CurrentIterateTaskRealTime->TickWaitLoop == 0)
+							{
+								DoLoopTask(CurrentIterateTaskRealTime);
+								CurrentIterateTaskRealTime = CurrentIterateTaskRealTime->Next;
+								iteratetask_procedure = false;
+								return;
+							}
+						}
+					}
+					CurrentIterateTaskRealTime = CurrentIterateTaskRealTime->Next;
+				}
 			}
 		}
 		//--------------------------------------
 
-		if (CurrentIterateTaskPriority == NULL) CurrentIterateTaskPriority = TaskList;
-		
+		//--------------------------------------
 		// Uruchomienie zadañ z podzia³em na priorytety
 		{
+			if (CurrentIterateTaskPriority == NULL) CurrentIterateTaskPriority = TaskList;
+		
 			while (CurrentIterateTaskPriority != NULL)
 			{
 				if (CurrentIterateTaskPriority->TaskDef->doloop != NULL)
@@ -1493,15 +1643,13 @@ void TXB_board::IterateTask()
 							CurrentIterateTaskPriority->CounterPriority++;
 							if (CurrentIterateTaskPriority->CounterPriority >= CurrentIterateTaskPriority->TaskDef->Priority)
 							{
+			
 								CurrentIterateTaskPriority->CounterPriority = 0;
-								CurrentTask = CurrentIterateTaskPriority;
-								CurrentIterateTaskPriority->doloopRC++;
-								CurrentIterateTaskPriority->TickWaitLoop = CurrentIterateTaskPriority->TaskDef->doloop();
-								CurrentIterateTaskPriority->TickReturn = SysTickCount;
-								CurrentTask = XB_BOARD_DefTask.Task;
-								CurrentIterateTaskPriority->doloopRC--;
+								DoLoopTask(CurrentIterateTaskPriority);
 								CurrentIterateTaskPriority = CurrentIterateTaskPriority->Next;
-								break;
+								//break;
+								iteratetask_procedure = false;
+								return;
 							}
 						}
 					}
@@ -1510,15 +1658,6 @@ void TXB_board::IterateTask()
 			}
 		}
 		//--------------------------------------
-	}
-
-	
-	if (AutoCheckHeapIntegrity)
-	{
-		if (!heap_caps_check_integrity_all(true))
-		{
-			heap_caps_dump_all();
-		}
 	}
 
 	iteratetask_procedure = false;
@@ -1554,7 +1693,7 @@ TTaskDef *TXB_board::GetTaskDefByName(String ATaskName)
 	{
 		if (t->TaskDef != NULL)
 		{
-			if (SendMessage_GetTaskNameString(t->TaskDef, tmpstr))
+			if (SendMessage_GetTaskNameString(t->TaskDef, &tmpstr))
 			{
 				if (tmpstr == ATaskName) return t->TaskDef;
 			}
@@ -1577,7 +1716,7 @@ TTask* TXB_board::GetTaskByName(String ATaskName)
 	{
 		if (t->TaskDef != NULL)
 		{
-			if (SendMessage_GetTaskNameString(t->TaskDef, tmpstr))
+			if (SendMessage_GetTaskNameString(t->TaskDef, &tmpstr))
 			{
 				if (tmpstr == ATaskName) return t;
 			}
@@ -1761,7 +1900,7 @@ bool TXB_board::DoMessageByTaskName(String Ataskname,TMessageBoard *mb, bool Aru
 			if (t->TaskDef->domessage)
 			{
 				tn = "";
-				if (SendMessage_GetTaskNameString(t->TaskDef, tn))
+				if (SendMessage_GetTaskNameString(t->TaskDef, &tn))
 				{
 					if (Ataskname == tn)
 					{
@@ -1780,11 +1919,11 @@ bool TXB_board::DoMessageByTaskName(String Ataskname,TMessageBoard *mb, bool Aru
 // -> APointerString - Referencja klasy String w którym znajdzie siê status
 // <- True           - wykonano poprawnie procedure pobrania status stringu
 //    False          - Zadanie nie obs³uguje messaga 
-bool TXB_board::SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String &APointerString)
+bool TXB_board::SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String *APointerString)
 {
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GET_TASKSTATUS_STRING;
-	mb.Data.PointerString = &APointerString;
+	mb.Data.PointerString = APointerString;
 	bool res = DoMessage(&mb, true, CurrentTask, ATaskDef);
 	*mb.Data.PointerString += "                   ";
 	return res;
@@ -1795,16 +1934,16 @@ bool TXB_board::SendMessage_GetTaskStatusString(TTaskDef *ATaskDef, String &APoi
 // -> APointerString - Referencja klasy String w którym znajdzie siê nazwa
 // <- True           - wykonano poprawnie procedure pobrania nazwy zadania
 //    False          - Zadanie nie obs³uguje messaga 
-bool TXB_board::SendMessage_GetTaskNameString(TTaskDef *ATaskDef,String &APointerString)
+bool TXB_board::SendMessage_GetTaskNameString(TTaskDef *ATaskDef,String *APointerString)
 {
 	if (ATaskDef == NULL) return false;
 	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
 	mb.IDMessage = IM_GET_TASKNAME_STRING;
-	mb.Data.PointerString = &APointerString;
+	mb.Data.PointerString = APointerString;
 	bool res = DoMessage(&mb, true, CurrentTask, ATaskDef);
-	if (APointerString.length() > BOARD_TASKNAME_MAXLENGTH)
+	if (APointerString->length() > BOARD_TASKNAME_MAXLENGTH)
 	{
-		APointerString = APointerString.substring(0, BOARD_TASKNAME_MAXLENGTH);
+		*APointerString = APointerString->substring(0, BOARD_TASKNAME_MAXLENGTH);
 	}
 	return res;
 }
@@ -1814,7 +1953,7 @@ bool TXB_board::SendMessage_GetTaskNameString(TTaskDef *ATaskDef,String &APointe
 // -> APointerString - Referencja klasy String w którym znajdzie siê nazwa
 // <- True           - wykonano poprawnie procedure pobrania nazwy zadania
 //    False          - Zadanie nie obs³uguje messaga 
-bool TXB_board::SendMessage_GetTaskNameString(TTask* ATask, String& APointerString)
+bool TXB_board::SendMessage_GetTaskNameString(TTask* ATask, String *APointerString)
 {
 	return SendMessage_GetTaskNameString(ATask->TaskDef, APointerString);
 }
@@ -1882,6 +2021,79 @@ void TXB_board::SendMessage_RTCSYNC()
 	DoMessageOnAllTask(&mb, true, doFORWARD);
 }
 
+int TXB_board::SendMessage_GetVarCount(TTask *Atask)
+{
+	String varname;
+	String varvalue;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_VAR;
+	mb.Data.VarData.Action = vdaCountVar;
+	mb.Data.VarData.VarName = &varname;
+	mb.Data.VarData.VarValue = &varvalue;
+	bool result = DoMessage(&mb, true, NULL,Atask->TaskDef);
+	return  mb.Data.VarData.CountVar;
+}
+
+String TXB_board::SendMessage_GetVarName(int AindxVar,TTask* Atask)
+{
+	String varname;
+	String varvalue;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_VAR;
+	mb.Data.VarData.Action = vdaGetVarName;
+	mb.Data.VarData.VarName = &varname;
+	mb.Data.VarData.VarValue = &varvalue;
+	mb.Data.VarData.IndxVar = AindxVar + 1;
+	bool result = DoMessage(&mb, true, NULL, Atask->TaskDef);
+	if (result)
+	{
+		return varname;
+	}
+	else
+	{
+		return "";
+	}
+}
+
+String TXB_board::SendMessage_GetVarValue(String Avarname, TTask* Atask)
+{
+	
+	String varvalue;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_VAR;
+	mb.Data.VarData.Action = vdaGetValue;
+	mb.Data.VarData.VarName = &Avarname;
+	mb.Data.VarData.VarValue = &varvalue;
+	bool result = DoMessage(&mb, true, NULL, Atask->TaskDef);
+	if (result)
+	{
+		return varvalue;
+	}
+	else
+	{
+		return "";
+	}
+}
+
+String TXB_board::SendMessage_GetVarDescription(String Avarname, TTask* Atask)
+{
+
+	String varvalue;
+	TMessageBoard mb; xb_memoryfill(&mb, sizeof(TMessageBoard), 0);
+	mb.IDMessage = IM_VAR;
+	mb.Data.VarData.Action = vdaGetVarDesc;
+	mb.Data.VarData.VarName = &Avarname;
+	mb.Data.VarData.VarValue = &varvalue;
+	bool result = DoMessage(&mb, true, NULL, Atask->TaskDef);
+	if (result)
+	{
+		return varvalue;
+	}
+	else
+	{
+		return "";
+	}
+}
 
 #pragma endregion
 #pragma region FUNKCJE_OBSLUGI_RAM
@@ -1896,33 +2108,8 @@ extern uint32_t _estack;
 uint32_t TXB_board::getFreePSRAM()
 {
 #if defined(BOARD_HAS_PSRAM) && defined(ESP32)
-	
 	uint32_t freepsram = ESP.getMaxAllocPsram();
-#ifdef PSRAM_BUG
-	uint32_t r = 0;
-	if (lastfreepsram == 0)
-	{
-		lastfreepsram = freepsram;
-	}
-	else
-	{
-		r = (lastfreepsram > freepsram) ? (lastfreepsram - freepsram) : (freepsram - lastfreepsram);	
-	}
-
-	if (r > (100 * MaximumMallocPSRAM))
-	{
-		asm("memw");
-		
-		GETFREEPSRAM_ERROR_COUNTER++;
-	}
-	else
-	{
-		lastfreepsram = freepsram;
-	}
-	return lastfreepsram;
-#else
 	return freepsram;
-#endif
 #else
 #ifdef __riscv64
 	return get_free_heap_size();
@@ -1933,7 +2120,6 @@ uint32_t TXB_board::getFreePSRAM()
 #if defined(ESP32) || defined(ESP8266)
 	return ESP.getFreeHeap();
 #endif
-	
 #endif
 }
 // -------------------------------------
@@ -1958,6 +2144,29 @@ uint32_t TXB_board::getFreeHeap()
 #endif
 }
 
+// -------------------------------------
+// Zwrócenie iloœci maksymalnie wielkiego bloku wolnej pamiêci RAM
+// <- Iloœæ bajtów
+uint32_t TXB_board::getMaxAllocHeap()
+{
+#if defined(ESP8266) || defined(ESP32)
+	return ESP.getMaxAllocHeap();
+#endif
+
+#ifdef __riscv64
+	return get_free_heap_size();
+#endif
+
+#ifdef ARDUINO_ARCH_STM32
+	{
+		uint8_t v = 0;
+		char* heap_end = (char*)_sbrk(0);
+		return ((uint32_t)&v) - ((uint32_t)heap_end);
+	}
+#endif
+}
+
+
 void __HandlePTR(void** Aptr, TMessageBoard* Am)
 {
 	if (Am->Data.HandlePTRData.TypeHandlePTRAction == thpaFreePTR) \
@@ -1970,99 +2179,155 @@ void __HandlePTR(void** Aptr, TMessageBoard* Am)
 	} 
 }
 
-//#if !defined(_VMICRO_INTELLISENSE)
-static void ___free(void* Aptr)
-{
-	if (!heap_caps_check_integrity_all(true))
-	{
-		heap_caps_dump_all();
-	}
-	free(Aptr);
-}
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-static void* ___malloc(size_t Asize)
-{
-	if (board.AutoCheckHeapIntegrity)
+	int OurReservedBlock;
+	int psraminited;
+
+	void ___free(void* Aptr)
 	{
 		if (!heap_caps_check_integrity_all(true))
 		{
 			heap_caps_dump_all();
 		}
-	}
-
-	void* ptr = malloc(Asize);
-	if (ptr != NULL) for (uint32_t i = 0; i < Asize; i++) ((uint8_t*)ptr)[i] = 0;
-	return ptr;
-}
-
-static void* ___realloc(void *Aptr,size_t Asize)
-{
-	if (board.AutoCheckHeapIntegrity)
-	{
-		if (!heap_caps_check_integrity_all(true))
+#if !defined(_VMICRO_INTELLISENSE)
+		free(Aptr);
+#endif
+		if (Aptr != NULL)
 		{
-			heap_caps_dump_all();
+			OurReservedBlock--;
 		}
 	}
 
-	void* ptr = realloc(Aptr,Asize);
-	return ptr;
+	void* ___malloc(size_t Asize)
+	{
+		if (board.AutoCheckHeapIntegrity)
+		{
+			if (!heap_caps_check_integrity_all(true))
+			{
+				heap_caps_dump_all();
+			}
+		}
+
+#if !defined(_VMICRO_INTELLISENSE)
+		void* ptr = malloc(Asize);
+		if (ptr != NULL)
+		{
+			OurReservedBlock++;
+			for (uint32_t i = 0; i < Asize; i++) ((uint8_t*)ptr)[i] = 0;
+		}
+		return ptr;
+#endif
+	}
+
+	void* ___malloc_psram(size_t Asize)
+	{
+		void* ptr = nullptr;
+
+		if (board.AutoCheckHeapIntegrity)
+		{
+			if (!heap_caps_check_integrity_all(true))
+			{
+				heap_caps_dump_all();
+			}
+		}
+
+#if !defined(_VMICRO_INTELLISENSE)
+
+#ifdef BOARD_HAS_PSRAM
+
+		bool b = psramFound();
+		if (!b)
+		{
+			b = psramInit();
+			psraminited++;
+		}
+		if ((b) || (psraminited > 0))
+		{
+			ptr = ps_malloc(Asize);//heap_caps_malloc(Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+			if (ptr == NULL)
+			{
+				ptr = malloc(Asize);
+			}
+		}
+		else
+			ptr = malloc(Asize);
+#else
+		ptr = malloc(Asize);
+#endif
+
+		if (ptr != NULL)
+		{
+			OurReservedBlock++;
+			for (uint32_t i = 0; i < Asize; i++) ((uint8_t*)ptr)[i] = 0;
+		}
+		return ptr;
+#endif
+	}
+
+	void* ___realloc(void* Aptr, size_t Asize)
+	{
+		if (board.AutoCheckHeapIntegrity)
+		{
+			if (!heap_caps_check_integrity_all(true))
+			{
+				heap_caps_dump_all();
+			}
+		}
+
+#if !defined(_VMICRO_INTELLISENSE)
+		void* ptr = realloc(Aptr, Asize);
+		if (Aptr == NULL) OurReservedBlock++;
+		return ptr;
+#endif
+	}
+
+	void* ___realloc_psram(void* Aptr, size_t Asize)
+	{
+		void* ptr;
+
+		if (board.AutoCheckHeapIntegrity)
+		{
+			if (!heap_caps_check_integrity_all(true))
+			{
+				heap_caps_dump_all();
+			}
+		}
+
+#if !defined(_VMICRO_INTELLISENSE)
+
+
+#ifdef BOARD_HAS_PSRAM
+		bool b = psramFound();
+		if (!b)
+		{
+			b = psramInit();
+			psraminited++;
+		}
+		if ((b) || (psraminited > 0))
+			ptr = ps_realloc(Aptr, Asize); // heap_caps_realloc(Aptr,Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);	
+		else
+			ptr = realloc(Aptr, Asize);
+#else
+		ptr = realloc(Aptr, Asize);
+#endif
+		if (Aptr == NULL) OurReservedBlock++;
+		return ptr;
+#endif
+	}
+#ifdef __cplusplus
 }
+#endif
 //------------------------------------------------------------------------------------------------------------------------------
 // Rezerwacja pamiêci SPI RAM, jeœli p³ytka nie udostêpnia takiego rodzaju pamiêci to nast¹pi przydzielenie z podstawowej sterty
 // -> Asize - Iloœæ rezerwowanej pamiêci PSRAM
 // <- WskaŸnik zarezerwowanego bloku pamiêci PSRAM
 void *TXB_board::_malloc_psram(size_t Asize)
 {
-#ifdef PSRAM_BUG
-	size_t size = Asize;
-	MaximumMallocPSRAM = (Asize > MaximumMallocPSRAM) ? Asize : MaximumMallocPSRAM;
-#endif
 	
-	
-#ifdef BOARD_HAS_PSRAM
-#ifdef PSRAM_BUG
-	size = size >> 4;
-	size = size + 1;
-	size = size << 4;
-	size += 4;
-	void *ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-	delay(0);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("inbug _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-#else
-	void *ptr = heap_caps_malloc(Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("_malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-#endif 
-#else
-	void* ptr = ___malloc(Asize);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("nopsram _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-#endif
-
-	if (ptr != NULL)
-	{
-#ifdef BOARD_HAS_PSRAM
-#ifdef PSRAM_BUG
-		if ((size - Asize) > 0)
-		{
-			xb_memoryfill(&((uint8_t *)ptr)[Asize], size - Asize, 0xff);
-		}
-#endif
-#endif
-		xb_memoryfill(ptr, Asize, 0);
-		OurReservedBlock++;
-	}
-	else
-	{
-		Serial.print("\nOut of memory.");
-		board.Log("Out of memory.", true, true, tlError);
-	}
-	
+	void* ptr = ___malloc_psram(Asize);
 	return ptr;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2071,45 +2336,15 @@ void *TXB_board::_malloc_psram(size_t Asize)
 // <- WskaŸnik zarezerwowanego bloku pamiêci PSRAM
 void* TXB_board::_realloc_psram(void *Aptr,size_t Asize)
 {
-#ifdef PSRAM_BUG
-	size_t size = Asize;
-	MaximumMallocPSRAM = (Asize > MaximumMallocPSRAM) ? Asize : MaximumMallocPSRAM;
-#endif
+	void* ptr = ___realloc_psram(Aptr,Asize);
 
-
-#ifdef BOARD_HAS_PSRAM
-#ifdef PSRAM_BUG
-	size = size >> 4;
-	size = size + 1;
-	size = size << 4;
-	size += 4;
-	void* ptr = heap_caps_realloc(Aptr,size, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-	delay(0);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("inbug _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-#else
-	void* ptr = heap_caps_realloc(Aptr, Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("_malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-#endif 
-#else
-	void* ptr = ___realloc(Aptr,Asize);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("nopsram _malloc_psram, size: [" + String(size) + "] adress:" + String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-#endif
-
-	if (ptr == NULL)
+	if (ptr != NULL)
 	{
-		board.Log("Out of memory error in realloc(...).", true, true, tlError);
+		if (ptr != Aptr)
+		{
+			board.SendMessage_REALLOCPTR(Aptr, ptr);
+		}
 	}
-	else if (ptr != Aptr)
-	{
-		board.SendMessage_REALLOCPTR(Aptr, ptr);
-	}
-
 	return ptr;
 }
 //---------------------------------------
@@ -2119,19 +2354,6 @@ void* TXB_board::_realloc_psram(void *Aptr,size_t Asize)
 void *TXB_board::_malloc(size_t size)
 {
 	void* ptr = ___malloc(size);
-#ifdef LOG_MALLOC_FREE
-	board.Log(String("_malloc, size: [" + String(size) + "] adress:"+String((uint32_t)ptr, HEX)).c_str(), true, true);
-#endif
-	if (ptr != NULL)
-	{
-		xb_memoryfill(ptr, size, 0);
-		OurReservedBlock++;
-	}
-	else
-	{
-		Serial.print("\nOut of memory.");
-		board.Log("Out of memory.", true, true, tlError);
-	}
 	return ptr;
 }
 // ------------------
@@ -2144,7 +2366,6 @@ void TXB_board::free(void *Aptr)
 	{
 		SendMessage_FREEPTR(Aptr);
 		___free(Aptr);
-		OurReservedBlock--;
 	}
 }
 
@@ -2499,7 +2720,7 @@ bool TXB_board::HandleDataFrameTransport(TMessageBoard *mb, THandleDataFrameTran
 						Log("Data has been lost in the download stream [", true, true, tlError);
 						{
 							String tmps = "";
-							SendMessage_GetTaskNameString(ATaskDefStream, tmps);
+							SendMessage_GetTaskNameString(ATaskDefStream, &tmps);
 							Log(tmps.c_str(), false, false, tlError);
 						}
 						Log("]. The read buffer is too little.", false, false, tlError);
@@ -2995,7 +3216,7 @@ void TXB_board::SaveCfgFarDevice(TFarDeviceID *Afdl)
 {
 #ifdef XB_PREFERENCES
 	String StreamDefTaskName; StreamDefTaskName.reserve(32);
-	if (SendMessage_GetTaskNameString(Afdl->RequestTaskStream->Task, StreamDefTaskName))
+	if (SendMessage_GetTaskNameString(Afdl->RequestTaskStream->Task, &StreamDefTaskName))
 	{
 		if (board.PREFERENCES_BeginSection("XBBOARD"))
 		{
@@ -3620,6 +3841,7 @@ void TXB_board::AllPutStreamLog(void *Adata, uint32_t Alength)
 	if ((xb_board_ConsoleInWindow == true) && (ConsoleScreen != NULL))
 	{
 		ConsoleScreen->PutConsole((uint8_t *)Adata, Alength);
+		if (xb_board_Consoleputtoserial) Serial.write((const char*)Adata, Alength);
 	}
 	else
 	{
@@ -3632,6 +3854,8 @@ void TXB_board::AllPutStreamLog(void *Adata, uint32_t Alength)
 				if (t->PutStreamAddressAsLog[i] != 0xffffffff)
 				{
 					PutStream(Adata, Alength, t->TaskDef, t->PutStreamAddressAsLog[i]);
+					//Serial.print("DUPA");
+					//Serial.write((const char*)Adata, Alength);
 					isput = true;
 				}
 			}
@@ -3767,7 +3991,7 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 		if (NameTaskDef != NULL)
 		{
 			String taskname = "---";
-			SendMessage_GetTaskNameString(NameTaskDef, taskname);
+			SendMessage_GetTaskNameString(NameTaskDef, &taskname);
 		
 			if (taskname.length() > 0)
 			{
@@ -3785,11 +4009,21 @@ void TXB_board::Log(const char *Atxt, bool puttime, bool showtaskname, TTypeLog 
 }
 #pragma endregion
 #pragma region FUNKCJE_PREFERENCES
-#ifdef XB_PREFERENCES
 //-----------------------------------------------------------------------------------------------------------------------
 bool TXB_board::PREFERENCES_BeginSection(String ASectionname)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
+	
+	String_OnlyRAM++;
+	if (ASectionname == "")
+	{
+		String sn=" "; sn.reserve(32);
+		SendMessage_GetTaskNameString(CurrentTask, &sn);
+		ASectionname = sn;
+	}
+	
+
 	if (ASectionname.length() >= 16)
 	{
 		String ts = ASectionname;
@@ -3799,33 +4033,52 @@ bool TXB_board::PREFERENCES_BeginSection(String ASectionname)
 	{
 		xbpreferences = new Preferences();
 	}
-
-	return xbpreferences->begin(ASectionname.c_str());
+	String_OnlyRAM--;
+	if (ASectionname.length() == 0)
+	{
+		return false;
+	}
+	else
+	{
+		return xbpreferences->begin(ASectionname.c_str());
+	}
+#else
+	return false;
 #endif
+#else
+	return false;
+#endif
+
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void TXB_board::PREFERENCES_EndSection()
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	preferences_freeEntries = xbpreferences->freeEntries();
 	delete(xbpreferences);
 	xbpreferences = NULL;
+#endif
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void TXB_board::PREFERENCES_CLEAR()
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return;
 	xbpreferences->clear();
+#endif
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void TXB_board::PREFERENCES_CLEAR(String Akey)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return;
 	xbpreferences->remove(Akey.c_str());
+#endif
 #endif
 }
 
@@ -3833,8 +4086,12 @@ void TXB_board::PREFERENCES_CLEAR(String Akey)
 size_t TXB_board::PREFERENCES_PutArrayBytes(const char* key, const void *array,size_t sizearray)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putBytes(key, array,sizearray);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3844,8 +4101,12 @@ size_t TXB_board::PREFERENCES_PutArrayBytes(const char* key, const void *array,s
 size_t TXB_board::PREFERENCES_GetArrayBytes(const char* key, void* array, size_t maxsizearray)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->getBytes(key, array, maxsizearray);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3856,8 +4117,12 @@ size_t TXB_board::PREFERENCES_GetArrayBytes(const char* key, void* array, size_t
 size_t TXB_board::PREFERENCES_PutBool(const char* key, const bool value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putBool(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3867,8 +4132,12 @@ size_t TXB_board::PREFERENCES_PutBool(const char* key, const bool value)
 bool TXB_board::PREFERENCES_GetBool(const char* key, const bool defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getBool(key, defaultvalue);
+#else
+	return defaultvalue;
+#endif
 #else
 	return defaultvalue;
 #endif
@@ -3877,8 +4146,12 @@ bool TXB_board::PREFERENCES_GetBool(const char* key, const bool defaultvalue)
 size_t TXB_board::PREFERENCES_PutINT8(const char* key, const int8_t value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putChar(key, (char)value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3888,8 +4161,12 @@ size_t TXB_board::PREFERENCES_PutINT8(const char* key, const int8_t value)
 int8_t TXB_board::PREFERENCES_GetINT8(const char* key, const int8_t defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return (int8_t)xbpreferences->getChar(key,(char) defaultvalue);
+#else
+	return defaultvalue;
+#endif
 #else
 	return defaultvalue;
 #endif
@@ -3899,8 +4176,12 @@ int8_t TXB_board::PREFERENCES_GetINT8(const char* key, const int8_t defaultvalue
 size_t TXB_board::PREFERENCES_GetString(const char* key, char* value, const size_t maxlen)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->getString(key, value, maxlen);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3910,10 +4191,16 @@ size_t TXB_board::PREFERENCES_GetString(const char* key, char* value, const size
 String TXB_board::PREFERENCES_GetString(const char* key, String defaultvalue)
 {
 #ifdef ESP32
-	if (xbpreferences == NULL) return defaultvalue;
-	return xbpreferences->getString(key, defaultvalue);
+#ifdef XB_PREFERENCES
+	String_OnlyRAM++;
+	String s= xbpreferences->getString(key, String(defaultvalue.c_str()));
+	String_OnlyRAM--;
+	return s;
 #else
-	return 0;
+	return defaultvalue;
+#endif
+#else
+	return defaultvalue;
 #endif
 }
 
@@ -3921,38 +4208,54 @@ String TXB_board::PREFERENCES_GetString(const char* key, String defaultvalue)
 uint32_t TXB_board::PREFERENCES_GetUINT32(const char* key, uint32_t defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getULong(key, defaultvalue);
 #else
-	return 0;
+	return defaultvalue;
+#endif
+#else
+	return defaultvalue;
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 uint16_t TXB_board::PREFERENCES_GetUINT16(const char* key, uint16_t defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getUShort(key, defaultvalue);
 #else
-	return 0;
+	return defaultvalue;
+#endif
+#else
+	return defaultvalue;
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 uint8_t TXB_board::PREFERENCES_GetUINT8(const char* key, uint8_t defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getUChar(key, defaultvalue);
 #else
-	return 0;
+	return defaultvalue;
+#endif
+#else
+	return defaultvalue;
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 size_t TXB_board::PREFERENCES_PutString(const char* key, const char* value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putString(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3961,8 +4264,12 @@ size_t TXB_board::PREFERENCES_PutString(const char* key, const char* value)
 size_t TXB_board::PREFERENCES_PutString(const char* key, String value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putString(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3971,8 +4278,12 @@ size_t TXB_board::PREFERENCES_PutString(const char* key, String value)
 size_t TXB_board::PREFERENCES_PutUINT32(const char* key, uint32_t value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putULong(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3981,8 +4292,12 @@ size_t TXB_board::PREFERENCES_PutUINT32(const char* key, uint32_t value)
 size_t TXB_board::PREFERENCES_PutUINT16(const char* key, uint16_t value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putUShort(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -3991,8 +4306,12 @@ size_t TXB_board::PREFERENCES_PutUINT16(const char* key, uint16_t value)
 size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putUChar(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -4001,18 +4320,26 @@ size_t TXB_board::PREFERENCES_PutUINT8(const char* key, uint8_t value)
 int16_t TXB_board::PREFERENCES_GetINT16(const char* key, int16_t defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getShort(key, defaultvalue);
 #else
-	return 0;
+	return defaultvalue;
+#endif
+#else
+	return defaultvalue;
 #endif
 }
 //-----------------------------------------------------------------------------------------------------------------------
 size_t TXB_board::PREFERENCES_PutINT16(const char* key, int16_t value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putShort(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -4021,8 +4348,12 @@ size_t TXB_board::PREFERENCES_PutINT16(const char* key, int16_t value)
 size_t TXB_board::PREFERENCES_PutDouble(const char* key, double value)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return 0;
 	return xbpreferences->putDouble(key, value);
+#else
+	return 0;
+#endif
 #else
 	return 0;
 #endif
@@ -4031,14 +4362,18 @@ size_t TXB_board::PREFERENCES_PutDouble(const char* key, double value)
 double TXB_board::PREFERENCES_GetDouble(const char* key, double defaultvalue)
 {
 #ifdef ESP32
+#ifdef XB_PREFERENCES
 	if (xbpreferences == NULL) return defaultvalue;
 	return xbpreferences->getDouble(key, defaultvalue);
 #else
-	return 0;
+	return defaultvalue;
+#endif
+#else
+	return defaultvalue;
 #endif
 }
 
-#endif
+
 
 void TXB_board::LoadConfiguration(TTaskDef* ATaskDef)
 {
@@ -4047,7 +4382,7 @@ void TXB_board::LoadConfiguration(TTaskDef* ATaskDef)
 	if (!DoMessage(&mb, true, CurrentTask, ATaskDef))
 	{
 		String tn;
-		if (SendMessage_GetTaskNameString(ATaskDef, tn));
+		if (SendMessage_GetTaskNameString(ATaskDef, &tn));
 		{
 			Log(String("Task [" + tn + "] not support load configuration.").c_str(), true, true, tlWarn);
 		}
@@ -4072,7 +4407,7 @@ void TXB_board::SaveConfiguration(TTaskDef* ATaskDef)
 	if (!DoMessage(&mb, true, CurrentTask, ATaskDef))
 	{
 		String tn;
-		if (SendMessage_GetTaskNameString(ATaskDef, tn));
+		if (SendMessage_GetTaskNameString(ATaskDef, &tn));
 		{
 			Log(String("Task [" + tn + "] not support save configuration.").c_str(), true, true, tlWarn);
 		}
@@ -4098,7 +4433,7 @@ void TXB_board::ResetConfiguration(TTaskDef* ATaskDef)
 	if (!DoMessage(&mb, true, CurrentTask, ATaskDef))
 	{
 		String tn;
-		if (SendMessage_GetTaskNameString(ATaskDef,tn));
+		if (SendMessage_GetTaskNameString(ATaskDef,&tn));
 		{
 			Log(String("Task ["+tn+"] not support reset configuration.").c_str(), true, true, tlWarn);
 		}
@@ -4115,7 +4450,6 @@ void TXB_board::ResetConfiguration()
 {
 	ResetConfiguration(CurrentTask);
 }
-
 
 void TXB_board::AllSaveConfiguration(void)
 {
@@ -4147,15 +4481,6 @@ void XB_BOARD_Setup(void)
 	board.LoadConfiguration(&XB_BOARD_DefTask);
 	board.AddGPIODrive(BOARD_NUM_DIGITAL_PINS, &XB_BOARD_DefTask, "ESP32");
 	board.SetDigitalPinCount(BOARD_NUM_DIGITAL_PINS);
-
-	// Jeœli framework zosta³ uruchomiony na ESP32 z dodatkow¹ pamiêci¹ RAM SPI , rezerwacja pierwszych 2 megabajtów w celu unikniêcia b³ednej wspó³pracy ESP32 z PSRAM
-#ifdef ESP32
-#ifdef PSRAM_BUG
-#ifdef BOARD_HAS_PSRAM
-	board.psram2m = heap_caps_malloc((1024 * 1024) * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
-#endif
-#endif
-#endif
 
 	// Jeœli framework zosta³ uruchomiony na ESP8266 to inicjacja liczników czasowych
 #if defined(ESP8266)
@@ -4288,7 +4613,7 @@ void XB_BOARD_RowDraw_TFarDeviceID(TWindowClass* Awh, TFarDeviceID* Afdi, Ty& Ay
 	{
 		Awh->PutStr(board.DeviceIDtoString(Afdi->FarDeviceID).c_str(), 24, ' ', taLeft); Awh->PutChar('|');
 
-		board.SendMessage_GetTaskNameString(Afdi->RequestTaskStream, str);
+		board.SendMessage_GetTaskNameString(Afdi->RequestTaskStream, &str);
 		str.trim();
 		Awh->PutStr(str.c_str(), 20, ' ', taLeft); Awh->PutChar('|');
 
@@ -4325,9 +4650,6 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 	{
 		GET_TASKSTATUS_ADDSTR(String("TC:" + String(board.TaskList_count)));
 		GET_TASKSTATUS_ADDSTR(String(" FD:" + String(board.FarDeviceIDList_count)));
-#ifdef PSRAM_BUG
-		GET_TASKSTATUS_ADDSTR(String(" / GFPEC:" + String(board.GETFREEPSRAM_ERROR_COUNTER)));
-#endif
 		res = true;
 	}
 	case IM_HANDLEPTR:
@@ -4841,17 +5163,6 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 
 		BEGIN_MENU(1, "XBBOARD MENU", WINDOW_POS_X_DEF, WINDOW_POS_Y_DEF, 48, MENU_AUTOCOUNT, 0, true)
 		{
-			/*BEGIN_MENUITEM("Dupa", taLeft)
-			{
-				CLICK_MENUITEM()
-				{
-					board.Log("DUPA", true, true,tlInfo);
-					board.Log("WARN", true, true, tlWarn);
-					board.Log("ERROR", true, true, tlError);
-				}
-			}
-			END_MENUITEM()*/
-
 			BEGIN_MENUITEM_CHECKED("Show GUI on start", taLeft, xb_board_ShowGuiOnStart)
 			{
 				CLICK_MENUITEM()
@@ -4895,6 +5206,16 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 				}
 			}
 			END_MENUITEM()
+
+			BEGIN_MENUITEM_CHECKED("LOG put to Serial.", taLeft, xb_board_Consoleputtoserial)
+			{
+				CLICK_MENUITEM()
+				{
+					xb_board_Consoleputtoserial = !xb_board_Consoleputtoserial;
+				}
+			}
+			END_MENUITEM()
+
 			SEPARATOR_MENUITEM()
 			BEGIN_MENUITEM_CHECKED("Show list Far Device ID", taLeft, xb_board_ShowListFarDeviceID)
 			{
@@ -4920,6 +5241,44 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					board.EraseAllFarDevices();
 					board.LoadCfgFarDevices();
 					XB_BOARD_Repaint_TFarDeviceID();
+				}
+			}
+			END_MENUITEM()
+			BEGIN_MENUITEM("List var & value in system...", taLeft)
+			{
+				CLICK_MENUITEM()
+				{
+					TTask* t = board.TaskList;
+					int count = 0;
+					board.Log("- List variable in system -", true, true, tlInfo);
+					while (t != NULL)
+					{
+						count = board.SendMessage_GetVarCount(t);
+						if (count > 0)
+						{
+							String s = "";
+							String sv = "";
+							board.SendMessage_GetTaskNameString(t, &s);
+							board.Log(String("\n\nTask "+s + " vars count "+String(count)).c_str(), false, false, tlWarn);
+							for (int i = 0; i < count; i++)
+							{	
+								board.Log(String("\n"+String(i)+". %").c_str());
+								s=board.SendMessage_GetVarName(i, t);
+								board.Log(String(s+"% = '").c_str());
+								sv = board.SendMessage_GetVarValue(s, t);
+								board.Log(String(sv + "'").c_str());
+								sv = "";
+								sv = board.SendMessage_GetVarDescription(s, t);
+								if (sv!="") board.Log(String("  ["+sv + "]").c_str());
+
+								
+							}
+						}
+						t = t->Next;
+					}
+
+
+
 				}
 			}
 			END_MENUITEM()
@@ -5204,9 +5563,10 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					if (t != NULL)
 					{
 
-						if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
+						if (board.SendMessage_GetTaskNameString(t->TaskDef, &name))
 						{
-							WH->PutStr(0, y + i, name.c_str(), 14, ' ');
+							WH->PutStr(0, y + i, name.c_str(), 13, ' ');
+							WH->PutStr(String(t->TaskDef->Priority).c_str());
 							if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
 							else WH->PutChar(' ');
 							name = "";
@@ -5231,7 +5591,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					WH->PutStr(14, y, txttime.c_str());
 				}
 				y++;
-				WH->PutStr(10, y, String(board.FreeHeapInLoop).c_str());
+				WH->PutStr(10, y, String(String(board.FreeHeapInLoop) + " ("+String(board.FreeMaxAllocInLoop)+")").c_str());
 				WH->PutChar(' ');
 				WH->PutStr(WH->Width - 9, y, String(board.MinimumFreeHeapInLoop).c_str());
 				WH->PutChar(' ');
@@ -5260,7 +5620,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 #ifdef XB_BOARD_MEMDEBUG
 				WH->PutStr(20, y, String(MemDebugList_count).c_str(), 8);
 #else
-				WH->PutStr(20, y, String(board.OurReservedBlock).c_str(), 8);
+				WH->PutStr(20, y, String(OurReservedBlock).c_str(), 8);
 #endif
 
 				WH->PutStr(39, y, String(String(temperatureRead(), 2) + "C").c_str());
@@ -5300,9 +5660,10 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 						if (t != NULL)
 						{
 
-							if (board.SendMessage_GetTaskNameString(t->TaskDef, name))
+							if (board.SendMessage_GetTaskNameString(t->TaskDef, &name))
 							{
-								WH->PutStr(0, y + i, name.c_str(), 14, ' ');
+								WH->PutStr(0, y + i, name.c_str(), 13, ' ');
+								WH->PutStr(String(t->TaskDef->Priority).c_str());
 								if (GUIGADGET_IsMainMenu(t->TaskDef)) WH->PutChar('>');
 								else WH->PutChar(' ');
 								name = "";
@@ -5314,7 +5675,7 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 
 					if (t != NULL)
 					{
-						if (board.SendMessage_GetTaskStatusString(t->TaskDef, name))
+						if (board.SendMessage_GetTaskStatusString(t->TaskDef, &name))
 						{
 							uint32_t sum = 0;
 							uint32_t l = name.length();
@@ -5374,14 +5735,24 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 		break;
 	}
 #endif
-	case IM_GET_VAR_VALUE:
+	case IM_VAR:
 	{
-		if (*Am->Data.VarValueData.VarName == "devicename")
+		VAR("devicename")
 		{
-			*Am->Data.VarValueData.VarValue = board.DeviceName;
-			res = true;
+			GET_VAR
+			{
+				VALUE_VAR = board.DeviceName;
+				return true;
+			}
+			GET_DESC
+			{
+				VALUE_VAR = "Device Name";
+				return true;
+			}
 		}
-		break;
+		EVAR
+
+		return false;
 	}
 	default:;
 	}

@@ -81,6 +81,28 @@ else \
 } \
 }
 
+#define INSERT_TO_LIST_STR(Alist,AClass,_tothis_,_this_) \
+{ \
+	_this_->Next = NULL;\
+	_this_->Prev = NULL;\
+	if (_tothis_->Prev == NULL)\
+	{\
+		_tothis_->Prev=_this_; \
+		Alist = _this_; \
+		_this_->Next=_tothis_; \
+		Alist##_count++; \
+	} \
+	else \
+	{ \
+		_this_->Prev=_tothis_->Prev; \
+		_this_->Next=_tothis_; \
+		_tothis_->Prev->Next=_this_; \
+		_tothis_->Prev = _this_; \
+		Alist##_count++; \
+	} \
+}
+
+
 #define DELETE_FROM_LIST_STR(Alist,_this_) \
 { \
 	Alist##_count--; \
@@ -108,6 +130,53 @@ else \
 		} \
 	} \
 }
+
+//#define MOVE_STR_TO(Alist,_this_,_tothis_) \
+//{ \
+//		if (_this_->Next!=NULL) \
+//		{ \
+//			_this_->Next->Prev = _this_->Next; \
+//			if (_this_->Prev!=NULL) \
+//			{ \
+//				_this_->Prev->Next = _this_->Next; \
+//				_this_->Next->Prev = _this_->Prev; \
+//			} \
+//			else \
+//			{ \
+//				Alist = _this_->Next; \
+//				_this_->Next->Prev=NULL; \
+//			} \
+//		} \
+//		else \
+//		{ \
+//			if (_this_->Prev!=NULL) \
+//			{ \
+//				_this_->Prev->Next=NULL; \
+//				Alist##_last = _this_->Prev; \
+//			} \
+//			else \
+//			{ \
+//				Alist = NULL; \
+//				Alist##_last = NULL; \
+//			} \
+//		} \
+//		_this_->Next = NULL; \
+//		_this_->Prev = NULL; \
+//		\
+//		if (_tothis_->Prev != NULL) \
+//		{ \
+//			_this_->Next = _tothis_; \
+//			_tothis_->Prev =_this_; \
+//			_this_->Prev = _tothis_->Prev; \
+//			_tothis_->Prev->Next=_this_; \
+//		} \
+//		else \
+//		{ \
+//			_this_->Next= _tothis_; \
+//			_tothis_->Prev = _this_; \
+//			Alist = _this_; \
+//		} \
+//}
 
 #define MOVE_STR_TO_ENDLIST(Alist,AClass,_this_) \
 { \
@@ -180,6 +249,29 @@ else \
 	} \
 } 
 
+#define BEGIN_FOREACH_LIST(item,list) \
+{ \
+item = list; \
+while(item!=NULL) \
+{
+
+#define END_FOREACH_LIST(item) \
+item=item->Next; \
+} \
+} 
+
+#define BEGIN_FOREACH_BACK_LIST(item,list) \
+{ \
+item = list##_last; \
+while(item!=NULL) \
+{
+
+#define END_FOREACH_BACK_LIST(item) \
+item=item->Prev; \
+} \
+} 
+
+
 struct TTask;
 struct TTaskDef;
 struct TGPIODrive;
@@ -188,8 +280,9 @@ struct TSocket;
 #define GET_TASKSTATUS(enumstatus,cutbeginch) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus); Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKSTATUS_OTHER(enumstatus,cutbeginch,other) case enumstatus: {*(Am->Data.PointerString) = String(#enumstatus)+other; Am->Data.PointerString->remove(0,cutbeginch); break;}
 #define GET_TASKSTATUS_ADDSTR(Astr) {*(Am->Data.PointerString) += String(Astr); }
-#define GET_TASKNAME(name) *(Am->Data.PointerString) = String(name);
+#define GET_TASKNAME(name) *(Am->Data.PointerString) = (name);
 #define GET_ENUMSTRING(enumstatus,cutbeginch) case enumstatus: {String s=#enumstatus; s.remove(0,cutbeginch); s.replace('_',' '); return s;}
+#define GET_DEFAULTSTRING(str) default: { return str;}
 
 typedef enum { doFORWARD, doBACKWARD } TDoMessageDirection;
 
@@ -215,7 +308,7 @@ typedef enum {
 	IM_LOAD_CONFIGURATION,
 	IM_SAVE_CONFIGURATION,
 	IM_RESET_CONFIGURATION,
-	IM_GET_VAR_VALUE,
+	IM_VAR,
 #ifdef XB_GUI
 	IM_MENU,
 	IM_INPUTDIALOG,
@@ -373,7 +466,8 @@ typedef enum {
 	tmaCLICKLEFT_ITEM_MENU,
 	tmaCLICKRIGHT_ITEM_MENU,
 	tmaESCAPE_MENU,
-	tmaDEL_ITEM_MENU
+	tmaDEL_ITEM_MENU,
+	tmaINSERT_MENUITEM,
 } TTypeMenuAction;
 
 typedef struct
@@ -454,6 +548,7 @@ typedef enum {
 	ida_GET_DESCRIPTION_STRING,
 	ida_ENTER_DIALOG,
 	ida_ESCAPE_DIALOG,
+	ida_CHANGE_VALUE
 } TTypeInputDialogAction;
 
 typedef struct
@@ -465,6 +560,10 @@ typedef struct
 {
 	String *PointerString;
 } TInputDialogDescriptionData;
+typedef struct
+{
+	String* Value;
+} TInputDialogChangeValue;
 
 typedef struct
 {
@@ -514,6 +613,7 @@ typedef struct
 		TInputDialogCaptionData InputDialogCaptionData;
 		TInputDialogInitData InputDialogInitData;
 		TInputDialogDescriptionData InputDialogDescriptionData;
+		TInputDialogChangeValue InputDialogChangeValue;
 	} ActionData;
 } TInputDialogData;
 #endif
@@ -562,12 +662,36 @@ typedef struct
 } TKeyboardData;
 
 //-----------------------------------------------------------------------
+typedef enum {vdaGetValue,vdaSetValue,vdaGetVarName,vdaGetVarDesc,vdaCountVar} TVarDataAction;
+
 typedef struct
 {
+	TVarDataAction Action;
+	int IndxVar;
+	int CountVar;
 	String *VarName;
 	String *VarValue;
-	
-} TVarValueData;
+		
+} TVarData;
+
+#define VAR(varname) Am->Data.VarData.CountVar++; \
+		if (((*Am->Data.VarData.VarName==varname) &&  (Am->Data.VarData.Action!=vdaCountVar)) || (Am->Data.VarData.Action==vdaGetVarName)) \
+		{ \
+			if ((Am->Data.VarData.Action==vdaGetVarName) && (Am->Data.VarData.CountVar==Am->Data.VarData.IndxVar) ) \
+			{ \
+				*Am->Data.VarData.VarName = varname; \
+				return true; \
+			} \
+
+#define GET_VAR if (Am->Data.VarData.Action==vdaGetValue) 
+#define GET_DESC if (Am->Data.VarData.Action==vdaGetVarDesc)
+#define SET_VAR if (Am->Data.VarData.Action==vdaSetValue) 
+
+#define VALUE_VAR *Am->Data.VarData.VarValue
+
+#define EVAR }
+
+
 //-----------------------------------------------------------------------
 typedef enum { 
 	tsaIDLE,
@@ -621,7 +745,7 @@ struct TMessageBoard
 		TBlinkData BlinkData;
 		TFrameReceiveData FrameReceiveData;
 		TFrameResponseData FrameResponseData;
-		TVarValueData VarValueData;
+		TVarData VarData;
 		TSocketData SocketData;
 		void *PointerData;
 		THandlePTRData HandlePTRData;

@@ -52,7 +52,44 @@ uint8_t monthlen(uint8_t isleapyear, uint8_t month)
 #define SECS_PER_DAY  (SECS_PER_HOUR * 24UL)
 #define SECS_YR_2000  (946684800UL) // the time at the start of y2k
 
+void DecodeUnixTime(uint32_t t, struct tm* dt)
+{
+	const uint8_t daysInMonth[]{ 31,28,31,30,31,30,31,31,30,31,30,31 };
+	t -= SECS_YR_2000;    // bring to 2000 timestamp from 1970
 
+	uint8_t ss = t % 60;
+	t /= 60;
+	uint8_t mm = t % 60;
+	t /= 60;
+	uint8_t hh = t % 24;
+	uint16_t days = t / 24;
+	uint8_t leap;
+	uint8_t yOff;
+	for (yOff = 0; ; ++yOff) {
+		leap = yOff % 4 == 0;
+		if (days < 365 + leap)
+			break;
+		days -= 365 + leap;
+	}
+	uint8_t m;
+	for (m = 1; ; ++m) {
+		uint8_t daysPerMonth = daysInMonth[m - 1];
+		if (leap && m == 2)
+			++daysPerMonth;
+		if (days < daysPerMonth)
+			break;
+		days -= daysPerMonth;
+	}
+	uint8_t d = days + 1;
+
+	dt->tm_sec = ss;
+	dt->tm_min = mm;
+	dt->tm_hour = hh;
+
+	dt->tm_mday = d;
+	dt->tm_mon = m;
+	dt->tm_year = yOff+2000;
+}
 //----------------------------------------------------------------------------------------------------------------------
 void RTC_DecodeUnixTime(uint32_t unix_time, struct tm *dt)
 {
@@ -191,7 +228,50 @@ void GetTimeIndx(String &Atotxt, uint32_t Atimeindx)
 	
 }
 
+String GetTimeString(uint32_t Adatetimeunix)
+{
+	String s;
+	GetTime(s, Adatetimeunix);
+	return s;
+}
+
 void GetTime(String& Atotxt, uint32_t Adatetimeunix,bool Ayear, bool Amonth, bool Aday )
+{
+	tm dt; xb_memoryfill(&dt, sizeof(tm), 0);
+	DecodeUnixTime(Adatetimeunix, &dt);
+#if defined(ESP32)
+	char timeindxstr[40]; xb_memoryfill(timeindxstr, 32, 0);
+	uint8_t i = 0;
+	if (Ayear)
+	{
+		i += uinttoaw(dt.tm_year, &timeindxstr[i], 4, '0');
+		if ((!Amonth) && (!Aday)) timeindxstr[i++] = ' ';
+	}
+	if (Amonth)
+	{
+		if (Ayear) timeindxstr[i++] = '-';
+		i += uinttoaw(dt.tm_mon, &timeindxstr[i], 2, '0');
+		if (!Aday) timeindxstr[i++] = ' ';
+	}
+	if (Aday)
+	{
+		if ((Amonth) || (Ayear)) timeindxstr[i++] = '-';
+		i += uinttoaw(dt.tm_mday, &timeindxstr[i], 2, '0');
+		timeindxstr[i++] = ' ';
+	}
+	i += uinttoaw(dt.tm_hour, &timeindxstr[i], 2, '0');
+	timeindxstr[i++] = ':';
+	i += uinttoaw(dt.tm_min, &timeindxstr[i], 2, '0');
+	timeindxstr[i++] = '.';
+	i += uinttoaw(dt.tm_sec, &timeindxstr[i], 2, '0');
+#endif
+
+	Atotxt += String(timeindxstr);
+
+}
+
+
+String GetDateTimeAsString(uint32_t Adatetimeunix, bool Ayear, bool Amonth, bool Aday)
 {
 	tm dt;
 	RTC_DecodeUnixTime(Adatetimeunix, &dt);
@@ -222,7 +302,7 @@ void GetTime(String& Atotxt, uint32_t Adatetimeunix,bool Ayear, bool Amonth, boo
 	i += uinttoaw(dt.tm_sec, &timeindxstr[i], 2, '0');
 #endif
 
-	Atotxt += String(timeindxstr);
+	return String(timeindxstr);
 
 }
 
@@ -496,6 +576,13 @@ void uint32tohexstr(char *Aresult, uint32_t *Aint32tab, uint8_t Acount, bool Aad
 
 }
 //=================================================================================================================
+String uint32tohexstring(uint32_t Auint32_t)
+{
+	char str[16]; xb_memoryfill(str, 16, 0);
+	uint32tohexstr(str, &Auint32_t, 1, false);
+	return String(str);
+}
+//=================================================================================================================
 void uint16tohexstr(char *Aresult, uint16_t *Aint16tab, uint8_t Acount, bool Aadd)
 {
 	REGISTER uint16_t Aint;
@@ -545,21 +632,25 @@ void uint8tohexstr(char *Aresult, uint8_t *Aint8tab, uint32_t Acount, char Asep,
 	}
 }
 //=================================================================================================================
-int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench)
+int IndexOfChars(char *Astr, int Afrom, const char *Aofchars, int Alench,bool AignoreinDblQuote, bool AignoreinQuote)
 {
 	int len = strlen(Astr)+1;
 	int indx;
 	int indxch;
 	
-	for (indx = Afrom; indx < len; indx++)
+	for (indx = Afrom; indx < (len - Alench); indx++)
 	{
+		bool is = true;
 		for (indxch = 0; indxch < Alench; indxch++)
 		{
-			if (Astr[indx] == Aofchars[indxch])
+			if (Astr[indx+indxch] != Aofchars[indxch])
 			{
-				return indx;
+				is = false;
+				break;
 			}
 		}
+		if (is) return indx;
+
 	}
 	return -1;
 }
@@ -827,24 +918,32 @@ uint8_t StringtoIP(char *Asip, uint32_t *Aip)
 
 uint32_t StringLength(REGISTER char *Astr,REGISTER uint8_t Acharend)
 {
-	for (REGISTER uint32_t i = 0;;i++)
+	if (Astr != NULL)
 	{
-		if (((uint8_t *)Astr)[i] == Acharend)
+		for (REGISTER uint32_t i = 0;; i++)
 		{
-		     return i;
-        }
+			if (((uint8_t*)Astr)[i] == Acharend)
+			{
+				return i;
+			}
+		}
 	}
+	return 0;
 }
 
 uint32_t StringLength(const char *Astr, REGISTER uint8_t Acharend)
 {
-	for (REGISTER uint32_t i = 0;; i++)
+	if (Astr != NULL)
 	{
-		if (((uint8_t *)Astr)[i] == Acharend)
+		for (REGISTER uint32_t i = 0;; i++)
 		{
-			return i;
+			if (((uint8_t*)Astr)[i] == Acharend)
+			{
+				return i;
+			}
 		}
 	}
+	return 0;
 }
 
 uint32_t StringAddString(REGISTER char *Astr, REGISTER uint8_t Acharend, REGISTER char *Aaddstr, REGISTER uint8_t Aaddcharend)
@@ -930,6 +1029,13 @@ void charcat(char *Astr, char Ach)
 
 }
 
+String StringAddRightChar(String Astr, uint8_t Awidth, char Achar)
+{
+	String s = Astr;
+	StringSetWidth(s, Awidth, staLeft, Achar);
+	return s;
+}
+
 void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringtextalignment, char Ach)
 {
 	if (Astringtextalignment == staLeft)
@@ -955,7 +1061,18 @@ void StringSetWidth(String &Astr, uint32_t Awidth, TStringTextAlignment Astringt
 	}
 	else if (Astringtextalignment == staRight)
 	{
-		
+		if (Astr.length() < Awidth)
+		{
+			uint32_t l = Awidth - Astr.length();
+			for (uint32_t i = 0; i < l; i++) Astr = Ach + Astr;
+			return;
+		}
+		if (Astr.length() > Awidth)
+		{
+			Astr = Astr.substring(0, Astr.length()- Awidth);
+			return;
+		}
+
 		
 	}
 	
