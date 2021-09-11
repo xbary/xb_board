@@ -89,25 +89,22 @@ KROK 5. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 // biblioteka pobiera³a kody z RX jako wciskanie klawiszy, nale¿y najpierw dodaæ do projektu
 // biblioteke XB_SERIAL. Podstawowa konfiguracja XB_SERIAL polega na ustawieniu takich makr:
 
-#define Serial0Board_BAUD 115200
+#define Serial0BoardBuf_BAUD 115200
 // Okreœla szybkoœæ pierwszego UARTa w urz¹dzeniu, oraz równoczeœnie go uruchamia
 
-#define SERIAL0_SizeRXBuffer 1024
-// Definicja wielkoœci bufora odbiorczego
-
-#define Serial0Board_UseKeyboard
+#define Serial0BoardBuf_UseKeyboard
 // Jeœli zdefiniujemy to zostanie dodany stream z którego korzystaæ bêdzie klawiatura jako kody 
 // klawiszy nadchodz¹ce w RX
 
-#define Serial0Board_UseLog
+#define Serial0BoardBuf_UseLog
 // Jeœli zdefiniowane to biblioteka XB_BOARD a konkretnie funkcja Log() zacznie korzystaæ poprzez
 // stream do wysy³ania komunikatów na TX uarta pierwszego
 
-#define Serial0Board_UseGui
+#define Serial0BoardBuf_UseGui
 // Jeœli zdefiniowane to na pierwszy uart bêdzie rysowane GUI
 
-#define Serial0Board_RX_PIN ?
-#define Serial0Board_TX_PIN ?
+#define Serial0BoardBuf_RX_PIN ?
+#define Serial0BoardBuf_TX_PIN ?
 // Dla ESP32 mo¿emy zdefiniowaæ na których pinach zostanie uruchomiony pierwszy UART.
 // Jeœli nie podamy tych definicji to u¿yte zostan¹ standardowe przyporz¹dkowania pinów.
 
@@ -131,8 +128,8 @@ KROK 5. Kompilacja i uruchomienie. Sprawdzono dzia³anie bilioteki na p³ytkach: E
 
 #ifdef ESP32
 #include <WString.h>
-//#define FSS(str) (String(F(str)).c_str())
 #define FSS(str) str
+#include <utils/xb_util.h>
 #endif
 
 #ifdef __riscv64
@@ -381,10 +378,10 @@ struct TFarDeviceID
 
 typedef enum { tlInfo = 0, tlWarn, tlError } TTypeLog;
 #ifndef CONSOLE_WIDTH_DEFAULT
-#define CONSOLE_WIDTH_DEFAULT 80
+#define CONSOLE_WIDTH_DEFAULT 120
 #endif
 #ifndef CONSOLE_HEIGHT_DEFAULT
-#define CONSOLE_HEIGHT_DEFAULT 25
+#define CONSOLE_HEIGHT_DEFAULT 50
 #endif
 
 typedef struct {

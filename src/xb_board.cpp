@@ -72,12 +72,29 @@ bool xb_board_ShowListFarDeviceID = false;
 #define WINDOW_0_CAPTION "BOARD (ESP8266, 160Mhz)"
 #endif
 #ifdef ESP32
-#ifdef BOARD_HAS_PSRAM
-#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER)"
-#else
-#define WINDOW_0_CAPTION "BOARD (ESP32)"
+	#ifdef ARDUINO_ESP32S2_DEV
+		#ifdef BOARD_HAS_PSRAM
+		#define WINDOW_0_CAPTION "BOARD (ESP32S2 wROVER)"
+		#else
+		#define WINDOW_0_CAPTION "BOARD (ESP32S2)"
+		#endif
+	#elif defined(ARDUINO_ESP32C3_DEV)
+		#ifdef BOARD_HAS_PSRAM
+		#define WINDOW_0_CAPTION "BOARD (ESP32-C3-S32)"
+		#else
+		#define WINDOW_0_CAPTION "BOARD (ESP32-C3-S32)"
+		#endif
+	#else
+		#ifdef BOARD_HAS_PSRAM
+		#define WINDOW_0_CAPTION "BOARD (ESP32 wROVER)"
+		#else
+		#define WINDOW_0_CAPTION "BOARD (ESP32)"
+		#endif
+	#endif
 #endif
-#endif
+
+
+
 #ifdef ARDUINO_ARCH_STM32
 #define WINDOW_0_CAPTION "BOARD (STM32)"
 #endif
@@ -1233,9 +1250,9 @@ void TXB_board::handle(void)
 		MinimumFreePSRAMInLoop = FreePSRAMInLoop;
 		MaximumFreePSRAMInLoop = FreePSRAMInLoop;
 
-		FreeHeapInLoop = getFreeHeap();
-		MaximumFreeHeapInLoop = FreeHeapInLoop;
-		MinimumFreeHeapInLoop = FreeHeapInLoop;
+		//FreeHeapInLoop = getFreeHeap();
+		//MaximumFreeHeapInLoop = FreeHeapInLoop;
+		//MinimumFreeHeapInLoop = FreeHeapInLoop;
 	}
 	
 #ifdef XB_GUI
@@ -2108,7 +2125,7 @@ extern uint32_t _estack;
 uint32_t TXB_board::getFreePSRAM()
 {
 #if defined(BOARD_HAS_PSRAM) && defined(ESP32)
-	uint32_t freepsram = ESP.getMaxAllocPsram();
+	uint32_t freepsram = ESP.getFreePsram();
 	return freepsram;
 #else
 #ifdef __riscv64
@@ -2238,22 +2255,23 @@ extern "C" {
 
 #ifdef BOARD_HAS_PSRAM
 
-		bool b = psramFound();
-		if (!b)
+		//bool b = psramFound();
+		//if (!b)
+		//{
+		//	b = psramInit();
+		//	psraminited++;
+		//}
+		//if ((b) || (psraminited > 0))
 		{
-			b = psramInit();
-			psraminited++;
-		}
-		if ((b) || (psraminited > 0))
-		{
-			ptr = ps_malloc(Asize);//heap_caps_malloc(Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
+			ptr = ps_malloc(Asize);
+			//heap_caps_malloc(Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);
 			if (ptr == NULL)
 			{
 				ptr = malloc(Asize);
 			}
 		}
-		else
-			ptr = malloc(Asize);
+		//else
+		//	ptr = malloc(Asize);
 #else
 		ptr = malloc(Asize);
 #endif
@@ -2300,16 +2318,17 @@ extern "C" {
 
 
 #ifdef BOARD_HAS_PSRAM
-		bool b = psramFound();
-		if (!b)
-		{
-			b = psramInit();
-			psraminited++;
-		}
-		if ((b) || (psraminited > 0))
-			ptr = ps_realloc(Aptr, Asize); // heap_caps_realloc(Aptr,Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);	
-		else
-			ptr = realloc(Aptr, Asize);
+		//bool b = psramFound();
+		//if (!b)
+		//{
+		//	b = psramInit();
+		//	psraminited++;
+		//}
+		//if ((b) || (psraminited > 0))
+			ptr = ps_realloc(Aptr, Asize); 
+			//heap_caps_realloc( Aptr,Asize, MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);	
+		//else
+		//	ptr = realloc(Aptr, Asize);
 #else
 		ptr = realloc(Aptr, Asize);
 #endif
@@ -4478,6 +4497,11 @@ void TXB_board::AllResetConfiguration(void)
 // Procedura inicjuj¹ca zadanie g³ównego
 void XB_BOARD_Setup(void)
 {
+	// odnotowanie iloœci wolnej pamiêci RAM na starcie
+	board.FreeHeapInLoop = board.getFreeHeap();
+	board.MaximumFreeHeapInLoop = board.FreeHeapInLoop;
+	board.MinimumFreeHeapInLoop = board.FreeHeapInLoop;
+
 	board.LoadConfiguration(&XB_BOARD_DefTask);
 	board.AddGPIODrive(BOARD_NUM_DIGITAL_PINS, &XB_BOARD_DefTask, "ESP32");
 	board.SetDigitalPinCount(BOARD_NUM_DIGITAL_PINS);
@@ -5524,7 +5548,12 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 					y++;
 
 					WH->PutStr(0, y, ("OUR RESERVED BLOCK:"));
+
+#ifdef ARDUINO_ESP32C3_DEV
+					WH->PutStr(29, y, "CPU Temp.:---");
+#else
 					WH->PutStr(29, y, "CPU Temp.:");
+#endif
 					y++;
 					//--------------
 
@@ -5623,8 +5652,12 @@ bool XB_BOARD_DoMessage(TMessageBoard* Am)
 				WH->PutStr(20, y, String(OurReservedBlock).c_str(), 8);
 #endif
 
+#ifdef ARDUINO_ESP32C3_DEV
+				y++;
+#else
 				WH->PutStr(39, y, String(String(temperatureRead(), 2) + "C").c_str());
 				y++;
+#endif
 
 				String name;
 				name.reserve(80);
